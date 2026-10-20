@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Drum, Music, Menu, X, Sparkles, AudioWaveform } from 'lucide-react';
+import { Drum, Music, Menu, X, Sparkles, AudioWaveform, Plus } from 'lucide-react';
 
 export const GlobalNavbar: React.FC = () => {
   const pathname = usePathname();
@@ -13,6 +13,7 @@ export const GlobalNavbar: React.FC = () => {
   // Determinar pestaña activa
   const isDrumsActive = pathname === '/' || pathname.startsWith('/drums') || pathname.startsWith('/practice');
   const isStringsActive = pathname.startsWith('/strings');
+  const isBuilderActive = pathname.startsWith('/admin');
 
   const navLinks = [
     {
@@ -28,6 +29,13 @@ export const GlobalNavbar: React.FC = () => {
       icon: Music,
       active: isStringsActive,
       badge: 'Tablatura',
+    },
+    {
+      name: 'Studio Builder',
+      href: '/admin/builder',
+      icon: Plus,
+      active: isBuilderActive,
+      badge: 'Editor',
     },
   ];
 

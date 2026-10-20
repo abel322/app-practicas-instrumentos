@@ -29,9 +29,16 @@ Construida con **Next.js 15 (App Router)**, **TypeScript**, **Tailwind CSS**, **
 - Motor de síntesis analógica de cuerda pulsada (*plucked string synthesis*) con ataque rápido y decaimiento cálido.
 - Cabezal de escaneo **Runway** sincronizado con detección de traste activo y destello luminoso.
 
-### 3. 🌐 Navegación Global (`GlobalNavbar`)
+### 3. 🛠️ Studio Builder Multicompás (`/admin/builder`)
+- Editor interactivo profesional para crear ejercicios de varios compases (1 a 8 compases) para Bajo, Guitarra y Batería.
+- Rejilla de tablatura y pentagrama interactiva: añade trastes y golpes con un solo clic.
+- Paleta de articulaciones y técnicas: Slap, Pop, Hammer-on, Pull-off, Slide, Ghost notes, acentos y sticking (R/L).
+- Previsualización en bucle inmediata (*Probar Audio / Loop*) con Web Audio API antes de publicar.
+- Persistencia directa en base de datos mediante Server Actions de Next.js (`saveExerciseAction`).
+
+### 4. 🌐 Navegación Global (`GlobalNavbar`)
 - Encabezado minimalista sticky con soporte para pantallas táctiles y móviles.
-- Píldoras animadas con **Framer Motion** para alternar al instante entre **Batería** y **Cuerdas**.
+- Píldoras animadas con **Framer Motion** para alternar al instante entre **Batería**, **Cuerdas** y el **Studio Builder**.
 - Menú hamburguesa colapsable en dispositivos móviles.
 
 ---
@@ -42,6 +49,7 @@ Construida con **Next.js 15 (App Router)**, **TypeScript**, **Tailwind CSS**, **
 - `/practice/[slug]`: Reproductor de práctica y partitura formal Runway para batería.
 - `/strings`: Catálogo de ejercicios para Bajo y Guitarra con filtros de instrumento y categoría.
 - `/strings/practice/[slug]`: Reproductor de tablatura profesional con Runway y sintetizador de cuerdas.
+- `/admin/builder`: Creador avanzado de ejercicios multicompás con persistencia a base de datos.
 
 ---
 
