@@ -26,6 +26,8 @@ interface TransportBarProps {
   onToggleMetronome: () => void;
   onResetBpm?: () => void;
   defaultBpm?: number;
+  backHref?: string;
+  backLabel?: string;
 }
 
 export const TransportBar: React.FC<TransportBarProps> = ({
@@ -40,6 +42,8 @@ export const TransportBar: React.FC<TransportBarProps> = ({
   onToggleMetronome,
   onResetBpm,
   defaultBpm = 100,
+  backHref = '/',
+  backLabel = 'Catálogo',
 }) => {
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onBpmChange(Number(e.target.value));
@@ -55,12 +59,12 @@ export const TransportBar: React.FC<TransportBarProps> = ({
       {/* 1. Botón Volver al Catálogo */}
       <div className="flex items-center gap-3">
         <Link
-          href="/"
+          href={backHref}
           className="group flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white transition-all text-sm font-medium"
-          title="Volver al Catálogo"
+          title={`Volver a ${backLabel}`}
         >
           <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
-          <span className="hidden sm:inline">Catálogo</span>
+          <span className="hidden sm:inline">{backLabel}</span>
         </Link>
       </div>
 

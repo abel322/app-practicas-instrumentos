@@ -1,10 +1,11 @@
 import { PrismaClient } from '@prisma/client';
 import { INITIAL_EXERCISES } from '../lib/seedData';
+import { STRINGS_INITIAL_EXERCISES } from '../lib/stringsSeedData';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🥁 Iniciando Seed de ejercicios de batería...');
+  console.log('🥁 Sincronizando ejercicios de batería (Drum Lab)...');
 
   for (const ex of INITIAL_EXERCISES) {
     const upserted = await prisma.drumExercise.upsert({
@@ -31,7 +32,41 @@ async function main() {
       },
     });
 
-    console.log(`✅ Ejercicio sincronizado: [${upserted.category}] ${upserted.title} (${upserted.slug})`);
+    console.log(`✅ [Batería] ${upserted.title} (${upserted.slug})`);
+  }
+
+  console.log('🎸 Sincronizando ejercicios de cuerdas (Strings Lab: Bajo & Guitarra)...');
+
+  for (const strEx of STRINGS_INITIAL_EXERCISES) {
+    const upserted = await prisma.stringExercise.upsert({
+      where: { slug: strEx.slug },
+      update: {
+        title: strEx.title,
+        instrument: strEx.instrument,
+        tuning: strEx.tuning,
+        category: strEx.category,
+        difficulty: strEx.difficulty,
+        bpmDefault: strEx.bpmDefault,
+        timeSignature: strEx.timeSignature,
+        totalSteps: strEx.totalSteps,
+        tabData: strEx.tabData as any,
+      },
+      create: {
+        id: strEx.id,
+        slug: strEx.slug,
+        title: strEx.title,
+        instrument: strEx.instrument,
+        tuning: strEx.tuning,
+        category: strEx.category,
+        difficulty: strEx.difficulty,
+        bpmDefault: strEx.bpmDefault,
+        timeSignature: strEx.timeSignature,
+        totalSteps: strEx.totalSteps,
+        tabData: strEx.tabData as any,
+      },
+    });
+
+    console.log(`✅ [${upserted.instrument}] ${upserted.title} (${upserted.slug})`);
   }
 
   console.log('✨ Seed completado con éxito.');

@@ -19,3 +19,18 @@ model DrumExercise {
   hitsData      Json     // Array estructurado con notas, duraciones, articulaciones y sticking
   createdAt     DateTime @default(now())
 }
+
+model StringExercise {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  title         String
+  instrument    String   // "bass_4" | "guitar_6"
+  tuning        String   @default("Standard") // Ej: "E A D G" o "E A D G B E"
+  category      String   // "Slap & Pop", "Walking Bass", "Escalas & Arpegios", "Licks & Riffs", "Fingerpicking"
+  difficulty    String   // "Básico", "Intermedio", "Avanzado"
+  bpmDefault    Int      @default(90)
+  timeSignature String   @default("4/4")
+  totalSteps    Int      @default(16) // Subdivisión de compás
+  tabData       Json     // Array con notas de tablatura (cuerda, traste, técnica, duración)
+  createdAt     DateTime @default(now())
+}

@@ -1,49 +1,47 @@
-# 🥁 Drum Lab — Runway & Partitura de Batería
+# 🎶 SoundLab Studio — Entorno de Práctica Multi-Instrumento (Drum Lab & Strings Lab)
 
-Aplicación web moderna, minimalista y de alto rendimiento para el estudio interactivo de batería, construida con **Next.js (App Router)**, **TypeScript**, **Tailwind CSS**, **Framer Motion**, **Prisma ORM** y **Web Audio API**.
+Plataforma web moderna, minimalista y de alto rendimiento para el estudio interactivo de instrumentos: **Batería** (pentagrama y Runway), **Bajo eléctrico** (4 cuerdas con tablatura interactiva) y **Guitarra** (6 cuerdas con tablatura profesional).
 
----
-
-## ✨ Características Principales
-
-1. **Pentagrama Formal de Percusión (SVG)**:
-   - Notación estándar de 5 líneas con clave neutral de percusión y numeradores de compás (`4/4`, `6/8`).
-   - Ubicaciones verticales estandarizadas:
-     - Platillos (`Hi-Hat cerrado/abierto`, `Ride`, `Crash`) con cabezas en cruz (`✕`).
-     - Tambores (`Caja`, `Bombo`, `Toms`) con cabezas ovaladas formales.
-   - Plicas hacia arriba con vigas continuas (*beams*) para semicorcheas.
-   - Articulaciones dinámicas: acentos marcados (`>`).
-   - Notación de Sticking por colores: `R` (Cian), `L` (Fucsia), `K` (Esmeralda / Bombo).
-
-2. **Línea de Tiempo Runway**:
-   - Cabezal de escaneo luminoso animado a tiempo real con glow y partículas de impacto.
-   - Sincronización precisa mediante reloj interno de Web Audio API y `requestAnimationFrame`.
-   - Loop continuo y fluido sin latencia entre compases.
-
-3. **Motor de Audio Nativo (Web Audio API)**:
-   - Síntesis analógica/acústica pura sin dependencias externas pesadas ni problemas de carga de samples.
-   - Sonidos punchy para Bombo, Caja con bordonera, Hi-Hat abierto/cerrado, Ride y Toms.
-   - Metrónomo digital configurable con clics diferenciados de downbeat (1600 Hz / 920 Hz).
-
-4. **Diseño Dark Minimalist & UX**:
-   - Paleta profunda (`zinc-950`), microinteracciones con Framer Motion y glassmorphism sobrio.
-   - Sin registros ni pantallas de edición innecesarias: directo a la práctica.
-   - Atajos de teclado para bateristas:
-     - <kbd>Espacio</kbd>: Reproducir / Pausar.
-     - <kbd>Esc</kbd>: Detener y volver al inicio.
-     - <kbd>M</kbd>: Alternar Metrónomo.
-     - <kbd>↑</kbd> / <kbd>↓</kbd>: Ajustar tempo (±5 BPM).
+Construida con **Next.js 15 (App Router)**, **TypeScript**, **Tailwind CSS**, **Framer Motion**, **Prisma ORM** y **Web Audio API**.
 
 ---
 
-## 🚀 Pila Tecnológica
+## 🚀 Arquitectura y Módulos
 
-- **Framework**: Next.js 15 (App Router)
-- **Lenguaje**: TypeScript
-- **Estilos**: Tailwind CSS & Vanilla CSS tokens
-- **Animaciones**: Framer Motion
-- **ORM & Base de Datos**: Prisma ORM & PostgreSQL
-- **Audio**: Web Audio API nativo
+### 1. 🥁 Drum Lab Runway (`/` o `/drums`)
+- Pentagrama formal de percusión de 5 líneas con clave neutral y métricas (`4/4`, `6/8`).
+- Ubicaciones verticales estandarizadas: Platillos en cruz (`✕`), Bombo, Caja y Toms en cabezas ovaladas.
+- Plicas hacia arriba con vigas (*beams*) continuas para semicorcheas.
+- Sticking por colores: `R` (Cian), `L` (Fucsia), `K` (Esmeralda / Bombo) y símbolos de acento (`>`).
+- Cabezal de escaneo óptico **Runway** sincronizado a tiempo real con Web Audio API.
+
+### 2. 🎸 Strings Lab: Bajo y Guitarra (`/strings`)
+- **Bajo (4 Cuerdas)**: Tablatura interactiva con afinación estándar (`G, D, A, E`).
+- **Guitarra (6 Cuerdas)**: Tablatura de 6 líneas con afinación estándar (`e, B, G, D, A, E`).
+- Números de traste con fondo enmascarado para máxima legibilidad sobre las cuerdas.
+- Insignias de técnicas profesionales:
+  - **S**: Slap (Golpe de pulgar)
+  - **P**: Pop (Tirón)
+  - **X**: Ghost Note (Nota fantasma percusiva)
+  - **H**: Hammer-on (Ligadura ascendente)
+  - **/**: Slide (Glisando)
+  - **~**: Vibrato
+- Motor de síntesis analógica de cuerda pulsada (*plucked string synthesis*) con ataque rápido y decaimiento cálido.
+- Cabezal de escaneo **Runway** sincronizado con detección de traste activo y destello luminoso.
+
+### 3. 🌐 Navegación Global (`GlobalNavbar`)
+- Encabezado minimalista sticky con soporte para pantallas táctiles y móviles.
+- Píldoras animadas con **Framer Motion** para alternar al instante entre **Batería** y **Cuerdas**.
+- Menú hamburguesa colapsable en dispositivos móviles.
+
+---
+
+## 📁 Rutas de la Aplicación
+
+- `/` o `/drums`: Catálogo interactivo de ejercicios de batería.
+- `/practice/[slug]`: Reproductor de práctica y partitura formal Runway para batería.
+- `/strings`: Catálogo de ejercicios para Bajo y Guitarra con filtros de instrumento y categoría.
+- `/strings/practice/[slug]`: Reproductor de tablatura profesional con Runway y sintetizador de cuerdas.
 
 ---
 
@@ -75,9 +73,9 @@ Aplicación web moderna, minimalista y de alto rendimiento para el estudio inter
    npx prisma db push
    npm run seed
    ```
-   *Nota: La aplicación cuenta con un fallback automático a los datos de seed, por lo que funciona plenamente incluso sin un servidor PostgreSQL local levantado.*
+   *Nota: La aplicación cuenta con un fallback automático seguro en memoria, por lo que opera al 100% incluso sin base de datos activa localmente.*
 
-6. Iniciar el servidor de desarrollo:
+6. Iniciar en modo desarrollo:
    ```bash
    npm run dev
    ```
@@ -85,24 +83,9 @@ Aplicación web moderna, minimalista y de alto rendimiento para el estudio inter
 
 ---
 
-## 📁 Estructura del Código
+## 🎹 Atajos de Teclado Universales
 
-```text
-├── prisma/
-│   ├── schema.prisma              # Modelo DrumExercise
-│   └── seed.ts                    # Script de población de base de datos
-├── app/
-│   ├── globals.css                # Estilos globales y tokens
-│   ├── layout.tsx                 # Layout principal
-│   ├── page.tsx                   # Catálogo de ejercicios (Server Component)
-│   └── practice/[slug]/page.tsx   # Reproductor de práctica y Runway
-├── components/
-│   ├── catalog/                   # Tarjetas y filtros con animaciones
-│   └── practice/                  # Pentagrama SVG, barra de transporte y leyenda
-├── lib/
-│   ├── prisma.ts                  # Cliente Prisma singleton con fallback
-│   ├── drumAudioEngine.ts         # Motor de síntesis Web Audio
-│   └── seedData.ts                # Colección rítmica predefinida
-└── types/
-    └── drum.ts                    # Definiciones TypeScript de notas y ejercicios
-```
+- <kbd>Espacio</kbd>: Reproducir / Pausar práctica.
+- <kbd>Esc</kbd>: Detener y volver al inicio del compás.
+- <kbd>M</kbd>: Alternar Metrónomo encendido/apagado.
+- <kbd>↑</kbd> / <kbd>↓</kbd>: Ajustar tempo (±5 BPM).

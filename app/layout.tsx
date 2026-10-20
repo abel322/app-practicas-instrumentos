@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { GlobalNavbar } from '@/components/navigation/GlobalNavbar';
 
 export const metadata: Metadata = {
-  title: 'Drum Lab — Entorno de Práctica y Runway para Bateristas',
-  description: 'Plataforma minimalista y de alto rendimiento para el estudio de rudimentos, grooves y técnica de batería con partitura formal SVG y escaneo Runway en tiempo real.',
+  title: 'SoundLab Studio — Entorno de Práctica: Batería, Bajo y Guitarra',
+  description: 'Plataforma minimalista y de alto rendimiento para el estudio de batería (pentagrama y Runway) y cuerdas (bajo y guitarra con tablatura profesional).',
 };
 
 export default function RootLayout({
@@ -21,6 +22,9 @@ export default function RootLayout({
             <div className="absolute top-1/3 -right-40 w-[500px] h-[300px] bg-fuchsia-500/3 blur-[140px] rounded-full" />
             <div className="absolute bottom-10 left-1/4 w-[600px] h-[250px] bg-cyan-600/5 blur-[130px] rounded-full" />
           </div>
+
+          {/* Barra de Navegación Global */}
+          <GlobalNavbar />
 
           <div className="relative z-10 flex-1 flex flex-col">
             {children}
