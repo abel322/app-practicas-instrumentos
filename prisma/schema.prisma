@@ -1,0 +1,21 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model DrumExercise {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  title         String
+  category      String   // "Rudimentos", "Grooves", "Independencia", "Acentos & Síncopas"
+  difficulty    String   // "Básico", "Intermedio", "Avanzado"
+  bpmDefault    Int      @default(100)
+  timeSignature String   @default("4/4")
+  totalSteps    Int      @default(16) // Subdivisión base (ej. 16 semicorcheas por compás)
+  hitsData      Json     // Array estructurado con notas, duraciones, articulaciones y sticking
+  createdAt     DateTime @default(now())
+}
