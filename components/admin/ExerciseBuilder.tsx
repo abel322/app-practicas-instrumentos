@@ -29,6 +29,11 @@ import {
   AlertCircle,
   HelpCircle
 } from 'lucide-react';
+import { getStepRhythmLabel } from './TablatureRuler';
+import { AVAILABLE_FRETS } from './NoteSelectorModal';
+
+export { getStepRhythmLabel, AVAILABLE_FRETS };
+
 
 type InstrumentCategory = 'drums' | 'bass' | 'guitar';
 
@@ -289,6 +294,42 @@ export const ExerciseBuilder: React.FC = () => {
       );
     }
   };
+
+  const handleSelectFret = (fretNum: number) => {
+    if (activeCell && activeCell.string !== undefined) {
+      handleUpdateFret(activeCell.step, activeCell.string, fretNum);
+    }
+    setSelectedFret(fretNum);
+  };
+
+  const handleFretInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let raw = e.target.value;
+
+    // Permitir borrar todo para escribir limpio
+    if (raw === '') {
+      setSelectedFret(0);
+      return;
+    }
+
+    // Remover cualquier carácter no numérico y quitar ceros a la izquierda
+    const sanitized = raw.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+    if (sanitized === '') {
+      setSelectedFret(0);
+      return;
+    }
+
+    const parsed = parseInt(sanitized, 10);
+
+    if (!isNaN(parsed) && parsed >= 0 && parsed <= 24) {
+      setSelectedFret(parsed);
+    }
+  };
+
+  const handleFretInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    // Auto-seleccionar todo el texto al hacer clic para que al teclear reemplace directamente
+    e.target.select();
+  };
+
 
   const handleClearNote = (globalStep: number, stringNum?: number, drumVoice?: DrumVoice) => {
     setNotes((prev) =>
@@ -893,16 +934,17 @@ export const ExerciseBuilder: React.FC = () => {
               ))}
             </div>
 
-            {/* Traste Rápido por defecto */}
-            <div className="flex items-center gap-1.5 ml-2">
-              <span className="text-[10px] text-zinc-400 uppercase font-semibold">Traste:</span>
+            {/* Traste Rápido por defecto con sanitización */}
+            <div className="flex items-center gap-1.5 bg-slate-900/80 px-2 py-1 rounded-xl border border-slate-800 ml-2">
+              <span className="text-[11px] font-bold text-slate-400 uppercase">Traste:</span>
               <input
-                type="number"
-                min={0}
-                max={24}
-                value={selectedFret}
-                onChange={(e) => setSelectedFret(Math.max(0, Math.min(24, Number(e.target.value))))}
-                className="w-12 bg-zinc-900 border border-white/10 rounded-lg px-2 py-0.5 text-center font-mono font-bold text-cyan-400 focus:outline-none"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={selectedFret.toString()}
+                onChange={handleFretInputChange}
+                onFocus={handleFretInputFocus}
+                className="w-10 text-center text-xs font-mono font-bold bg-slate-800 text-cyan-300 rounded-lg py-0.5 border border-slate-700 focus:outline-none focus:border-cyan-400"
               />
             </div>
           </div>
@@ -922,21 +964,36 @@ export const ExerciseBuilder: React.FC = () => {
               {Array.from({ length: stepsPerMeasure }).map((_, stepIdx) => {
                 const globalStep = activeMeasureStart + stepIdx;
                 const isPlayback = isPlaying && playbackActiveStep === globalStep;
-                const isBeat = stepIdx % 4 === 0;
+                const { label, isBeat } = getStepRhythmLabel(stepIdx, stepsPerMeasure);
 
                 return (
                   <div
                     key={`step-head-${stepIdx}`}
-                    className={`text-center py-1 transition-colors ${
-                      isPlayback
-                        ? 'text-cyan-400 font-bold scale-110'
-                        : isBeat
-                        ? 'text-zinc-300 font-bold'
-                        : 'text-zinc-400'
+                    className={`flex-1 flex flex-col items-center justify-center py-1 transition-colors ${
+                      isPlayback ? 'scale-110' : ''
                     }`}
                   >
-                    <span>{stepIdx + 1}</span>
-                    {isBeat && <div className="w-1 h-1 bg-cyan-400 rounded-full mx-auto mt-0.5" />}
+                    <span
+                      className={`text-xs font-mono font-bold transition-colors ${
+                        isPlayback
+                          ? 'text-cyan-300 font-black'
+                          : isBeat
+                          ? 'text-cyan-400 text-sm font-black'
+                          : 'text-slate-400 dark:text-slate-500 font-semibold text-[11px]'
+                      }`}
+                    >
+                      {label}
+                    </span>
+                    {/* Punto indicador de pulso a tierra */}
+                    <span
+                      className={`w-1 h-1 rounded-full mt-0.5 transition-colors ${
+                        isPlayback
+                          ? 'bg-cyan-300 ring-2 ring-cyan-300/50'
+                          : isBeat
+                          ? 'bg-cyan-400 ring-2 ring-cyan-400/30'
+                          : 'bg-transparent'
+                      }`}
+                    />
                   </div>
                 );
               })}
@@ -1056,23 +1113,32 @@ export const ExerciseBuilder: React.FC = () => {
 
       {/* 6. Panel Flotante / Diálogo de Edición Rápida de Traste */}
       {activeCell && activeCell.string !== undefined && (
-        <div className="p-4 rounded-2xl glass-panel border border-cyan-500/30 shadow-2xl flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-zinc-400 font-medium">
+        <div className="p-4 rounded-2xl glass-panel border border-cyan-500/30 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 overflow-hidden flex-1 min-w-0">
+            <span className="text-xs text-zinc-400 font-medium shrink-0">
               Nota en Paso {(activeCell.step % stepsPerMeasure) + 1} (Cuerda {activeCell.string}):
             </span>
 
-            {/* Teclado numérico de trastes frecuentes */}
-            <div className="flex flex-wrap items-center gap-1 font-mono">
-              {[0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 12, 14, 15, 17].map((fretNum) => (
-                <button
-                  key={`quick-fret-${fretNum}`}
-                  onClick={() => handleUpdateFret(activeCell.step, activeCell.string!, fretNum)}
-                  className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500 hover:text-zinc-950 text-xs font-bold transition-colors"
-                >
-                  {fretNum}
-                </button>
-              ))}
+            {/* Escala Cromática Completa (0 al 22 consecutivos) */}
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 max-w-full">
+              {AVAILABLE_FRETS.map((fretNum) => {
+                const activeNote = notes.find((n) => n.step === activeCell.step && n.string === activeCell.string);
+                const isSelected = (activeNote ? activeNote.fret : selectedFret) === fretNum;
+                return (
+                  <button
+                    key={fretNum}
+                    type="button"
+                    onClick={() => handleSelectFret(fretNum)}
+                    className={`shrink-0 min-w-[32px] h-8 px-2 rounded-xl text-xs font-mono font-bold transition-all ${
+                      isSelected
+                        ? 'bg-cyan-500 text-slate-950 font-black shadow-lg ring-2 ring-cyan-300'
+                        : 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700/60'
+                    }`}
+                  >
+                    {fretNum}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
