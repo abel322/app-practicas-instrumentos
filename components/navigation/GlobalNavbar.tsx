@@ -13,6 +13,7 @@ export const GlobalNavbar: React.FC = () => {
   // Determinar pestaña activa
   const isDrumsActive = pathname === '/' || pathname.startsWith('/drums') || pathname.startsWith('/practice');
   const isStringsActive = pathname.startsWith('/strings');
+  const isFretboardActive = pathname.startsWith('/fretboard') || pathname.startsWith('/harmonics');
   const isBuilderActive = pathname.startsWith('/admin');
 
   const navLinks = [
@@ -22,6 +23,7 @@ export const GlobalNavbar: React.FC = () => {
       icon: Drum,
       active: isDrumsActive,
       badge: 'Runway',
+      badgeClass: 'bg-white/10 text-zinc-400',
     },
     {
       name: 'Cuerdas (Bajo / Guitarra)',
@@ -29,6 +31,15 @@ export const GlobalNavbar: React.FC = () => {
       icon: Music,
       active: isStringsActive,
       badge: 'Tablatura',
+      badgeClass: 'bg-white/10 text-zinc-400',
+    },
+    {
+      name: '🎸 Diapasón & Armonía',
+      href: '/fretboard',
+      icon: Sparkles,
+      active: isFretboardActive,
+      badge: 'EXPLORADOR',
+      badgeClass: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.2)]',
     },
     {
       name: 'Studio Builder',
@@ -36,6 +47,7 @@ export const GlobalNavbar: React.FC = () => {
       icon: Plus,
       active: isBuilderActive,
       badge: 'Editor',
+      badgeClass: 'bg-white/10 text-zinc-400',
     },
   ];
 
@@ -78,7 +90,7 @@ export const GlobalNavbar: React.FC = () => {
                 <span className="relative z-10">{link.name}</span>
                 <span
                   className={`relative z-10 text-[9px] px-1.5 py-0.5 rounded-full font-mono uppercase font-bold transition-colors ${
-                    link.active ? 'bg-zinc-950/20 text-zinc-950' : 'bg-white/10 text-zinc-400'
+                    link.active ? 'bg-zinc-950/20 text-zinc-950' : link.badgeClass
                   }`}
                 >
                   {link.badge}
@@ -132,7 +144,7 @@ export const GlobalNavbar: React.FC = () => {
                       <Icon className="w-4 h-4 text-cyan-400" />
                       <span>{link.name}</span>
                     </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-white/10 text-zinc-400">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono uppercase font-bold ${link.badgeClass}`}>
                       {link.badge}
                     </span>
                   </Link>
