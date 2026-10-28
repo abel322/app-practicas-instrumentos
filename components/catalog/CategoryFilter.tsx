@@ -18,7 +18,7 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
   categoryCounts = {},
 }) => {
   return (
-    <div className="flex flex-wrap items-center gap-2 p-1.5 rounded-2xl glass-panel border border-white/10 w-fit max-w-full overflow-x-auto">
+    <div className="flex flex-wrap items-center gap-2 p-1.5 rounded-2xl glass-panel border border-slate-200 dark:border-white/10 w-fit max-w-full overflow-x-auto shadow-sm">
       {categories.map((category) => {
         const isActive = activeCategory === category;
         const count = categoryCounts[category] ?? 0;
@@ -28,7 +28,9 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
             key={category}
             onClick={() => onSelectCategory(category)}
             className={`relative px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors select-none flex items-center gap-2 ${
-              isActive ? 'text-zinc-950 font-bold' : 'text-zinc-400 hover:text-zinc-200'
+              isActive
+                ? 'text-zinc-950 font-bold'
+                : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
             }`}
           >
             {isActive && (
@@ -45,7 +47,7 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
                 className={`relative z-10 text-[10px] px-1.5 py-0.5 rounded-full font-mono font-semibold transition-colors ${
                   isActive
                     ? 'bg-zinc-950/20 text-zinc-950'
-                    : 'bg-white/10 text-zinc-400'
+                    : 'bg-slate-200 dark:bg-white/10 text-slate-700 dark:text-zinc-400'
                 }`}
               >
                 {count}

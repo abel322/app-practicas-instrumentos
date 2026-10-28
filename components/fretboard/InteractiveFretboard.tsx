@@ -9,6 +9,7 @@ import {
 } from '@/lib/music-theory/fretboard';
 import { getFretboardAudioEngine } from '@/lib/music-theory/fretboardAudio';
 import { Volume2, Sparkles, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
+import { useTheme } from '@/components/theme/ThemeProvider';
 
 export interface ActiveFretNote {
   stringIndex: number; // 0 = más aguda (superior), N-1 = más grave (inferior)
@@ -41,6 +42,8 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   onNoteClick,
   title,
 }) => {
+  const { theme } = useTheme();
+  const isLight = theme === 'light';
   const containerRef = useRef<HTMLDivElement>(null);
   const [lastPlayedKey, setLastPlayedKey] = useState<string | null>(null);
   const [hoveredNote, setHoveredNote] = useState<ActiveFretNote | null>(null);
@@ -267,14 +270,20 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
             style={{ minWidth: fretPositions.totalWidth }}
           >
           <defs>
-            {/* Gradiente de fondo del mástil: Palisandro / Ébano oscuro */}
-            <linearGradient id="fretboardWood" x1="0%" y1="0%" x2="0%" y2="100%">
+            {/* Gradientes de fondo del mástil: Claro (Arce/Maple) vs Oscuro (Ébano/Palisandro) */}
+            <linearGradient id="fretboardWoodDark" x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#1e1e24" />
               <stop offset="50%" stopColor="#15151a" />
               <stop offset="100%" stopColor="#0f0f14" />
             </linearGradient>
 
-            {/* Gradiente de la cejuela (Hueso / Marfil sintético de alta densidad) */}
+            <linearGradient id="fretboardWoodLight" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#f8fafc" />
+              <stop offset="50%" stopColor="#f1f5f9" />
+              <stop offset="100%" stopColor="#e2e8f0" />
+            </linearGradient>
+
+            {/* Gradiente de la cejuela */}
             <linearGradient id="nutGradient" x1="0%" y1="0%" x2="100%" y2="0%">
               <stop offset="0%" stopColor="#e2e8f0" />
               <stop offset="40%" stopColor="#f8fafc" />
@@ -282,27 +291,47 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
               <stop offset="100%" stopColor="#94a3b8" />
             </linearGradient>
 
-            {/* Gradiente de los trastes de níquel/plata */}
-            <linearGradient id="fretWire" x1="0%" y1="0%" x2="100%" y2="0%">
+            {/* Gradientes de los trastes de níquel/plata */}
+            <linearGradient id="fretWireDark" x1="0%" y1="0%" x2="100%" y2="0%">
               <stop offset="0%" stopColor="#475569" />
               <stop offset="40%" stopColor="#cbd5e1" />
               <stop offset="60%" stopColor="#ffffff" />
               <stop offset="100%" stopColor="#64748b" />
             </linearGradient>
 
-            {/* Gradiente de cuerdas lisas de acero */}
-            <linearGradient id="stringPlain" x1="0%" y1="0%" x2="0%" y2="100%">
+            <linearGradient id="fretWireLight" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#94a3b8" />
+              <stop offset="40%" stopColor="#cbd5e1" />
+              <stop offset="60%" stopColor="#64748b" />
+              <stop offset="100%" stopColor="#475569" />
+            </linearGradient>
+
+            {/* Gradientes de cuerdas lisas de acero */}
+            <linearGradient id="stringPlainDark" x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#f1f5f9" />
               <stop offset="50%" stopColor="#94a3b8" />
               <stop offset="100%" stopColor="#475569" />
             </linearGradient>
 
-            {/* Gradiente de cuerdas entorchadas (Bajo / Cuerdas graves) */}
-            <linearGradient id="stringWound" x1="0%" y1="0%" x2="0%" y2="100%">
+            <linearGradient id="stringPlainLight" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#1e293b" />
+              <stop offset="50%" stopColor="#334155" />
+              <stop offset="100%" stopColor="#475569" />
+            </linearGradient>
+
+            {/* Gradientes de cuerdas entorchadas */}
+            <linearGradient id="stringWoundDark" x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#f8fafc" />
               <stop offset="35%" stopColor="#e2e8f0" />
               <stop offset="70%" stopColor="#64748b" />
               <stop offset="100%" stopColor="#334155" />
+            </linearGradient>
+
+            <linearGradient id="stringWoundLight" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#0f172a" />
+              <stop offset="35%" stopColor="#1e293b" />
+              <stop offset="70%" stopColor="#475569" />
+              <stop offset="100%" stopColor="#64748b" />
             </linearGradient>
 
             {/* Filtros de Resplandor Neón */}
@@ -337,8 +366,8 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                   width={neckWidth}
                   height={neckH}
                   rx={8}
-                  fill="url(#fretboardWood)"
-                  stroke="#27272a"
+                  fill={isLight ? 'url(#fretboardWoodLight)' : 'url(#fretboardWoodDark)'}
+                  stroke={isLight ? '#cbd5e1' : '#27272a'}
                   strokeWidth={2}
                 />
 
@@ -468,7 +497,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                     y1={lineY1}
                     x2={pos.wireX - 1}
                     y2={lineY2}
-                    stroke="#09090b"
+                    stroke={isLight ? '#cbd5e1' : '#09090b'}
                     strokeWidth={1.5}
                   />
                   {/* Traste metálico brillante */}
@@ -477,7 +506,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                     y1={lineY1}
                     x2={pos.wireX}
                     y2={lineY2}
-                    stroke="url(#fretWire)"
+                    stroke={isLight ? 'url(#fretWireLight)' : 'url(#fretWireDark)'}
                     strokeWidth={2.4}
                     strokeLinecap="round"
                   />
@@ -486,7 +515,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                     x={pos.centerX}
                     y={topPadding - 20}
                     textAnchor="middle"
-                    fill={fretNum === 12 || fretNum === 24 ? '#22d3ee' : '#71717a'}
+                    fill={fretNum === 12 || fretNum === 24 ? (isLight ? '#0891b2' : '#22d3ee') : (isLight ? '#475569' : '#71717a')}
                     fontSize={11}
                     fontFamily="monospace"
                     fontWeight={fretNum === 12 || fretNum === 24 ? 'bold' : 'normal'}
@@ -497,7 +526,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                     x={pos.centerX}
                     y={lineY2 + 16}
                     textAnchor="middle"
-                    fill={fretNum === 12 || fretNum === 24 ? '#22d3ee' : '#52525b'}
+                    fill={fretNum === 12 || fretNum === 24 ? (isLight ? '#0891b2' : '#22d3ee') : (isLight ? '#94a3b8' : '#52525b')}
                     fontSize={10}
                     fontFamily="monospace"
                   >
@@ -524,23 +553,23 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                     width={38}
                     height={24}
                     rx={6}
-                    fill="#18181b"
-                    stroke="#3f3f46"
+                    fill={isLight ? '#ffffff' : '#18181b'}
+                    stroke={isLight ? '#cbd5e1' : '#3f3f46'}
                     strokeWidth={1}
-                    className="group-hover:stroke-cyan-400 group-hover:fill-zinc-800 transition-colors"
+                    className="group-hover:stroke-cyan-500 group-hover:fill-slate-100 dark:group-hover:fill-zinc-800 transition-colors"
                   />
                   <text
                     x={25}
                     y={y + 4}
                     textAnchor="middle"
-                    fill="#22d3ee"
+                    fill={isLight ? '#0891b2' : '#22d3ee'}
                     fontSize={11}
                     fontWeight="black"
                     fontFamily="monospace"
-                    className="group-hover:fill-cyan-300"
+                    className="group-hover:fill-cyan-600 dark:group-hover:fill-cyan-300"
                   >
                     {str.note}
-                    <tspan fontSize={9} fill="#71717a">
+                    <tspan fontSize={9} fill={isLight ? '#64748b' : '#71717a'}>
                       {str.octave}
                     </tspan>
                   </text>
@@ -566,9 +595,9 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                     y1={y + gauge * 0.4}
                     x2={endX}
                     y2={y + gauge * 0.4}
-                    stroke="#000000"
+                    stroke={isLight ? '#94a3b8' : '#000000'}
                     strokeWidth={gauge + 1}
-                    opacity={0.65}
+                    opacity={isLight ? 0.35 : 0.65}
                   />
                   {/* Cuerda metálica con su gradiente */}
                   <line
@@ -576,7 +605,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                     y1={y}
                     x2={endX}
                     y2={y}
-                    stroke={isWound ? 'url(#stringWound)' : 'url(#stringPlain)'}
+                    stroke={isWound ? (isLight ? 'url(#stringWoundLight)' : 'url(#stringWoundDark)') : (isLight ? 'url(#stringPlainLight)' : 'url(#stringPlainDark)')}
                     strokeWidth={gauge}
                     strokeLinecap="butt"
                   />

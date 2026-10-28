@@ -534,11 +534,11 @@ export const ExerciseBuilder: React.FC = () => {
   return (
     <div className="w-full flex flex-col gap-6 max-w-7xl mx-auto py-8 px-4 sm:px-6 select-none">
       {/* 1. Header Superior & Selector de Instrumento */}
-      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 p-5 rounded-2xl glass-panel border border-white/10 shadow-xl">
+      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 p-5 rounded-2xl glass-panel border border-slate-200 dark:border-white/10 shadow-sm">
         <div className="flex items-center gap-3">
           <Link
             href="/"
-            className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-400 hover:text-white transition-colors"
+            className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200 dark:border-white/10 text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white transition-colors"
             title="Volver al inicio"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -546,10 +546,10 @@ export const ExerciseBuilder: React.FC = () => {
 
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+              <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30">
                 Studio Builder
               </span>
-              <span className="text-xs text-zinc-400 font-mono">
+              <span className="text-xs text-slate-500 dark:text-zinc-400 font-mono">
                 {totalMeasures} {totalMeasures === 1 ? 'Compás' : 'Compases'} ({totalSteps} Pasos)
               </span>
             </div>
@@ -559,7 +559,7 @@ export const ExerciseBuilder: React.FC = () => {
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="bg-transparent text-xl sm:text-2xl font-extrabold text-white tracking-tight border-b border-transparent hover:border-white/20 focus:border-cyan-400 focus:outline-none transition-colors w-full sm:w-[380px]"
+              className="bg-transparent text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight border-b border-transparent hover:border-slate-300 dark:hover:border-white/20 focus:border-cyan-500 focus:outline-none transition-colors w-full sm:w-[380px]"
               placeholder="Nombre del Ejercicio..."
             />
           </div>
@@ -567,7 +567,7 @@ export const ExerciseBuilder: React.FC = () => {
 
         {/* Selector de Instrumento */}
         <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
-          <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/5">
+          <div className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-zinc-900/80 border border-slate-200 dark:border-white/5">
             <button
               onClick={() => {
                 setInstrument('drums');
@@ -576,7 +576,7 @@ export const ExerciseBuilder: React.FC = () => {
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 instrument === 'drums'
                   ? 'bg-cyan-500 text-zinc-950 shadow-[0_0_15px_rgba(34,211,238,0.35)]'
-                  : 'text-zinc-400 hover:text-white'
+                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <Drum className="w-3.5 h-3.5" />
@@ -591,7 +591,7 @@ export const ExerciseBuilder: React.FC = () => {
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 instrument === 'bass'
                   ? 'bg-cyan-500 text-zinc-950 shadow-[0_0_15px_rgba(34,211,238,0.35)]'
-                  : 'text-zinc-400 hover:text-white'
+                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <Music className="w-3.5 h-3.5" />
@@ -606,7 +606,7 @@ export const ExerciseBuilder: React.FC = () => {
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 instrument === 'guitar'
                   ? 'bg-cyan-500 text-zinc-950 shadow-[0_0_15px_rgba(34,211,238,0.35)]'
-                  : 'text-zinc-400 hover:text-white'
+                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
@@ -671,14 +671,14 @@ export const ExerciseBuilder: React.FC = () => {
       </AnimatePresence>
 
       {/* 2. Barra de Metadatos y Configuración Musical */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 p-4 rounded-2xl glass-panel border border-white/5 text-xs">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 p-4 rounded-2xl glass-panel border border-slate-200 dark:border-white/5 text-xs shadow-sm">
         {/* Métrica / Time Signature */}
         <div>
-          <label className="text-[10px] text-zinc-400 uppercase font-semibold block mb-1">Métrica</label>
+          <label className="text-[10px] text-slate-500 dark:text-zinc-400 uppercase font-semibold block mb-1">Métrica</label>
           <select
             value={timeSignature}
             onChange={(e) => setTimeSignature(e.target.value as any)}
-            className="w-full bg-zinc-900 border border-white/10 rounded-xl px-2.5 py-1.5 text-white font-mono focus:border-cyan-400 focus:outline-none"
+            className="w-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-white/10 rounded-xl px-2.5 py-1.5 text-slate-900 dark:text-white font-mono focus:border-cyan-500 focus:outline-none"
           >
             <option value="4/4">4/4 (Cuaternario)</option>
             <option value="6/8">6/8 (Compuesto)</option>
@@ -688,11 +688,11 @@ export const ExerciseBuilder: React.FC = () => {
 
         {/* Subdivisión */}
         <div>
-          <label className="text-[10px] text-zinc-400 uppercase font-semibold block mb-1">Subdivisión</label>
+          <label className="text-[10px] text-slate-500 dark:text-zinc-400 uppercase font-semibold block mb-1">Subdivisión</label>
           <select
             value={subdivision}
             onChange={(e) => setSubdivision(e.target.value as any)}
-            className="w-full bg-zinc-900 border border-white/10 rounded-xl px-2.5 py-1.5 text-white font-mono focus:border-cyan-400 focus:outline-none"
+            className="w-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-white/10 rounded-xl px-2.5 py-1.5 text-slate-900 dark:text-white font-mono focus:border-cyan-500 focus:outline-none"
           >
             <option value="1/16">1/16 (Semicorcheas - 16p)</option>
             <option value="1/8">1/8 (Corcheas - 8p)</option>
@@ -704,8 +704,8 @@ export const ExerciseBuilder: React.FC = () => {
         {/* BPM */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-[10px] text-zinc-400 uppercase font-semibold">Tempo</label>
-            <span className="text-cyan-400 font-mono font-bold">{bpm} BPM</span>
+            <label className="text-[10px] text-slate-500 dark:text-zinc-400 uppercase font-semibold">Tempo</label>
+            <span className="text-cyan-600 dark:text-cyan-400 font-mono font-bold">{bpm} BPM</span>
           </div>
           <input
             type="range"
@@ -713,17 +713,17 @@ export const ExerciseBuilder: React.FC = () => {
             max={220}
             value={bpm}
             onChange={(e) => setBpm(Number(e.target.value))}
-            className="w-full accent-cyan-400 cursor-pointer"
+            className="w-full accent-cyan-500 cursor-pointer"
           />
         </div>
 
         {/* Dificultad */}
         <div>
-          <label className="text-[10px] text-zinc-400 uppercase font-semibold block mb-1">Dificultad</label>
+          <label className="text-[10px] text-slate-500 dark:text-zinc-400 uppercase font-semibold block mb-1">Dificultad</label>
           <select
             value={difficulty}
             onChange={(e) => setDifficulty(e.target.value as any)}
-            className="w-full bg-zinc-900 border border-white/10 rounded-xl px-2.5 py-1.5 text-white focus:border-cyan-400 focus:outline-none"
+            className="w-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-white/10 rounded-xl px-2.5 py-1.5 text-slate-900 dark:text-white focus:border-cyan-500 focus:outline-none"
           >
             <option value="Básico">Básico</option>
             <option value="Intermedio">Intermedio</option>
@@ -733,11 +733,11 @@ export const ExerciseBuilder: React.FC = () => {
 
         {/* Categoría */}
         <div>
-          <label className="text-[10px] text-zinc-400 uppercase font-semibold block mb-1">Categoría</label>
+          <label className="text-[10px] text-slate-500 dark:text-zinc-400 uppercase font-semibold block mb-1">Categoría</label>
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="w-full bg-zinc-900 border border-white/10 rounded-xl px-2.5 py-1.5 text-white focus:border-cyan-400 focus:outline-none"
+            className="w-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-white/10 rounded-xl px-2.5 py-1.5 text-slate-900 dark:text-white focus:border-cyan-500 focus:outline-none"
           >
             {(instrument === 'drums' ? DRUM_CATEGORIES : STRINGS_CATEGORIES).map((cat) => (
               <option key={cat} value={cat}>
@@ -753,8 +753,8 @@ export const ExerciseBuilder: React.FC = () => {
             onClick={handleTogglePlay}
             className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md ${
               isPlaying
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
-                : 'bg-white/10 hover:bg-white/15 text-white border border-white/10'
+                ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
+                : 'bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-800 dark:text-white border border-slate-300 dark:border-white/10'
             }`}
           >
             {isPlaying ? (
@@ -764,7 +764,7 @@ export const ExerciseBuilder: React.FC = () => {
               </>
             ) : (
               <>
-                <Play className="w-3.5 h-3.5 fill-current text-cyan-400" />
+                <Play className="w-3.5 h-3.5 fill-current text-cyan-600 dark:text-cyan-400" />
                 <span>Probar Audio / Loop</span>
               </>
             )}

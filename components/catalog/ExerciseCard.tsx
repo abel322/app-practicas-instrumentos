@@ -37,7 +37,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, index }) =
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay: index * 0.06, ease: [0.16, 1, 0.3, 1] }}
       whileHover={{ y: -4, transition: { duration: 0.2 } }}
-      className="group relative flex flex-col justify-between rounded-2xl glass-panel p-6 border border-white/10 hover:border-cyan-500/40 transition-all duration-300 shadow-xl hover:shadow-[0_0_30px_rgba(6,182,212,0.15)] overflow-hidden"
+      className="group relative flex flex-col justify-between rounded-2xl glass-panel p-6 border border-slate-200 dark:border-white/10 hover:border-cyan-500/50 dark:hover:border-cyan-500/40 transition-all duration-300 shadow-sm hover:shadow-[0_0_30px_rgba(6,182,212,0.15)] overflow-hidden"
     >
       {/* Resplandor dinámico en esquina en hover */}
       <div className="absolute top-0 right-0 -mr-16 -mt-16 w-36 h-36 bg-cyan-500/10 rounded-full blur-2xl group-hover:bg-cyan-500/20 transition-all duration-500 pointer-events-none" />
@@ -45,7 +45,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, index }) =
       <div>
         {/* Cabecera de la Card: Categoría y Dificultad */}
         <div className="flex items-center justify-between gap-2 mb-4">
-          <span className="text-xs uppercase tracking-widest font-semibold text-cyan-400">
+          <span className="text-xs uppercase tracking-widest font-semibold text-cyan-600 dark:text-cyan-400">
             {exercise.category}
           </span>
 
@@ -59,21 +59,21 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, index }) =
         </div>
 
         {/* Título */}
-        <h3 className="text-lg font-bold text-white group-hover:text-cyan-300 transition-colors mb-2">
+        <h3 className="text-lg font-bold text-slate-900 dark:text-white group-hover:text-cyan-600 dark:group-hover:text-cyan-300 transition-colors mb-2">
           {exercise.title}
         </h3>
 
         {/* Descripción didáctica */}
         {exercise.description && (
-          <p className="text-xs text-zinc-400 line-clamp-2 leading-relaxed mb-5">
+          <p className="text-xs text-slate-600 dark:text-zinc-400 line-clamp-2 leading-relaxed mb-5">
             {exercise.description}
           </p>
         )}
 
         {/* Secuencia miniatura de Sticking (R / L / K) */}
         {stickingSequence.length > 0 && (
-          <div className="mb-5 p-2.5 rounded-xl bg-zinc-900/60 border border-white/5">
-            <div className="text-[10px] text-zinc-500 font-mono uppercase mb-1.5 flex items-center justify-between">
+          <div className="mb-5 p-2.5 rounded-xl bg-slate-100/80 dark:bg-zinc-900/60 border border-slate-200 dark:border-white/5">
+            <div className="text-[10px] text-slate-500 dark:text-zinc-500 font-mono uppercase mb-1.5 flex items-center justify-between">
               <span>Secuencia de Manos / Pies</span>
               <span>{exercise.totalSteps} Pasos</span>
             </div>
@@ -87,15 +87,15 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, index }) =
                   <span
                     key={`seq-${i}`}
                     className={`inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-mono font-bold ${
-                      hit.accent ? 'ring-1 ring-white/60 font-black' : ''
+                      hit.accent ? 'ring-1 ring-slate-400 dark:ring-white/60 font-black' : ''
                     } ${
                       isRight
-                        ? 'bg-cyan-500/20 text-cyan-300'
+                        ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300'
                         : isLeft
-                        ? 'bg-fuchsia-500/20 text-fuchsia-300'
+                        ? 'bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-300'
                         : isKick
-                        ? 'bg-emerald-500/20 text-emerald-300'
-                        : 'bg-white/10 text-zinc-400'
+                        ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-zinc-400'
                     }`}
                   >
                     {hit.sticking}
@@ -108,16 +108,16 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, index }) =
       </div>
 
       {/* Pie de la Card: Metadatos y Botón de Inicio */}
-      <div className="pt-4 border-t border-white/5 flex items-center justify-between">
+      <div className="pt-4 border-t border-slate-200 dark:border-white/5 flex items-center justify-between">
         {/* Metadatos musicales */}
-        <div className="flex items-center gap-3 text-xs text-zinc-400 font-mono">
+        <div className="flex items-center gap-3 text-xs text-slate-600 dark:text-zinc-400 font-mono">
           <div className="flex items-center gap-1.5" title="Tempo predeterminado">
-            <Activity className="w-3.5 h-3.5 text-cyan-400" />
+            <Activity className="w-3.5 h-3.5 text-cyan-500 dark:text-cyan-400" />
             <span>{exercise.bpmDefault} BPM</span>
           </div>
 
           <div className="flex items-center gap-1.5" title="Métrica del compás">
-            <Clock className="w-3.5 h-3.5 text-zinc-500" />
+            <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
             <span>{exercise.timeSignature}</span>
           </div>
         </div>
@@ -125,7 +125,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, index }) =
         {/* CTA Link hacia el Reproductor Runway */}
         <Link
           href={`/practice/${exercise.slug}`}
-          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-400 border border-cyan-500/30 hover:border-cyan-400 text-cyan-300 hover:text-zinc-950 font-semibold text-xs transition-all duration-200 group-hover:shadow-[0_0_15px_rgba(34,211,238,0.35)]"
+          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500 border border-cyan-500/30 hover:border-cyan-500 text-cyan-700 dark:text-cyan-300 hover:text-white dark:hover:text-zinc-950 font-semibold text-xs transition-all duration-200 group-hover:shadow-[0_0_15px_rgba(34,211,238,0.35)]"
         >
           <span>Estudiar</span>
           <Play className="w-3 h-3 fill-current" />

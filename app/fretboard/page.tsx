@@ -301,16 +301,16 @@ export default function FretboardPage() {
 
   return (
     // 1. Contenedor Raíz Blindado contra Desbordamiento Horizontal
-    <div className="w-full max-w-full overflow-x-hidden min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+    <div className="w-full max-w-full overflow-x-hidden min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-200">
       <main className="w-full max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-2 sm:py-4 flex flex-col gap-2 min-w-0 flex-1">
         {/* 2. Cabecera Ultra-Compacta (Mobile-First) */}
-        <div className="flex flex-col gap-1.5 p-2.5 sm:p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-lg backdrop-blur-xl w-full min-w-0">
+        <div className="flex flex-col gap-1.5 p-2.5 sm:p-4 rounded-2xl bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-md backdrop-blur-xl w-full min-w-0">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 truncate">
-              <h1 className="text-base sm:text-xl font-black tracking-tight text-white flex items-center gap-1.5 truncate">
+              <h1 className="text-base sm:text-xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-1.5 truncate">
                 <span>🎸 Diapasón & Armonía</span>
               </h1>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 shrink-0 font-bold">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 shrink-0 font-bold">
                 24 Trastes
               </span>
             </div>
@@ -326,7 +326,7 @@ export default function FretboardPage() {
                     chord: 'm7',
                   })
                 }
-                className="px-2 py-1 rounded-lg text-[10px] font-mono font-bold bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 transition-colors shrink-0"
+                className="px-2 py-1 rounded-lg text-[10px] font-mono font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-cyan-700 dark:text-cyan-300 border border-slate-300 dark:border-slate-700 transition-colors shrink-0"
                 title="Bajo 5C D m7"
               >
                 ⚡ D m7 (B5)
@@ -340,7 +340,7 @@ export default function FretboardPage() {
                     scale: 'dorian',
                   })
                 }
-                className="px-2 py-1 rounded-lg text-[10px] font-mono font-bold bg-slate-800 hover:bg-slate-700 text-fuchsia-300 border border-slate-700 transition-colors shrink-0"
+                className="px-2 py-1 rounded-lg text-[10px] font-mono font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-fuchsia-700 dark:text-fuchsia-300 border border-slate-300 dark:border-slate-700 transition-colors shrink-0"
                 title="Guitarra A Dórica"
               >
                 🎸 A Dórica
@@ -354,7 +354,7 @@ export default function FretboardPage() {
                     progression: 'ii_v_i',
                   })
                 }
-                className="px-2 py-1 rounded-lg text-[10px] font-mono font-bold bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition-colors shrink-0 hidden xs:inline-block"
+                className="px-2 py-1 rounded-lg text-[10px] font-mono font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-amber-700 dark:text-amber-300 border border-slate-300 dark:border-slate-700 transition-colors shrink-0 hidden xs:inline-block"
                 title="Bajo 4C II-V-I"
               >
                 🎶 II-V-I
@@ -362,11 +362,11 @@ export default function FretboardPage() {
             </div>
           </div>
 
-          <p className="hidden sm:block text-xs text-slate-400 leading-relaxed">
+          <p className="hidden sm:block text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
             Laboratorio interactivo de acordes, escalas modales e inversiones armónicas para{' '}
-            <strong className="text-white">Guitarra (6C)</strong>,{' '}
-            <strong className="text-cyan-400">Bajo (4C)</strong> y{' '}
-            <strong className="text-fuchsia-400">Bajo (5C con Low B)</strong>.
+            <strong className="text-slate-900 dark:text-white">Guitarra (6C)</strong>,{' '}
+            <strong className="text-cyan-600 dark:text-cyan-400">Bajo (4C)</strong> y{' '}
+            <strong className="text-fuchsia-600 dark:text-fuchsia-400">Bajo (5C con Low B)</strong>.
           </p>
         </div>
 

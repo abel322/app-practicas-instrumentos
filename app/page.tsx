@@ -19,29 +19,29 @@ export default async function HomePage() {
         </div>
 
         {/* Título Principal */}
-        <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
-          Drum Lab <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-cyan-200">Runway</span>
+        <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-tight">
+          Drum Lab <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-cyan-300 dark:from-cyan-400 dark:to-cyan-200">Runway</span>
         </h1>
 
         {/* Subtítulo */}
-        <p className="text-sm sm:text-base text-zinc-400 leading-relaxed max-w-2xl">
+        <p className="text-sm sm:text-base text-slate-600 dark:text-zinc-400 leading-relaxed max-w-2xl">
           Entorno interactivo y minimalista para el estudio riguroso de rudimentos, grooves funk y coordinación de batería con pentagrama de 5 líneas y escaneo óptico a tiempo real.
         </p>
 
         {/* Indicadores rápidos */}
-        <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 pt-2 text-xs font-mono text-zinc-400">
+        <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 pt-2 text-xs font-mono text-slate-600 dark:text-zinc-400">
           <div className="flex items-center gap-1.5">
-            <Drum className="w-4 h-4 text-cyan-400" />
+            <Drum className="w-4 h-4 text-cyan-500 dark:text-cyan-400" />
             <span>{exercises.length} Ejercicios Disponibles</span>
           </div>
-          <div className="h-3 w-px bg-white/10 hidden sm:block" />
+          <div className="h-3 w-px bg-slate-300 dark:bg-white/10 hidden sm:block" />
           <div className="flex items-center gap-1.5">
-            <Music className="w-4 h-4 text-fuchsia-400" />
+            <Music className="w-4 h-4 text-fuchsia-500 dark:text-fuchsia-400" />
             <span>Notación Formal SVG</span>
           </div>
-          <div className="h-3 w-px bg-white/10 hidden sm:block" />
+          <div className="h-3 w-px bg-slate-300 dark:bg-white/10 hidden sm:block" />
           <div className="flex items-center gap-1.5">
-            <Activity className="w-4 h-4 text-emerald-400" />
+            <Activity className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
             <span>Web Audio Clock Preciso</span>
           </div>
         </div>
@@ -53,14 +53,14 @@ export default async function HomePage() {
       </section>
 
       {/* Footer Minimalista */}
-      <footer className="mt-16 pt-8 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between text-xs text-zinc-500 gap-4">
+      <footer className="mt-16 pt-8 border-t border-slate-200 dark:border-white/5 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 dark:text-zinc-500 gap-4">
         <p>© {new Date().getFullYear()} Drum Lab — Diseñado para el estudio musical sin distracciones.</p>
         <div className="flex items-center gap-4">
-          <span className="text-zinc-400 font-mono">Web Audio API</span>
+          <span className="text-slate-600 dark:text-zinc-400 font-mono">Web Audio API</span>
           <span>•</span>
-          <span className="text-zinc-400 font-mono">Framer Motion</span>
+          <span className="text-slate-600 dark:text-zinc-400 font-mono">Framer Motion</span>
           <span>•</span>
-          <span className="text-zinc-400 font-mono">Prisma ORM</span>
+          <span className="text-slate-600 dark:text-zinc-400 font-mono">Prisma ORM</span>
         </div>
       </footer>
     </main>
