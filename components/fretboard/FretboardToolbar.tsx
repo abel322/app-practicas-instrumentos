@@ -106,13 +106,13 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
   return (
     <div className="w-full max-w-full flex flex-col gap-2 min-w-0">
       {/* 1. Selector de Instrumento tipo Segmented Control (Fila Única Compacta) */}
-      <div className="grid grid-cols-3 gap-1 p-1 bg-slate-200/80 dark:bg-slate-900 rounded-xl border border-slate-300 dark:border-slate-800 text-xs font-bold w-full transition-colors">
+      <div className="grid grid-cols-3 gap-1 p-1 bg-stone-200/70 dark:bg-slate-900 rounded-xl border border-stone-300/80 dark:border-slate-800 text-xs font-bold w-full transition-colors">
         <button
           onClick={() => onInstrumentChange('guitar_6')}
           className={`py-2 px-1 rounded-lg transition-all text-center truncate ${
             instrument === 'guitar_6'
-              ? 'bg-gradient-to-r from-cyan-500 to-cyan-600 text-slate-950 font-black shadow-[0_0_12px_rgba(6,182,212,0.4)]'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60'
+              ? 'bg-teal-700 text-white dark:bg-gradient-to-r dark:from-cyan-500 dark:to-cyan-600 dark:text-slate-950 font-black shadow-sm dark:shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+              : 'text-stone-700 hover:text-stone-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60'
           }`}
           title="Guitarra de 6 Cuerdas (E-A-D-G-B-E)"
         >
@@ -123,8 +123,8 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
           onClick={() => onInstrumentChange('bass_4')}
           className={`py-2 px-1 rounded-lg transition-all text-center truncate ${
             instrument === 'bass_4'
-              ? 'bg-gradient-to-r from-cyan-500 to-cyan-600 text-slate-950 font-black shadow-[0_0_12px_rgba(6,182,212,0.4)]'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60'
+              ? 'bg-teal-700 text-white dark:bg-gradient-to-r dark:from-cyan-500 dark:to-cyan-600 dark:text-slate-950 font-black shadow-sm dark:shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+              : 'text-stone-700 hover:text-stone-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60'
           }`}
           title="Bajo Eléctrico de 4 Cuerdas (E-A-D-G)"
         >
@@ -135,8 +135,8 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
           onClick={() => onInstrumentChange('bass_5')}
           className={`py-2 px-1 rounded-lg transition-all text-center truncate ${
             instrument === 'bass_5'
-              ? 'bg-gradient-to-r from-cyan-500 to-cyan-600 text-slate-950 font-black shadow-[0_0_12px_rgba(6,182,212,0.4)]'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60'
+              ? 'bg-teal-700 text-white dark:bg-gradient-to-r dark:from-cyan-500 dark:to-cyan-600 dark:text-slate-950 font-black shadow-sm dark:shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+              : 'text-stone-700 hover:text-stone-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60'
           }`}
           title="Bajo Eléctrico de 5 Cuerdas con Low B (B-E-A-D-G)"
         >
@@ -145,13 +145,13 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
       </div>
 
       {/* 2. Modos en Pestañas Compactas (1 Sola Fila) */}
-      <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100/90 dark:bg-slate-950/80 rounded-xl border border-slate-300/80 dark:border-slate-800/80 text-xs font-bold w-full transition-colors">
+      <div className="grid grid-cols-3 gap-1 p-1 bg-stone-200/50 dark:bg-slate-950/80 rounded-xl border border-stone-300/60 dark:border-slate-800/80 text-xs font-bold w-full transition-colors">
         <button
           onClick={() => onStudyModeChange('chords')}
           className={`py-1.5 px-1 rounded-lg flex items-center justify-center gap-1.5 transition-all truncate ${
             studyMode === 'chords'
-              ? 'bg-cyan-400 text-slate-950 shadow-[0_0_12px_rgba(34,211,238,0.4)] font-black'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/80 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-900/60'
+              ? 'bg-teal-700 text-white dark:bg-cyan-400 dark:text-slate-950 shadow-sm dark:shadow-[0_0_12px_rgba(34,211,238,0.4)] font-black'
+              : 'text-stone-700 hover:text-stone-900 hover:bg-white/80 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-900/60'
           }`}
         >
           <Layers className="w-3.5 h-3.5 shrink-0" />
@@ -162,8 +162,8 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
           onClick={() => onStudyModeChange('scales')}
           className={`py-1.5 px-1 rounded-lg flex items-center justify-center gap-1.5 transition-all truncate ${
             studyMode === 'scales'
-              ? 'bg-cyan-400 text-slate-950 shadow-[0_0_12px_rgba(34,211,238,0.4)] font-black'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/80 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-900/60'
+              ? 'bg-teal-700 text-white dark:bg-cyan-400 dark:text-slate-950 shadow-sm dark:shadow-[0_0_12px_rgba(34,211,238,0.4)] font-black'
+              : 'text-stone-700 hover:text-stone-900 hover:bg-white/80 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-900/60'
           }`}
         >
           <Music className="w-3.5 h-3.5 shrink-0" />
@@ -174,8 +174,8 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
           onClick={() => onStudyModeChange('progressions')}
           className={`py-1.5 px-1 rounded-lg flex items-center justify-center gap-1.5 transition-all truncate ${
             studyMode === 'progressions'
-              ? 'bg-cyan-400 text-slate-950 shadow-[0_0_12px_rgba(34,211,238,0.4)] font-black'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/80 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-900/60'
+              ? 'bg-teal-700 text-white dark:bg-cyan-400 dark:text-slate-950 shadow-sm dark:shadow-[0_0_12px_rgba(34,211,238,0.4)] font-black'
+              : 'text-stone-700 hover:text-stone-900 hover:bg-white/80 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-900/60'
           }`}
         >
           <ListMusic className="w-3.5 h-3.5 shrink-0" />
@@ -184,7 +184,7 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
       </div>
 
       {/* 3. Panel de Controles Ultra-Compacto según el Modo */}
-      <div className="p-2.5 sm:p-3 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-md backdrop-blur-xl flex flex-col gap-2 w-full min-w-0 transition-colors">
+      <div className="p-2.5 sm:p-3 rounded-2xl bg-white/95 dark:bg-slate-900/80 border border-stone-200/90 dark:border-slate-800 shadow-sm backdrop-blur-xl flex flex-col gap-2 w-full min-w-0 transition-colors">
         {/* ======================= MODO 1: ACORDES ======================= */}
         {studyMode === 'chords' && (
           <div className="flex flex-col gap-2 min-w-0">

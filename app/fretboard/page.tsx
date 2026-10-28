@@ -301,16 +301,16 @@ export default function FretboardPage() {
 
   return (
     // 1. Contenedor Raíz Blindado contra Desbordamiento Horizontal
-    <div className="w-full max-w-full overflow-x-hidden min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-200">
+    <div className="w-full max-w-full overflow-x-hidden min-h-screen bg-[#f4f3ef] dark:bg-slate-950 text-stone-900 dark:text-slate-100 flex flex-col transition-colors duration-200">
       <main className="w-full max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-2 sm:py-4 flex flex-col gap-2 min-w-0 flex-1">
         {/* 2. Cabecera Ultra-Compacta (Mobile-First) */}
-        <div className="flex flex-col gap-1.5 p-2.5 sm:p-4 rounded-2xl bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-md backdrop-blur-xl w-full min-w-0">
+        <div className="flex flex-col gap-1.5 p-2.5 sm:p-4 rounded-2xl bg-white/95 dark:bg-slate-900/90 border border-stone-200/90 dark:border-slate-800 shadow-sm backdrop-blur-xl w-full min-w-0">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 truncate">
-              <h1 className="text-base sm:text-xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-1.5 truncate">
+              <h1 className="text-base sm:text-xl font-black tracking-tight text-stone-900 dark:text-white flex items-center gap-1.5 truncate">
                 <span>🎸 Diapasón & Armonía</span>
               </h1>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 shrink-0 font-bold">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-teal-500/15 dark:bg-cyan-500/15 text-teal-800 dark:text-cyan-400 border border-teal-500/30 dark:border-cyan-500/30 shrink-0 font-bold">
                 24 Trastes
               </span>
             </div>

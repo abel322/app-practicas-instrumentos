@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #f4f3ef;
+  --foreground: #1c1917;
 }
 
 .dark {
@@ -29,17 +29,19 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Glassmorphism utility dual-mode */
+/* Glassmorphism utility dual-mode calibrado anti-reflejo */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid rgba(214, 211, 209, 0.85);
+  box-shadow: 0 1px 4px 0 rgba(0, 0, 0, 0.04);
 }
 
 .dark .glass-panel {
   background: rgba(18, 18, 24, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none;
 }
 
 .glass-panel-hover {

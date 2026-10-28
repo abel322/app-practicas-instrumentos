@@ -53,44 +53,44 @@ export const ChordTheoryAccordion: React.FC<ChordTheoryAccordionProps> = ({
         })();
 
   return (
-    <div className="w-full max-w-full bg-white/90 dark:bg-slate-900/90 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-md overflow-hidden my-2 backdrop-blur-xl transition-all">
+    <div className="w-full max-w-full bg-white/95 dark:bg-slate-900/90 rounded-2xl border border-stone-200/90 dark:border-slate-800 shadow-sm overflow-hidden my-2 backdrop-blur-xl transition-all">
       {/* Botón de Cabecera del Acordeón: 1 solo tap para expandir/colapsar */}
       <button
         onClick={() => setIsExpanded((prev) => !prev)}
-        className="w-full flex items-center justify-between px-3.5 py-3 text-left hover:bg-slate-100/70 dark:hover:bg-slate-800/40 transition-colors cursor-pointer select-none"
+        className="w-full flex items-center justify-between px-3.5 py-3 text-left hover:bg-stone-100/70 dark:hover:bg-slate-800/40 transition-colors cursor-pointer select-none"
         aria-expanded={isExpanded}
         aria-label="Alternar análisis armónico y notas guía"
       >
         <div className="flex items-center gap-2 truncate">
-          <BookOpen className="w-4 h-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
-          <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
+          <BookOpen className="w-4 h-4 text-teal-700 dark:text-cyan-400 shrink-0" />
+          <span className="text-xs sm:text-sm font-bold text-stone-800 dark:text-slate-200">
             {isExpanded ? '▴ Ocultar' : '▾ Ver'} Análisis Armónico y Notas Guía
           </span>
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 shrink-0">
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-teal-500/15 text-teal-800 dark:text-cyan-300 border border-teal-500/30 dark:border-cyan-500/30 shrink-0 font-bold">
             {summaryBadge}
           </span>
         </div>
 
-        <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400 shrink-0 ml-2">
+        <div className="flex items-center gap-1 text-stone-500 dark:text-slate-400 shrink-0 ml-2">
           {isExpanded ? (
-            <ChevronUp className="w-4 h-4 text-cyan-600 dark:text-cyan-400 transition-transform" />
+            <ChevronUp className="w-4 h-4 text-teal-700 dark:text-cyan-400 transition-transform" />
           ) : (
-            <ChevronDown className="w-4 h-4 text-slate-500 dark:text-slate-400 transition-transform" />
+            <ChevronDown className="w-4 h-4 text-stone-500 dark:text-slate-400 transition-transform" />
           )}
         </div>
       </button>
 
       {/* Contenido desplegable */}
       {isExpanded && (
-        <div className="p-3 sm:p-5 pt-2 border-t border-slate-200/80 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-950/40 animate-in fade-in duration-200">
+        <div className="p-3 sm:p-5 pt-2 border-t border-stone-200/80 dark:border-slate-800/80 bg-stone-50/70 dark:bg-slate-950/40 animate-in fade-in duration-200">
           {studyMode === 'chords' && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {/* Estructura del Acorde */}
               {(() => {
                 const chordInfo = CHORDS_CATALOG[chordKey];
                 return (
-                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-white/80 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 shadow-sm">
-                    <div className="flex items-center gap-1.5 text-cyan-600 dark:text-cyan-400 text-xs font-mono font-bold uppercase">
+                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-white/90 dark:bg-slate-900/70 border border-stone-200/90 dark:border-slate-800 shadow-sm">
+                    <div className="flex items-center gap-1.5 text-teal-700 dark:text-cyan-400 text-xs font-mono font-bold uppercase">
                       <BookOpen className="w-3.5 h-3.5" />
                       <span>Estructura</span>
                     </div>

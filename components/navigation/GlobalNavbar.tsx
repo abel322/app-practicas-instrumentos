@@ -53,7 +53,7 @@ export const GlobalNavbar: React.FC = () => {
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full backdrop-blur-xl bg-white/85 dark:bg-zinc-950/85 border-b border-slate-200 dark:border-white/10 transition-colors duration-200">
+    <header className="sticky top-0 z-50 w-full backdrop-blur-xl bg-[#f4f3ef]/90 dark:bg-zinc-950/85 border-b border-stone-200/90 dark:border-white/10 transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
         {/* Marca / Logo */}
         <Link href="/" className="flex items-center gap-2.5 group shrink-0">
@@ -131,7 +131,7 @@ export const GlobalNavbar: React.FC = () => {
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.25, ease: 'easeInOut' }}
-            className="lg:hidden border-b border-slate-200 dark:border-white/10 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-2xl px-4 py-4 overflow-hidden"
+            className="lg:hidden border-b border-stone-200/90 dark:border-white/10 bg-[#f4f3ef]/95 dark:bg-zinc-950/95 backdrop-blur-2xl px-4 py-4 overflow-hidden"
           >
             <div className="flex flex-col gap-2">
               {navLinks.map((link) => {

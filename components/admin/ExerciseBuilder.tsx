@@ -935,8 +935,8 @@ export const ExerciseBuilder: React.FC = () => {
             </div>
 
             {/* Traste Rápido por defecto con sanitización */}
-            <div className="flex items-center gap-1.5 bg-slate-900/80 px-2 py-1 rounded-xl border border-slate-800 ml-2">
-              <span className="text-[11px] font-bold text-slate-400 uppercase">Traste:</span>
+            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-900/80 px-2 py-1 rounded-xl border border-slate-300 dark:border-slate-800 ml-2">
+              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase">Traste:</span>
               <input
                 type="text"
                 inputMode="numeric"
@@ -944,19 +944,37 @@ export const ExerciseBuilder: React.FC = () => {
                 value={selectedFret.toString()}
                 onChange={handleFretInputChange}
                 onFocus={handleFretInputFocus}
-                className="w-10 text-center text-xs font-mono font-bold bg-slate-800 text-cyan-300 rounded-lg py-0.5 border border-slate-700 focus:outline-none focus:border-cyan-400"
+                className="w-10 text-center text-xs font-mono font-bold bg-white dark:bg-slate-800 text-teal-800 dark:text-cyan-300 rounded-lg py-0.5 border border-slate-300 dark:border-slate-700 focus:outline-none focus:border-cyan-500"
               />
             </div>
           </div>
         )}
       </div>
 
-      {/* 5. Rejilla Interactiva de Tablatura / Pentagrama */}
-      <div className="w-full overflow-x-auto rounded-2xl glass-panel p-4 sm:p-6 border border-white/10 shadow-2xl relative">
+      {/* 5. Rejilla Interactiva de Tablatura / Pentagrama con Acabado Mástil de Palisandro */}
+      <div 
+        className={`w-full overflow-x-auto rounded-2xl p-4 sm:p-6 transition-all relative ${
+          instrument === 'drums'
+            ? 'glass-panel border border-slate-200 dark:border-white/10 shadow-xl'
+            : 'border-2 border-[#2b1810] shadow-2xl'
+        }`}
+        style={
+          instrument !== 'drums'
+            ? {
+                background: 'linear-gradient(180deg, #1c0e08 0%, #2e170d 25%, #3d1f11 50%, #2e170d 75%, #180c07 100%)',
+                boxShadow: 'inset 0 4px 14px rgba(0,0,0,0.8), 0 10px 30px rgba(0,0,0,0.3)',
+              }
+            : undefined
+        }
+      >
         <div className="min-w-[760px] flex flex-col">
           {/* Cabecera de Pasos / Tiempos */}
-          <div className="flex items-center border-b border-white/10 pb-2 mb-2 font-mono text-xs">
-            <div className="w-24 shrink-0 text-[11px] text-zinc-400 font-bold uppercase">
+          <div className={`flex items-center pb-2 mb-2 font-mono text-xs ${
+            instrument === 'drums' ? 'border-b border-white/10' : 'border-b border-[#4d2817]'
+          }`}>
+            <div className={`w-24 shrink-0 text-[11px] font-bold uppercase ${
+              instrument === 'drums' ? 'text-slate-500 dark:text-zinc-400' : 'text-amber-200/90'
+            }`}>
               Compás {currentMeasure + 1}
             </div>
 
@@ -978,8 +996,12 @@ export const ExerciseBuilder: React.FC = () => {
                         isPlayback
                           ? 'text-cyan-300 font-black'
                           : isBeat
-                          ? 'text-cyan-400 text-sm font-black'
-                          : 'text-slate-400 dark:text-slate-500 font-semibold text-[11px]'
+                          ? instrument === 'drums'
+                            ? 'text-cyan-500 dark:text-cyan-400 text-sm font-black'
+                            : 'text-amber-300 text-sm font-black'
+                          : instrument === 'drums'
+                          ? 'text-slate-400 dark:text-slate-500 font-semibold text-[11px]'
+                          : 'text-amber-200/50 font-semibold text-[11px]'
                       }`}
                     >
                       {label}
@@ -990,7 +1012,9 @@ export const ExerciseBuilder: React.FC = () => {
                         isPlayback
                           ? 'bg-cyan-300 ring-2 ring-cyan-300/50'
                           : isBeat
-                          ? 'bg-cyan-400 ring-2 ring-cyan-400/30'
+                          ? instrument === 'drums'
+                            ? 'bg-cyan-400 ring-2 ring-cyan-400/30'
+                            : 'bg-amber-400 ring-2 ring-amber-400/30'
                           : 'bg-transparent'
                       }`}
                     />
@@ -1006,14 +1030,14 @@ export const ExerciseBuilder: React.FC = () => {
             DRUM_ROWS.map((row) => (
               <div key={row.voice} className="flex items-center h-12 relative border-b border-white/5 group">
                 <div className="w-24 shrink-0 flex flex-col pr-2">
-                  <span className="text-xs font-bold text-white group-hover:text-cyan-400 transition-colors">
+                  <span className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-cyan-500 dark:group-hover:text-cyan-400 transition-colors">
                     {row.label}
                   </span>
-                  <span className="text-[9px] text-zinc-400 truncate">{row.sub}</span>
+                  <span className="text-[9px] text-slate-500 dark:text-zinc-400 truncate">{row.sub}</span>
                 </div>
 
                 {/* Línea horizontal continua de pentagrama */}
-                <div className="absolute left-24 right-0 top-1/2 -translate-y-1/2 h-px bg-white/15 pointer-events-none" />
+                <div className="absolute left-24 right-0 top-1/2 -translate-y-1/2 h-px bg-slate-300 dark:bg-white/15 pointer-events-none" />
 
                 {/* Celdas de paso */}
                 <div className="flex-1 grid h-full relative z-10" style={{ gridTemplateColumns: `repeat(${stepsPerMeasure}, minmax(0, 1fr))` }}>
@@ -1027,20 +1051,20 @@ export const ExerciseBuilder: React.FC = () => {
                         key={`drum-cell-${row.voice}-${stepIdx}`}
                         onClick={() => handleCellClick(stepIdx, undefined, row.voice)}
                         className={`h-full flex items-center justify-center transition-all relative ${
-                          isPlayback ? 'bg-cyan-500/10' : 'hover:bg-white/5'
+                          isPlayback ? 'bg-cyan-500/15' : 'hover:bg-slate-100/50 dark:hover:bg-white/5'
                         }`}
                       >
                         {hit ? (
                           <div className="relative flex flex-col items-center">
                             {hit.accent && (
-                              <span className="absolute -top-3 text-[11px] font-black text-cyan-400">&gt;</span>
+                              <span className="absolute -top-3 text-[11px] font-black text-cyan-500 dark:text-cyan-400">&gt;</span>
                             )}
                             <div className="w-6 h-6 rounded-full bg-cyan-400 text-zinc-950 font-bold flex items-center justify-center text-xs shadow-[0_0_12px_rgba(34,211,238,0.5)]">
                               {hit.sticking || '•'}
                             </div>
                           </div>
                         ) : (
-                          <div className="w-1.5 h-1.5 rounded-full bg-white/10 group-hover:bg-white/20" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-white/10 group-hover:bg-slate-400 dark:group-hover:bg-white/20" />
                         )}
                       </button>
                     );
@@ -1049,20 +1073,30 @@ export const ExerciseBuilder: React.FC = () => {
               </div>
             ))
           ) : (
-            // Filas de Bajo o Guitarra
+            // Filas de Bajo o Guitarra con Mástil Realista de Palisandro
             (instrument === 'bass' ? BASS_STRINGS : GUITAR_STRINGS).map((str) => (
-              <div key={str.num} className="flex items-center h-12 relative border-b border-white/5 group">
+              <div key={str.num} className="flex items-center h-12 relative border-b border-[#3d1f11]/60 group">
                 <div className="w-24 shrink-0 flex items-center gap-2 pr-2">
-                  <span className="w-5 h-5 rounded-md bg-white/5 border border-white/10 text-cyan-400 font-mono font-bold text-xs flex items-center justify-center">
+                  <span className="w-5 h-5 rounded-md bg-[#140804] border border-[#5c3a28] text-amber-200 font-mono font-black text-xs flex items-center justify-center shadow-sm">
                     {str.label}
                   </span>
-                  <span className="text-[10px] text-zinc-400 truncate">{str.num}ª Cuerda</span>
+                  <span className="text-[10px] text-amber-200/70 truncate font-mono">{str.num}ª Cuerda</span>
                 </div>
 
-                {/* Línea de la cuerda */}
-                <div className="absolute left-24 right-0 top-1/2 -translate-y-1/2 h-px bg-white/25 pointer-events-none" />
+                {/* Sombra de la cuerda sobre la madera noble */}
+                <div className="absolute left-24 right-0 top-1/2 translate-y-[2px] h-[2px] bg-black/60 pointer-events-none" />
 
-                {/* Celdas de paso */}
+                {/* Alambre metálico de acero/níquel con relieve */}
+                <div 
+                  className="absolute left-24 right-0 top-1/2 -translate-y-1/2 pointer-events-none" 
+                  style={{
+                    height: `${Math.max(1.8, (instrument === 'bass' ? (5 - str.num) * 1.0 : (7 - str.num) * 0.6))}px`,
+                    background: 'linear-gradient(180deg, #f3f4f6 0%, #cbd5e1 35%, #94a3b8 70%, #475569 100%)',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.8)'
+                  }}
+                />
+
+                {/* Celdas de paso interactivas */}
                 <div className="flex-1 grid h-full relative z-10" style={{ gridTemplateColumns: `repeat(${stepsPerMeasure}, minmax(0, 1fr))` }}>
                   {Array.from({ length: stepsPerMeasure }).map((_, stepIdx) => {
                     const globalStep = activeMeasureStart + stepIdx;
@@ -1074,32 +1108,32 @@ export const ExerciseBuilder: React.FC = () => {
                         key={`string-cell-${str.num}-${stepIdx}`}
                         onClick={() => handleCellClick(stepIdx, str.num)}
                         className={`h-full flex items-center justify-center transition-all relative ${
-                          isPlayback ? 'bg-cyan-500/10' : 'hover:bg-white/5'
+                          isPlayback ? 'bg-cyan-400/20 shadow-[inset_0_0_8px_rgba(34,211,238,0.4)]' : 'hover:bg-white/5'
                         }`}
                       >
                         {note ? (
                           <div className="relative flex flex-col items-center">
                             {/* Insignia de técnica */}
                             {note.technique && note.technique !== 'normal' && (
-                              <span className="absolute -top-3.5 text-[9px] font-mono font-black text-fuchsia-400 bg-fuchsia-500/20 px-1 rounded">
+                              <span className="absolute -top-3.5 text-[9px] font-mono font-black text-amber-300 bg-amber-500/30 px-1 rounded border border-amber-400/40 shadow-sm">
                                 {note.technique[0].toUpperCase()}
                               </span>
                             )}
 
-                            {/* Píldora de traste enmascarando la línea */}
-                            <div className="w-6 h-6 rounded-md bg-zinc-950 border border-cyan-400/80 text-cyan-300 font-bold font-mono text-xs flex items-center justify-center shadow-[0_0_10px_rgba(34,211,238,0.3)]">
+                            {/* Píldora de traste enmascarando la línea con alto contraste sobre la madera */}
+                            <div className="w-6 h-6 rounded-md bg-[#0a0402] border-2 border-cyan-400 text-cyan-300 font-black font-mono text-xs flex items-center justify-center shadow-[0_0_12px_rgba(34,211,238,0.6)]">
                               {note.fret}
                             </div>
 
                             {/* Dedo sugerido */}
                             {note.finger && (
-                              <span className="absolute -bottom-3 text-[8px] font-mono text-zinc-400">
+                              <span className="absolute -bottom-3 text-[8px] font-mono text-amber-300 font-bold">
                                 {note.finger}
                               </span>
                             )}
                           </div>
                         ) : (
-                          <div className="w-1.5 h-1.5 rounded-full bg-white/10 group-hover:bg-white/20" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-amber-200/20 group-hover:bg-amber-200/45 transition-colors" />
                         )}
                       </button>
                     );
