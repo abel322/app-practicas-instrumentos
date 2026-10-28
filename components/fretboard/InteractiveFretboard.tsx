@@ -144,14 +144,15 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
     }
   };
 
-  // Auto-scroll al rango enfocado si cambia
+  // Auto-scroll inteligente al rango enfocado si cambia
   useEffect(() => {
     if (fretFocusRange && containerRef.current) {
       const minFret = fretFocusRange[0];
       const targetPos = fretPositions.positions[minFret];
       if (targetPos) {
+        const scrollOffset = Math.max(0, targetPos.startX - 60);
         containerRef.current.scrollTo({
-          left: Math.max(0, targetPos.startX - 120),
+          left: scrollOffset,
           behavior: 'smooth',
         });
       }
@@ -205,67 +206,66 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   };
 
   return (
-    <div className="relative w-full rounded-2xl border border-white/10 bg-zinc-950/80 shadow-2xl backdrop-blur-xl overflow-hidden p-3 sm:p-5">
-      {/* Barra superior de controles del diapasón */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-3 px-1">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_10px_rgba(34,211,238,0.8)]" />
-          <h3 className="text-sm sm:text-base font-bold text-white tracking-wide">
-            {title || `Diapasón Completo (24 Trastes) — ${config.name}`}
-          </h3>
+    <div className="w-full max-w-full bg-slate-900/90 rounded-2xl border border-slate-800 shadow-xl overflow-hidden my-2 min-w-0">
+      {/* Barra de estado del mástil: Tónica actual, posición y ayuda de deslizamiento */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800/80 bg-slate-950/50 text-[11px] text-slate-400 font-mono">
+        <div className="flex items-center gap-1.5 truncate">
+          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shrink-0 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
+          <span className="font-bold text-white text-xs truncate">
+            {title || `Diapasón 24T • ${config.name}`}
+          </span>
           {fretFocusRange && (
-            <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-              Trastes {fretFocusRange[0]}–{fretFocusRange[1]}
+            <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-mono shrink-0 border border-cyan-500/30">
+              Tr. {fretFocusRange[0]}–{fretFocusRange[1]}
             </span>
           )}
         </div>
 
-        {/* Controles de Navegación y Scroll */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0 ml-2">
           {hoveredNote && (
-            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-white/10 text-xs font-mono text-zinc-300">
-              <span className="font-bold text-cyan-300">{hoveredNote.note}</span>
-              <span className="text-zinc-500">•</span>
-              <span className="text-zinc-400">Grado: {hoveredNote.interval}</span>
-              <span className="text-zinc-500">•</span>
-              <span className="text-zinc-400">Traste {hoveredNote.fret}</span>
+            <div className="hidden sm:flex items-center gap-1 text-[11px] text-cyan-300 font-bold bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+              <span>{hoveredNote.note}</span>
+              <span className="text-slate-500">•</span>
+              <span className="text-slate-400">{hoveredNote.interval}</span>
             </div>
           )}
-
-          <div className="flex items-center gap-1 bg-zinc-900/80 border border-white/10 rounded-xl p-1">
+          <span className="flex items-center gap-1 text-[10px] text-slate-500">
+            ↔ Desliza (0 - 24)
+          </span>
+          <div className="flex items-center gap-0.5">
             <button
               onClick={() => scrollFretboard('left')}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
-              title="Desplazar a la izquierda"
-              aria-label="Desplazar mástil a la izquierda"
+              className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+              title="Izquierda"
+              aria-label="Desplazar a la izquierda"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-3.5 h-3.5" />
             </button>
-            <span className="text-[11px] font-mono text-zinc-400 px-1">Scroll Mástil</span>
             <button
               onClick={() => scrollFretboard('right')}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
-              title="Desplazar a la derecha"
-              aria-label="Desplazar mástil a la derecha"
+              className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+              title="Derecha"
+              aria-label="Desplazar a la derecha"
             >
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Contenedor con Scroll Horizontal suave */}
+      {/* Contenedor con scroll horizontal propio que NUNCA desborda la página */}
       <div
         ref={containerRef}
-        className="w-full overflow-x-auto pb-3 pt-1 select-none focus:outline-none custom-scrollbar"
+        className="w-full max-w-full overflow-x-auto overflow-y-hidden scroll-smooth touch-pan-x py-3 px-1 custom-scrollbar min-w-0 select-none"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        <svg
-          width={fretPositions.totalWidth}
-          height={neckHeight}
-          className="overflow-visible block"
-          style={{ minWidth: fretPositions.totalWidth }}
-        >
+        <div className="inline-block" style={{ width: fretPositions.totalWidth }}>
+          <svg
+            width={fretPositions.totalWidth}
+            height={neckHeight}
+            className="block"
+            style={{ minWidth: fretPositions.totalWidth }}
+          >
           <defs>
             {/* Gradiente de fondo del mástil: Palisandro / Ébano oscuro */}
             <linearGradient id="fretboardWood" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -761,33 +761,33 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
             })}
           </g>
         </svg>
+        </div>
       </div>
 
-      {/* Leyenda de Colores Armónicos y Guía de Intervalos */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-3 border-t border-white/5 text-xs">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-zinc-500 font-medium">Codificación:</span>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.8)] border border-cyan-300" />
-            <span className="text-zinc-300 font-semibold">Tónica (Fundamental)</span>
+      {/* Leyenda de Colores Armónicos y Guía de Intervalos Ultra-Compacta */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-t border-slate-800/80 bg-slate-950/40 text-[11px]">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 shadow-[0_0_6px_rgba(6,182,212,0.8)] border border-cyan-300" />
+            <span className="text-slate-300 font-semibold text-[10px] sm:text-[11px]">Tónica</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded-full bg-fuchsia-600 shadow-[0_0_8px_rgba(217,70,239,0.7)] border border-fuchsia-300" />
-            <span className="text-zinc-300 font-semibold">Terceras (Guía 3 / b3)</span>
+          <div className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-fuchsia-600 shadow-[0_0_6px_rgba(217,70,239,0.7)] border border-fuchsia-300" />
+            <span className="text-slate-300 font-semibold text-[10px] sm:text-[11px]">3ra</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded-full bg-amber-600 shadow-[0_0_8px_rgba(245,158,11,0.7)] border border-amber-300" />
-            <span className="text-zinc-300 font-semibold">Séptimas (Guía 7 / b7)</span>
+          <div className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-600 shadow-[0_0_6px_rgba(245,158,11,0.7)] border border-amber-300" />
+            <span className="text-slate-300 font-semibold text-[10px] sm:text-[11px]">7ma</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded-full bg-teal-600 border border-teal-300" />
-            <span className="text-zinc-400">Quintas (5 / b5)</span>
+          <div className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-teal-600 border border-teal-300" />
+            <span className="text-slate-400 text-[10px] sm:text-[11px]">5ta</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-zinc-400 text-[11px]">
-          <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Haz clic en cualquier traste para escuchar el audio sintetizado</span>
+        <div className="flex items-center gap-1 text-slate-500 text-[10px]">
+          <Volume2 className="w-3 h-3 text-cyan-400" />
+          <span>Toca cualquier traste</span>
         </div>
       </div>
     </div>

@@ -13,17 +13,14 @@ import {
   getScaleNoteList,
   getChordNoteList,
   getFretNote,
-  getIntervalBetween,
   ChordVoicing,
   PROGRESSIONS_CATALOG,
   resolveProgressionChords,
-  SCALE_BOXES,
 } from '@/lib/music-theory/fretboard';
 import { getFretboardAudioEngine } from '@/lib/music-theory/fretboardAudio';
 import { InteractiveFretboard, ActiveFretNote } from '@/components/fretboard/InteractiveFretboard';
 import { FretboardToolbar, StudyMode } from '@/components/fretboard/FretboardToolbar';
-import { HarmonicTheoryCard } from '@/components/fretboard/HarmonicTheoryCard';
-import { Sparkles, Sliders, Music, Zap, Volume2, Compass, Layers } from 'lucide-react';
+import { ChordTheoryAccordion } from '@/components/fretboard/ChordTheoryAccordion';
 
 export default function FretboardPage() {
   // Estado General
@@ -162,7 +159,6 @@ export default function FretboardPage() {
 
       const notes: ActiveFretNote[] = [];
 
-      // Mapear todas las notas del acorde activo a lo largo de los 24 trastes
       config.strings.forEach((str, sIdx) => {
         for (let fret = 0; fret <= config.totalFrets; fret++) {
           const fn = getFretNote(str.midi, fret);
@@ -221,7 +217,6 @@ export default function FretboardPage() {
   // Audio: Rasguear Acorde (de grave a agudo)
   const handleStrumVoicing = useCallback(() => {
     if (!activeVoicing || activeVoicing.notes.length === 0) return;
-    // Ordenar de cuerda grave (índice más alto) a más aguda (índice 0)
     const sorted = [...activeVoicing.notes].sort((a, b) => b.stringIndex - a.stringIndex);
     const midis = sorted.map((n) => n.midi);
     getFretboardAudioEngine().playChord(midis, 'strum');
@@ -245,13 +240,12 @@ export default function FretboardPage() {
     setCurrentProgressionStepIndex((prev) => {
       const nextIdx = (prev + 1) % prog.steps.length;
 
-      // Disparar acorde de la progresión al cambiar de compás
       const resolved = resolveProgressionChords(prog, rootNote);
       const stepChord = resolved[nextIdx];
       if (stepChord) {
         const chordNotes = getChordNoteList(stepChord.rootNote, stepChord.chordKey);
         const rootMidi = 40 + CHROMATIC_NOTES.indexOf(stepChord.rootNote);
-        const midis = chordNotes.map((cn, i) => rootMidi + cn.interval.semitones);
+        const midis = chordNotes.map((cn) => rootMidi + cn.interval.semitones);
         getFretboardAudioEngine().playChord(midis, 'strum', 0.05);
       }
 
@@ -267,7 +261,6 @@ export default function FretboardPage() {
 
   useEffect(() => {
     if (progressionPlaying && studyMode === 'progressions') {
-      // Duración de un compás en milisegundos: 4 tiempos a BPM dado
       const barDurationMs = (60 / bpm) * 4 * 1000;
       progTimerRef.current = setInterval(() => {
         advanceProgressionStep();
@@ -285,12 +278,11 @@ export default function FretboardPage() {
     };
   }, [progressionPlaying, studyMode, bpm, advanceProgressionStep]);
 
-  // Si cambia la progresión seleccionada, reiniciar al paso 0
   useEffect(() => {
     setCurrentProgressionStepIndex(0);
   }, [selectedProgressionId, rootNote]);
 
-  // Presets Rápidos de Prueba para el Músico
+  // Presets Rápidos
   const applyPreset = (preset: {
     instrument: InstrumentType;
     mode: StudyMode;
@@ -308,149 +300,136 @@ export default function FretboardPage() {
   };
 
   return (
-    <main className="min-h-screen pb-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto flex flex-col gap-6 pt-6">
-      {/* 1. Encabezado Premium de SoundLab */}
-      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 p-6 rounded-3xl bg-gradient-to-br from-zinc-900/90 via-zinc-950/80 to-zinc-900/90 border border-white/10 backdrop-blur-2xl shadow-2xl relative overflow-hidden">
-        {/* Glow de fondo */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+    // 1. Contenedor Raíz Blindado contra Desbordamiento Horizontal
+    <div className="w-full max-w-full overflow-x-hidden min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+      <main className="w-full max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-2 sm:py-4 flex flex-col gap-2 min-w-0 flex-1">
+        {/* 2. Cabecera Ultra-Compacta (Mobile-First) */}
+        <div className="flex flex-col gap-1.5 p-2.5 sm:p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-lg backdrop-blur-xl w-full min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 truncate">
+              <h1 className="text-base sm:text-xl font-black tracking-tight text-white flex items-center gap-1.5 truncate">
+                <span>🎸 Diapasón & Armonía</span>
+              </h1>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 shrink-0 font-bold">
+                24 Trastes
+              </span>
+            </div>
 
-        <div className="flex flex-col gap-2 relative z-10">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-mono font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-              SOUNDLAB LAB • FRETBOARD & HARMONY
-            </span>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-              24 TRASTES COMPLETOS
-            </span>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/10 text-zinc-300">
-              AUDIO SINTETIZADO WEB AUDIO
-            </span>
+            {/* Presets Rápidos en Chips Horizontales */}
+            <div className="flex items-center gap-1 shrink-0 overflow-x-auto no-scrollbar">
+              <button
+                onClick={() =>
+                  applyPreset({
+                    instrument: 'bass_5',
+                    mode: 'chords',
+                    root: 'D',
+                    chord: 'm7',
+                  })
+                }
+                className="px-2 py-1 rounded-lg text-[10px] font-mono font-bold bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 transition-colors shrink-0"
+                title="Bajo 5C D m7"
+              >
+                ⚡ D m7 (B5)
+              </button>
+              <button
+                onClick={() =>
+                  applyPreset({
+                    instrument: 'guitar_6',
+                    mode: 'scales',
+                    root: 'A',
+                    scale: 'dorian',
+                  })
+                }
+                className="px-2 py-1 rounded-lg text-[10px] font-mono font-bold bg-slate-800 hover:bg-slate-700 text-fuchsia-300 border border-slate-700 transition-colors shrink-0"
+                title="Guitarra A Dórica"
+              >
+                🎸 A Dórica
+              </button>
+              <button
+                onClick={() =>
+                  applyPreset({
+                    instrument: 'bass_4',
+                    mode: 'progressions',
+                    root: 'C',
+                    progression: 'ii_v_i',
+                  })
+                }
+                className="px-2 py-1 rounded-lg text-[10px] font-mono font-bold bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition-colors shrink-0 hidden xs:inline-block"
+                title="Bajo 4C II-V-I"
+              >
+                🎶 II-V-I
+              </button>
+            </div>
           </div>
 
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white flex items-center gap-3">
-            <span>🎸 Diapasón & Armonía</span>
-          </h1>
-
-          <p className="text-xs sm:text-sm text-zinc-400 max-w-3xl leading-relaxed">
-            Visualizador interactivo de acordes con múltiples digitaciones, inversiones, escalas y modos griegos, y progresiones armónicas en tiempo real para{' '}
+          <p className="hidden sm:block text-xs text-slate-400 leading-relaxed">
+            Laboratorio interactivo de acordes, escalas modales e inversiones armónicas para{' '}
             <strong className="text-white">Guitarra (6C)</strong>,{' '}
-            <strong className="text-cyan-300">Bajo (4C)</strong> y{' '}
-            <strong className="text-fuchsia-300">Bajo (5C) con Low B (B0)</strong>.
+            <strong className="text-cyan-400">Bajo (4C)</strong> y{' '}
+            <strong className="text-fuchsia-400">Bajo (5C con Low B)</strong>.
           </p>
         </div>
 
-        {/* Atajos Rápidos / Presets de Demostración */}
-        <div className="flex flex-col gap-1.5 relative z-10 w-full lg:w-auto">
-          <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 font-bold">
-            Presets Rápidos:
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              onClick={() =>
-                applyPreset({
-                  instrument: 'bass_5',
-                  mode: 'chords',
-                  root: 'D',
-                  chord: 'm7',
-                })
-              }
-              className="px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-cyan-300 transition-colors"
-            >
-              ⚡ D m7 (Bajo 5C)
-            </button>
-            <button
-              onClick={() =>
-                applyPreset({
-                  instrument: 'guitar_6',
-                  mode: 'scales',
-                  root: 'A',
-                  scale: 'dorian',
-                })
-              }
-              className="px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-fuchsia-300 transition-colors"
-            >
-              🎸 A Dórica (Guitarra)
-            </button>
-            <button
-              onClick={() =>
-                applyPreset({
-                  instrument: 'bass_4',
-                  mode: 'progressions',
-                  root: 'C',
-                  progression: 'ii_v_i',
-                })
-              }
-              className="px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-amber-300 transition-colors"
-            >
-              🎶 II - V - I (Bajo 4C)
-            </button>
-          </div>
-        </div>
-      </div>
+        {/* 3. Barra de Herramientas Compacta (Controles Arriba) */}
+        <FretboardToolbar
+          studyMode={studyMode}
+          onStudyModeChange={setStudyMode}
+          instrument={instrument}
+          onInstrumentChange={setInstrument}
+          rootNote={rootNote}
+          onRootNoteChange={setRootNote}
+          chordKey={chordKey}
+          onChordKeyChange={setChordKey}
+          voicings={voicings}
+          selectedVoicingIndex={selectedVoicingIndex}
+          onSelectVoicingIndex={setSelectedVoicingIndex}
+          onStrumVoicing={handleStrumVoicing}
+          onArpeggiateVoicing={handleArpeggiateVoicing}
+          scaleKey={scaleKey}
+          onScaleKeyChange={setScaleKey}
+          scaleViewMode={scaleViewMode}
+          onScaleViewModeChange={setScaleViewMode}
+          selectedBox={selectedBox}
+          onSelectBox={setSelectedBox}
+          displayMode={displayMode}
+          onDisplayModeChange={setDisplayMode}
+          selectedProgressionId={selectedProgressionId}
+          onProgressionIdChange={setSelectedProgressionId}
+          progressionPlaying={progressionPlaying}
+          onToggleProgressionPlay={() => setProgressionPlaying((prev) => !prev)}
+          onNextProgressionStep={advanceProgressionStep}
+          onPrevProgressionStep={prevProgressionStep}
+          currentProgressionStepIndex={currentProgressionStepIndex}
+          bpm={bpm}
+          onBpmChange={setBpm}
+        />
 
-      {/* 2. Barra de Herramientas y Selectores de Estudio */}
-      <FretboardToolbar
-        studyMode={studyMode}
-        onStudyModeChange={setStudyMode}
-        instrument={instrument}
-        onInstrumentChange={setInstrument}
-        rootNote={rootNote}
-        onRootNoteChange={setRootNote}
-        chordKey={chordKey}
-        onChordKeyChange={setChordKey}
-        voicings={voicings}
-        selectedVoicingIndex={selectedVoicingIndex}
-        onSelectVoicingIndex={setSelectedVoicingIndex}
-        onStrumVoicing={handleStrumVoicing}
-        onArpeggiateVoicing={handleArpeggiateVoicing}
-        scaleKey={scaleKey}
-        onScaleKeyChange={setScaleKey}
-        scaleViewMode={scaleViewMode}
-        onScaleViewModeChange={setScaleViewMode}
-        selectedBox={selectedBox}
-        onSelectBox={setSelectedBox}
-        displayMode={displayMode}
-        onDisplayModeChange={setDisplayMode}
-        selectedProgressionId={selectedProgressionId}
-        onProgressionIdChange={setSelectedProgressionId}
-        progressionPlaying={progressionPlaying}
-        onToggleProgressionPlay={() => setProgressionPlaying((prev) => !prev)}
-        onNextProgressionStep={advanceProgressionStep}
-        onPrevProgressionStep={prevProgressionStep}
-        currentProgressionStepIndex={currentProgressionStepIndex}
-        bpm={bpm}
-        onBpmChange={setBpm}
-      />
+        {/* 4. El Diapasón como Protagonista Central (Visible Inmediatamente) */}
+        <InteractiveFretboard
+          instrument={instrument}
+          activeNotes={activeNotes}
+          displayMode={displayMode}
+          fretFocusRange={fretFocusRange}
+          title={
+            studyMode === 'chords'
+              ? `${rootNote} ${CHORDS_CATALOG[chordKey]?.name || ''}`
+              : studyMode === 'scales'
+              ? `${rootNote} ${SCALES_CATALOG[scaleKey]?.name || ''}`
+              : `${rootNote} ${PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId)?.name || ''}`
+          }
+        />
 
-      {/* 3. Mástil Interactivo de 24 Trastes con Web Audio */}
-      <InteractiveFretboard
-        instrument={instrument}
-        activeNotes={activeNotes}
-        displayMode={displayMode}
-        fretFocusRange={fretFocusRange}
-        title={
-          studyMode === 'chords'
-            ? `${rootNote} ${CHORDS_CATALOG[chordKey].name} — ${activeVoicing?.name || 'Posición'}`
-            : studyMode === 'scales'
-            ? `${rootNote} ${SCALES_CATALOG[scaleKey].name} ${
-                scaleViewMode === 'boxes' ? `(Caja ${selectedBox})` : '(Todo el Mástil 0–24)'
-              }`
-            : `Progresión Armónica: ${rootNote} ${
-                PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId)?.name || ''
-              }`
-        }
-      />
-
-      {/* 4. Tarjeta Didáctica de Armonía & Guía de Intervalos */}
-      <HarmonicTheoryCard
-        studyMode={studyMode}
-        instrument={instrument}
-        rootNote={rootNote}
-        chordKey={chordKey}
-        scaleKey={scaleKey}
-        selectedProgressionId={selectedProgressionId}
-        currentProgressionStepIndex={currentProgressionStepIndex}
-      />
-    </main>
+        {/* 5. Información Teórica en Acordeón Colapsable Abajo */}
+        <ChordTheoryAccordion
+          studyMode={studyMode}
+          instrument={instrument}
+          rootNote={rootNote}
+          chordKey={chordKey}
+          scaleKey={scaleKey}
+          selectedProgressionId={selectedProgressionId}
+          currentProgressionStepIndex={currentProgressionStepIndex}
+        />
+      </main>
+    </div>
   );
 }

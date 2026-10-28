@@ -234,10 +234,28 @@ export interface VoicingNote {
 export interface ChordVoicing {
   id: string;
   name: string;
+  shortName?: string;
   description: string;
   fretRange: [number, number]; // Trastes que abarca la posición [min, max]
   notes: VoicingNote[];
   barre?: { fret: number; fromString: number; toString: number };
+}
+
+export function getVoicingShortLabel(v: ChordVoicing, index: number): string {
+  if (v.shortName) return v.shortName;
+  if (v.name.includes('Inversión 1') || v.name.includes('Inv. 1') || v.name.includes('Inv 1')) {
+    return `Inv. 1 (Tr. ${v.fretRange[0]})`;
+  }
+  if (v.name.includes('Inversión 2') || v.name.includes('Inv. 2') || v.name.includes('Inv 2')) {
+    return `Inv. 2 (Tr. ${v.fretRange[0]})`;
+  }
+  if (v.name.includes('Décima') || v.name.includes('10ma')) {
+    return `10ma (Tr. ${v.fretRange[0]})`;
+  }
+  if (v.name.includes('Shell') || v.name.includes('R-7-3')) {
+    return `Shell (Tr. ${v.fretRange[0]})`;
+  }
+  return `Pos. ${index + 1} (Tr. ${v.fretRange[0]})`;
 }
 
 // Cajas de Escalas / Patrones (CAGED & 3NPS)
