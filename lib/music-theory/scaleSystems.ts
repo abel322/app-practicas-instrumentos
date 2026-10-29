@@ -12,13 +12,23 @@ import { ActiveFretNote } from '@/components/fretboard/InteractiveFretboard';
 export type ScaleSystemType = 'caged' | '3nps';
 export type NoteDisplayMode = 'notes' | 'degrees' | 'fingers';
 
-export interface ScalePatternConfig {
+export interface BoxFretNote {
+  stringIndex: number; // 0 = 1ra aguda (E), 5 = 6ta grave (E)
+  fret: number;
+  finger: number;
+  isStretch: boolean;
+}
+
+export interface SystemPatternDefinition {
   id: number;
   name: string;
   shortLabel: string;
   description: string;
-  rootStringRef: number;
-  fretSpanOffset: { start: number; end: number }; // Rango de trastes relativo a la tónica
+  minFret: number;
+  maxFret: number;
+  // Mapa cuerda por cuerda de los trastes y dedos EXACTOS
+  // stringIndex 5 es 6ta cuerda (grave), 0 es 1ra cuerda (aguda)
+  stringsFrets: Record<number, { fret: number; finger: number; isStretch?: boolean }[]>;
 }
 
 export interface FingerAssignment {
@@ -27,103 +37,276 @@ export interface FingerAssignment {
   stretchType?: 'backward' | 'forward'; // Hacia la cejuela (dedo 1) o hacia el puente (dedo 4)
 }
 
-// 1. SISTEMA CAGED: 5 Cajas tradicionales
-export const CAGED_BOXES: ScalePatternConfig[] = [
-  { id: 1, name: 'Caja 1 (Forma E)', shortLabel: 'Caja 1 (Forma E)', description: 'Tónica en 6ª y 1ª cuerda', rootStringRef: 6, fretSpanOffset: { start: -1, end: 3 } },
-  { id: 2, name: 'Caja 2 (Forma D)', shortLabel: 'Caja 2 (Forma D)', description: 'Tónica en 4ª cuerda', rootStringRef: 4, fretSpanOffset: { start: 2, end: 5 } },
-  { id: 3, name: 'Caja 3 (Forma C)', shortLabel: 'Caja 3 (Forma C)', description: 'Tónica en 5ª y 2ª cuerda', rootStringRef: 5, fretSpanOffset: { start: 4, end: 8 } },
-  { id: 4, name: 'Caja 4 (Forma A)', shortLabel: 'Caja 4 (Forma A)', description: 'Tónica en 5ª cuerda', rootStringRef: 5, fretSpanOffset: { start: 7, end: 10 } },
-  { id: 5, name: 'Caja 5 (Forma G)', shortLabel: 'Caja 5 (Forma G)', description: 'Tónica en 6ª y 1ª cuerda', rootStringRef: 6, fretSpanOffset: { start: 9, end: 13 } },
+// ==========================================
+// 1. SISTEMA CAGED REAL PARA C MAYOR (GUITARRA ESTÁNDAR)
+// Ordenado cronológicamente de la Cejuela al Puente (Trastes 0 a 13)
+// ==========================================
+export const CAGED_C_MAJOR_PATTERNS: SystemPatternDefinition[] = [
+  {
+    id: 1,
+    name: 'Caja 1 (Forma C)',
+    shortLabel: 'Caja 1 (Forma C)',
+    description: 'Posición abierta / cejuela. Tónica en 5ª cuerda (traste 3) y 2ª cuerda (traste 1).',
+    minFret: 0,
+    maxFret: 3,
+    stringsFrets: {
+      5: [{ fret: 0, finger: 0 }, { fret: 1, finger: 1 }, { fret: 3, finger: 3 }], // E, F, G
+      4: [{ fret: 0, finger: 0 }, { fret: 2, finger: 2 }, { fret: 3, finger: 3 }], // A, B, C (Root)
+      3: [{ fret: 0, finger: 0 }, { fret: 2, finger: 2 }, { fret: 3, finger: 3 }], // D, E, F
+      2: [{ fret: 0, finger: 0 }, { fret: 2, finger: 2 }],                         // G, A (2 notas)
+      1: [{ fret: 0, finger: 0 }, { fret: 1, finger: 1 }, { fret: 3, finger: 3 }], // B, C (Root), D
+      0: [{ fret: 0, finger: 0 }, { fret: 1, finger: 1 }, { fret: 3, finger: 3 }], // E, F, G
+    }
+  },
+  {
+    id: 2,
+    name: 'Caja 2 (Forma A)',
+    shortLabel: 'Caja 2 (Forma A)',
+    description: 'Trastes 2 al 5. Tónica en 5ª cuerda (traste 3) y 3ª cuerda (traste 5).',
+    minFret: 2,
+    maxFret: 5,
+    stringsFrets: {
+      5: [{ fret: 3, finger: 2 }, { fret: 5, finger: 4 }],                         // G, A (2 notas)
+      4: [{ fret: 2, finger: 1 }, { fret: 3, finger: 2 }, { fret: 5, finger: 4 }], // B, C (Root), D
+      3: [{ fret: 2, finger: 1 }, { fret: 3, finger: 2 }, { fret: 5, finger: 4 }], // E, F, G
+      2: [{ fret: 2, finger: 1 }, { fret: 4, finger: 3 }, { fret: 5, finger: 4 }], // A, B, C (Root)
+      1: [{ fret: 3, finger: 2 }, { fret: 5, finger: 4 }],                         // D, E (2 notas)
+      0: [{ fret: 3, finger: 2 }, { fret: 5, finger: 4 }],                         // G, A (2 notas)
+    }
+  },
+  {
+    id: 3,
+    name: 'Caja 3 (Forma G)',
+    shortLabel: 'Caja 3 (Forma G)',
+    description: 'Trastes 5 al 8. Tónica en 6ª cuerda (traste 8) y 1ª cuerda (traste 8).',
+    minFret: 4,
+    maxFret: 8,
+    stringsFrets: {
+      5: [{ fret: 5, finger: 1 }, { fret: 7, finger: 3 }, { fret: 8, finger: 4 }], // A, B, C (Root)
+      4: [{ fret: 5, finger: 1 }, { fret: 7, finger: 3 }, { fret: 8, finger: 4 }], // D, E, F
+      3: [{ fret: 5, finger: 1 }, { fret: 7, finger: 3 }],                         // G, A (2 notas)
+      2: [{ fret: 4, finger: 1, isStretch: true }, { fret: 5, finger: 2 }, { fret: 7, finger: 4 }], // B, C (Root), D
+      1: [{ fret: 5, finger: 1 }, { fret: 6, finger: 2 }, { fret: 8, finger: 4 }], // E, F, G
+      0: [{ fret: 5, finger: 1 }, { fret: 7, finger: 3 }, { fret: 8, finger: 4 }], // A, B, C (Root)
+    }
+  },
+  {
+    id: 4,
+    name: 'Caja 4 (Forma E)',
+    shortLabel: 'Caja 4 (Forma E)',
+    description: 'Trastes 7 al 10. Tónica en 6ª cuerda (traste 8) y 4ª cuerda (traste 10).',
+    minFret: 7,
+    maxFret: 10,
+    stringsFrets: {
+      5: [{ fret: 7, finger: 1, isStretch: true }, { fret: 8, finger: 2 }, { fret: 10, finger: 4 }], // B, C (Root), D
+      4: [{ fret: 7, finger: 1 }, { fret: 8, finger: 2 }, { fret: 10, finger: 4 }],                   // E, F, G
+      3: [{ fret: 7, finger: 1 }, { fret: 9, finger: 3 }, { fret: 10, finger: 4 }],                   // A, B, C (Root)
+      2: [{ fret: 7, finger: 1 }, { fret: 9, finger: 3 }, { fret: 10, finger: 4 }],                   // D, E, F
+      1: [{ fret: 8, finger: 2 }, { fret: 10, finger: 4 }],                                           // G, A (2 notas)
+      0: [{ fret: 7, finger: 1, isStretch: true }, { fret: 8, finger: 2 }, { fret: 10, finger: 4 }], // B, C (Root), D
+    }
+  },
+  {
+    id: 5,
+    name: 'Caja 5 (Forma D)',
+    shortLabel: 'Caja 5 (Forma D)',
+    description: 'Trastes 9 al 13. Tónica en 4ª cuerda (traste 10) y 2ª cuerda (traste 13).',
+    minFret: 9,
+    maxFret: 13,
+    stringsFrets: {
+      5: [{ fret: 10, finger: 2 }, { fret: 12, finger: 4 }],                                         // D, E (2 notas)
+      4: [{ fret: 10, finger: 2 }, { fret: 12, finger: 4 }],                                         // G, A (2 notas)
+      3: [{ fret: 9, finger: 1 }, { fret: 10, finger: 2 }, { fret: 12, finger: 4 }],                 // B, C (Root), D
+      2: [{ fret: 9, finger: 1 }, { fret: 10, finger: 2 }, { fret: 12, finger: 4 }],                 // E, F, G
+      1: [{ fret: 10, finger: 2 }, { fret: 12, finger: 4 }, { fret: 13, finger: 4, isStretch: true }],// A, B, C (Root)
+      0: [{ fret: 10, finger: 2 }, { fret: 12, finger: 4 }],                                         // D, E (2 notas)
+    }
+  }
 ];
 
-// 2. SISTEMA 3NPS: 7 Patrones simétricos
-export const THREE_NPS_PATTERNS: ScalePatternConfig[] = [
-  { id: 1, name: 'Patrón 1: Jónico (Grado I)', shortLabel: 'P1: Jónico', description: 'Comienza en la tónica (6ª cuerda)', rootStringRef: 6, fretSpanOffset: { start: 0, end: 4 } },
-  { id: 2, name: 'Patrón 2: Dórico (Grado II)', shortLabel: 'P2: Dórico', description: 'Comienza en la 2ª mayor', rootStringRef: 6, fretSpanOffset: { start: 2, end: 6 } },
-  { id: 3, name: 'Patrón 3: Frigio (Grado III)', shortLabel: 'P3: Frigio', description: 'Comienza en la 3ª mayor', rootStringRef: 6, fretSpanOffset: { start: 4, end: 8 } },
-  { id: 4, name: 'Patrón 4: Lidio (Grado IV)', shortLabel: 'P4: Lidio', description: 'Comienza en la 4ª justa', rootStringRef: 6, fretSpanOffset: { start: 5, end: 9 } },
-  { id: 5, name: 'Patrón 5: Mixolidio (Grado V)', shortLabel: 'P5: Mixolidio', description: 'Comienza en la 5ª justa', rootStringRef: 6, fretSpanOffset: { start: 7, end: 11 } },
-  { id: 6, name: 'Patrón 6: Eólico (Grado VI)', shortLabel: 'P6: Eólico', description: 'Comienza en la 6ª mayor', rootStringRef: 6, fretSpanOffset: { start: 9, end: 13 } },
-  { id: 7, name: 'Patrón 7: Locrio (Grado VII)', shortLabel: 'P7: Locrio', description: 'Comienza en la 7ª mayor', rootStringRef: 6, fretSpanOffset: { start: 11, end: 15 } },
+// ==========================================
+// 2. SISTEMA 3NPS REAL PARA C MAYOR (7 PATRONES DE CEJUELA A OCTAVA)
+// Cubre desde el traste 1 (Fa Lidio) hasta el traste 17 de manera continua
+// ==========================================
+export const THREE_NPS_C_MAJOR_PATTERNS: SystemPatternDefinition[] = [
+  {
+    id: 1,
+    name: 'Patrón 1: Lidio (desde Fa)',
+    shortLabel: 'P1: Lidio (Tr. 1-5)',
+    description: 'Comienza en el traste 1 de la 6ª cuerda (Fa - 4to grado)',
+    minFret: 1,
+    maxFret: 5,
+    stringsFrets: {
+      5: [{ fret: 1, finger: 1 }, { fret: 3, finger: 2 }, { fret: 5, finger: 4, isStretch: true }],
+      4: [{ fret: 2, finger: 1 }, { fret: 3, finger: 2 }, { fret: 5, finger: 4 }],
+      3: [{ fret: 2, finger: 1 }, { fret: 3, finger: 2 }, { fret: 5, finger: 4 }],
+      2: [{ fret: 2, finger: 1 }, { fret: 4, finger: 3 }, { fret: 5, finger: 4 }],
+      1: [{ fret: 3, finger: 1 }, { fret: 5, finger: 3 }, { fret: 6, finger: 4 }],
+      0: [{ fret: 3, finger: 1 }, { fret: 5, finger: 3 }, { fret: 7, finger: 4, isStretch: true }],
+    }
+  },
+  {
+    id: 2,
+    name: 'Patrón 2: Mixolidio (desde Sol)',
+    shortLabel: 'P2: Mixolidio (Tr. 3-8)',
+    description: 'Comienza en el traste 3 de la 6ª cuerda (Sol - 5to grado)',
+    minFret: 3,
+    maxFret: 8,
+    stringsFrets: {
+      5: [{ fret: 3, finger: 1 }, { fret: 5, finger: 2 }, { fret: 7, finger: 4, isStretch: true }],
+      4: [{ fret: 3, finger: 1 }, { fret: 5, finger: 2 }, { fret: 7, finger: 4, isStretch: true }],
+      3: [{ fret: 3, finger: 1 }, { fret: 5, finger: 2 }, { fret: 7, finger: 4, isStretch: true }],
+      2: [{ fret: 4, finger: 1 }, { fret: 5, finger: 2 }, { fret: 7, finger: 4 }],
+      1: [{ fret: 5, finger: 1 }, { fret: 6, finger: 2 }, { fret: 8, finger: 4 }],
+      0: [{ fret: 5, finger: 1 }, { fret: 7, finger: 3 }, { fret: 8, finger: 4 }],
+    }
+  },
+  {
+    id: 3,
+    name: 'Patrón 3: Eólico (desde La)',
+    shortLabel: 'P3: Eólico (Tr. 5-10)',
+    description: 'Comienza en el traste 5 de la 6ª cuerda (La - 6to grado / menor relativa)',
+    minFret: 5,
+    maxFret: 10,
+    stringsFrets: {
+      5: [{ fret: 5, finger: 1 }, { fret: 7, finger: 3 }, { fret: 8, finger: 4 }],
+      4: [{ fret: 5, finger: 1 }, { fret: 7, finger: 3 }, { fret: 8, finger: 4 }],
+      3: [{ fret: 5, finger: 1 }, { fret: 7, finger: 3 }, { fret: 9, finger: 4, isStretch: true }],
+      2: [{ fret: 5, finger: 1 }, { fret: 7, finger: 3 }, { fret: 9, finger: 4, isStretch: true }],
+      1: [{ fret: 6, finger: 1 }, { fret: 8, finger: 3 }, { fret: 10, finger: 4, isStretch: true }],
+      0: [{ fret: 7, finger: 1 }, { fret: 8, finger: 2 }, { fret: 10, finger: 4 }],
+    }
+  },
+  {
+    id: 4,
+    name: 'Patrón 4: Locrio (desde Si)',
+    shortLabel: 'P4: Locrio (Tr. 7-12)',
+    description: 'Comienza en el traste 7 de la 6ª cuerda (Si - 7mo grado)',
+    minFret: 7,
+    maxFret: 12,
+    stringsFrets: {
+      5: [{ fret: 7, finger: 1 }, { fret: 8, finger: 2 }, { fret: 10, finger: 4 }],
+      4: [{ fret: 7, finger: 1 }, { fret: 8, finger: 2 }, { fret: 10, finger: 4 }],
+      3: [{ fret: 7, finger: 1 }, { fret: 9, finger: 3 }, { fret: 10, finger: 4 }],
+      2: [{ fret: 7, finger: 1 }, { fret: 9, finger: 3 }, { fret: 10, finger: 4 }],
+      1: [{ fret: 8, finger: 1 }, { fret: 10, finger: 3 }, { fret: 12, finger: 4, isStretch: true }],
+      0: [{ fret: 8, finger: 1 }, { fret: 10, finger: 3 }, { fret: 12, finger: 4, isStretch: true }],
+    }
+  },
+  {
+    id: 5,
+    name: 'Patrón 5: Jónico (desde Do - TÓNICA)',
+    shortLabel: 'P5: Jónico (Tr. 8-13)',
+    description: 'Comienza en el traste 8 de la 6ª cuerda (Do - Tónica fundamental)',
+    minFret: 8,
+    maxFret: 13,
+    stringsFrets: {
+      5: [{ fret: 8, finger: 1 }, { fret: 10, finger: 2 }, { fret: 12, finger: 4, isStretch: true }],
+      4: [{ fret: 8, finger: 1 }, { fret: 10, finger: 2 }, { fret: 12, finger: 4, isStretch: true }],
+      3: [{ fret: 9, finger: 1 }, { fret: 10, finger: 2 }, { fret: 12, finger: 4 }],
+      2: [{ fret: 9, finger: 1 }, { fret: 10, finger: 2 }, { fret: 12, finger: 4 }],
+      1: [{ fret: 10, finger: 1 }, { fret: 12, finger: 3 }, { fret: 13, finger: 4 }],
+      0: [{ fret: 10, finger: 1 }, { fret: 12, finger: 3 }, { fret: 13, finger: 4 }],
+    }
+  },
+  {
+    id: 6,
+    name: 'Patrón 6: Dórico (desde Re)',
+    shortLabel: 'P6: Dórico (Tr. 10-15)',
+    description: 'Comienza en el traste 10 de la 6ª cuerda (Re - 2do grado)',
+    minFret: 10,
+    maxFret: 15,
+    stringsFrets: {
+      5: [{ fret: 10, finger: 1 }, { fret: 12, finger: 3 }, { fret: 13, finger: 4 }],
+      4: [{ fret: 10, finger: 1 }, { fret: 12, finger: 3 }, { fret: 14, finger: 4, isStretch: true }],
+      3: [{ fret: 10, finger: 1 }, { fret: 12, finger: 3 }, { fret: 14, finger: 4, isStretch: true }],
+      2: [{ fret: 10, finger: 1 }, { fret: 12, finger: 3 }, { fret: 14, finger: 4, isStretch: true }],
+      1: [{ fret: 12, finger: 1 }, { fret: 13, finger: 2 }, { fret: 15, finger: 4 }],
+      0: [{ fret: 12, finger: 1 }, { fret: 13, finger: 2 }, { fret: 15, finger: 4 }],
+    }
+  },
+  {
+    id: 7,
+    name: 'Patrón 7: Frigio (desde Mi)',
+    shortLabel: 'P7: Frigio (Tr. 12-17)',
+    description: 'Comienza en el traste 12 de la 6ª cuerda (Mi - 3er grado)',
+    minFret: 12,
+    maxFret: 17,
+    stringsFrets: {
+      5: [{ fret: 12, finger: 1 }, { fret: 13, finger: 2 }, { fret: 15, finger: 4 }],
+      4: [{ fret: 12, finger: 1 }, { fret: 14, finger: 3 }, { fret: 15, finger: 4 }],
+      3: [{ fret: 12, finger: 1 }, { fret: 14, finger: 3 }, { fret: 15, finger: 4 }],
+      2: [{ fret: 12, finger: 1 }, { fret: 14, finger: 3 }, { fret: 16, finger: 4, isStretch: true }],
+      1: [{ fret: 13, finger: 1 }, { fret: 15, finger: 3 }, { fret: 17, finger: 4, isStretch: true }],
+      0: [{ fret: 13, finger: 1 }, { fret: 15, finger: 3 }, { fret: 17, finger: 4, isStretch: true }],
+    }
+  }
 ];
+
+// Aliases para compatibilidad
+export const CAGED_BOXES = CAGED_C_MAJOR_PATTERNS;
+export const THREE_NPS_PATTERNS = THREE_NPS_C_MAJOR_PATTERNS;
 
 /**
- * Algoritmo de asignación biomecánica de digitación y detección de extensiones
+ * Transposición dinámica a cualquier tonalidad
  */
-export function calculateFingerAssignment(
-  fret: number,
-  boxBaseFret: number,
-  system: ScaleSystemType,
-  fretsOnCurrentString: number[]
-): FingerAssignment {
-  if (fret === 0) {
-    return { finger: 0, isStretch: false };
+export function transposePattern(
+  basePattern: SystemPatternDefinition,
+  rootNote: string,
+  totalFrets: number = 24
+): SystemPatternDefinition {
+  const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
+  const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
+  if (targetRootIdx === -1) return basePattern;
+
+  let shift = (targetRootIdx - baseRootIdx + 12) % 12;
+
+  // Si shift es 0, no hay desplazamiento
+  if (shift === 0) {
+    return basePattern;
   }
 
-  // --- LÓGICA BIOMECÁNICA 3NPS (3 Notas por Cuerda) ---
-  if (system === '3nps' && fretsOnCurrentString.length === 3) {
-    const sorted = [...fretsOnCurrentString].sort((a, b) => a - b);
-    const noteIndex = sorted.indexOf(fret);
-    const span = sorted[2] - sorted[0]; // Amplitud total en la cuerda (4 o 5 trastes)
-    const d1 = sorted[1] - sorted[0];   // Distancia nota 1 a nota 2
-    const d2 = sorted[2] - sorted[1];   // Distancia nota 2 a nota 3
+  // Ajuste de octava si se desborda del mástil
+  if (basePattern.maxFret + shift > totalFrets) {
+    shift -= 12;
+  } else if (basePattern.minFret + shift < 0) {
+    shift += 12;
+  }
 
-    // Si el patrón en la cuerda abarca 5 trastes (ej. trastes 8, 10, 12 o 7, 9, 11), hay extensión obligatoria
-    const hasStringStretch = span >= 4;
+  const transposedStringsFrets: Record<number, { fret: number; finger: number; isStretch?: boolean }[]> = {};
+  let newMinFret = 999;
+  let newMaxFret = -999;
 
-    if (noteIndex === 0) {
-      // Dedo 1 (Índice). Si la posición base de la mano está anclada adelante, este dedo se extiende hacia atrás
-      const isStretch = hasStringStretch && fret < boxBaseFret;
-      return { 
-        finger: 1, 
-        isStretch,
-        stretchType: isStretch ? 'backward' : undefined,
+  for (const [strIdxStr, fretList] of Object.entries(basePattern.stringsFrets)) {
+    const sIdx = Number(strIdxStr);
+    transposedStringsFrets[sIdx] = fretList.map((item) => {
+      let f = item.fret + shift;
+      if (f < 0) f += 12;
+      if (f > totalFrets) f -= 12;
+
+      if (f < newMinFret) newMinFret = f;
+      if (f > newMaxFret) newMaxFret = f;
+
+      let finger = item.finger;
+      // Si era cuerda al aire (fret 0, dedo 0) y ahora se toca en un traste pisado
+      if (item.fret === 0 && finger === 0 && f > 0) {
+        finger = 1;
+      }
+
+      return {
+        fret: f,
+        finger,
+        isStretch: item.isStretch,
       };
-    }
-
-    if (noteIndex === 1) {
-      // Si la amplitud es >= 4 (tono + tono, ej: 8-10-12), digitación 1-2-4 (dedo 2 intermedio)
-      // Si no, si d1 es 1 semitono -> Dedo 2 (Medio); si d1 es 1 tono -> Dedo 3 (Anular)
-      const finger = span >= 4 ? 2 : (d1 === 1 ? 2 : 3);
-      return { finger, isStretch: false };
-    }
-
-    if (noteIndex === 2) {
-      // Dedo 4 (Meñique). Si abarca 5 trastes y d2 es de 2 trastes, requiere extensión hacia adelante
-      return { 
-        finger: 4, 
-        isStretch: hasStringStretch, 
-        stretchType: 'forward' 
-      };
-    }
+    });
   }
 
-  // --- LÓGICA POSICIONAL ESTÁNDAR CAGED (Posición de 4 trastes) ---
-  const relativeFret = fret - boxBaseFret;
-
-  // Si en la cuerda hay alguna nota por detrás de boxBaseFret (ej. traste 7 cuando la caja base empieza en el 8)
-  const hasBackwardNote = fretsOnCurrentString.some((f) => f < boxBaseFret);
-
-  if (relativeFret < 0) {
-    // Extensión del índice hacia atrás (ej. traste 7 cuando la caja base empieza en el 8)
-    return { finger: 1, isStretch: true, stretchType: 'backward' };
-  }
-
-  if (hasBackwardNote) {
-    // La nota retrasada ya ocupó el dedo 1, por tanto el traste base lo pisa el dedo 2
-    if (relativeFret === 0) return { finger: 2, isStretch: false };
-    if (relativeFret === 1) return { finger: 3, isStretch: false };
-    if (relativeFret === 2) return { finger: 4, isStretch: false };
-    return { finger: 4, isStretch: true, stretchType: 'forward' };
-  }
-
-  if (relativeFret === 0) return { finger: 1, isStretch: false };
-  if (relativeFret === 1) return { finger: 2, isStretch: false };
-  if (relativeFret === 2) return { finger: 3, isStretch: false };
-  if (relativeFret === 3) return { finger: 4, isStretch: false };
-
-  // Extensión del meñique hacia adelante fuera de los 4 trastes base
-  return { finger: 4, isStretch: true, stretchType: 'forward' };
+  return {
+    ...basePattern,
+    minFret: newMinFret === 999 ? basePattern.minFret : newMinFret,
+    maxFret: newMaxFret === -999 ? basePattern.maxFret : newMaxFret,
+    stringsFrets: transposedStringsFrets,
+  };
 }
 
 export interface ScaleCalculationResult {
@@ -133,8 +316,8 @@ export interface ScaleCalculationResult {
 }
 
 /**
- * Calcula las notas activas, digitaciones anatómicas y ventana de enfoque
- * para el sistema dual de escalas (CAGED vs 3NPS).
+ * Motor de cálculo de notas activas para el diapasón.
+ * Separa de manera estricta CAGED (cajas cerradas) de 3NPS (3 notas por cuerda).
  */
 export function calculateScaleSystemNotes(
   instrument: InstrumentType,
@@ -144,15 +327,15 @@ export function calculateScaleSystemNotes(
   patternId: number
 ): ScaleCalculationResult {
   const config = INSTRUMENTS[instrument];
-  const numStrings = config.strings.length;
-  const lowestStringIdx = numStrings - 1; // 6ª cuerda en guitarra (index 5)
-  const lowestStringNote = config.strings[lowestStringIdx].note;
 
-  const rootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
-  const lowestStrNoteIdx = CHROMATIC_NOTES.indexOf(lowestStringNote as ChromaticNote);
-  let rootFretLowest = (rootIdx - lowestStrNoteIdx + 12) % 12;
+  // 1. Obtener la definición del patrón base según el sistema
+  const basePatterns = system === 'caged' ? CAGED_C_MAJOR_PATTERNS : THREE_NPS_C_MAJOR_PATTERNS;
+  const basePattern = basePatterns.find((p) => p.id === patternId) || basePatterns[0];
 
-  // Lista de notas de la escala con intervalos y roles armónicos
+  // 2. Transponer el patrón según la tónica seleccionada
+  const pattern = transposePattern(basePattern, rootNote, config.totalFrets);
+
+  // 3. Notas de la escala actual para mapear intervalos y roles
   const scaleNotes = getScaleNoteList(rootNote, scaleKey);
   const noteMap = new Map<string, { interval: string; role: any }>();
   scaleNotes.forEach((sn) => {
@@ -164,222 +347,70 @@ export function calculateScaleSystemNotes(
 
   const notes: ActiveFretNote[] = [];
 
-  // =========================================================================
-  // SISTEMA 1: CAGED (5 Cajas tradicionales)
-  // =========================================================================
-  if (system === 'caged') {
-    const pattern = CAGED_BOXES.find((b) => b.id === patternId) || CAGED_BOXES[0];
+  // Mapeo de cuerdas según instrumento
+  // Guitarra (6C): 5 = 6ª cuerda (E2) ... 0 = 1ª cuerda (E4)
+  // Bajo (4C): 3 = 4ª cuerda (E1) -> usa stringsFrets[5]
+  //            2 = 3ª cuerda (A1) -> usa stringsFrets[4]
+  //            1 = 2ª cuerda (D2) -> usa stringsFrets[3]
+  //            0 = 1ª cuerda (G2) -> usa stringsFrets[2]
+  // Bajo (5C): 4 = 5ª cuerda (B0) -> usa stringsFrets[1] (misma afinación B)
+  //            3 = 4ª cuerda (E1) -> usa stringsFrets[5]
+  //            2 = 3ª cuerda (A1) -> usa stringsFrets[4]
+  //            1 = 2ª cuerda (D2) -> usa stringsFrets[3]
+  //            0 = 1ª cuerda (G2) -> usa stringsFrets[2]
 
-    // Ajustar si la caja quedaría en trastes negativos
-    let baseFret = rootFretLowest;
-    if (baseFret + pattern.fretSpanOffset.start < 0) {
-      baseFret += 12;
-    } else if (baseFret + pattern.fretSpanOffset.end > config.totalFrets) {
-      baseFret = Math.max(0, baseFret - 12);
+  const getPatternStringIndex = (instStringIdx: number): number => {
+    if (instrument === 'guitar_6') {
+      return instStringIdx;
     }
-
-    const minBoxFret = Math.max(0, baseFret + pattern.fretSpanOffset.start);
-    const maxBoxFret = Math.min(config.totalFrets, baseFret + pattern.fretSpanOffset.end);
-
-    // Recolectar primero las notas por cuerda para calcular digitaciones con contexto
-    const stringFretsMap = new Map<number, number[]>();
-    for (let sIdx = 0; sIdx < numStrings; sIdx++) {
-      const str = config.strings[sIdx];
-      const frets: number[] = [];
-      for (let fret = minBoxFret; fret <= maxBoxFret; fret++) {
-        const fn = getFretNote(str.midi, fret);
-        if (noteMap.has(fn.note)) {
-          frets.push(fret);
-        }
-      }
-      stringFretsMap.set(sIdx, frets);
+    if (instrument === 'bass_4') {
+      const map: Record<number, number> = { 3: 5, 2: 4, 1: 3, 0: 2 };
+      return map[instStringIdx] ?? 5;
     }
+    // bass_5
+    const map: Record<number, number> = { 4: 1, 3: 5, 2: 4, 1: 3, 0: 2 };
+    return map[instStringIdx] ?? 5;
+  };
 
-    // Generar ActiveFretNotes con cálculo biomecánico
-    for (let sIdx = 0; sIdx < numStrings; sIdx++) {
-      const str = config.strings[sIdx];
-      const fretsOnString = stringFretsMap.get(sIdx) || [];
+  const allFrets: number[] = [];
 
-      fretsOnString.forEach((fret) => {
-        const fn = getFretNote(str.midi, fret);
-        const found = noteMap.get(fn.note)!;
-        const fingerAssign = calculateFingerAssignment(
-          fret,
-          baseFret,
-          'caged',
-          fretsOnString
-        );
-
-        notes.push({
-          stringIndex: sIdx,
-          fret,
-          note: fn.note,
-          interval: found.interval,
-          role: found.role,
-          finger: fingerAssign.finger > 0 ? String(fingerAssign.finger) : undefined,
-          fingerAssignment: fingerAssign,
-          midi: fn.midi,
-        });
-      });
-    }
-
-    return {
-      notes,
-      fretRange: [minBoxFret, maxBoxFret],
-      boxBaseFret: baseFret,
-    };
-  }
-
-  // =========================================================================
-  // SISTEMA 2: 3NPS (7 Patrones Simétricos - 3 Notas por Cuerda)
-  // =========================================================================
-  const pattern = THREE_NPS_PATTERNS.find((p) => p.id === patternId) || THREE_NPS_PATTERNS[0];
-  const scaleDegreeCount = scaleNotes.length; // 7 notas diatónicas
-
-  // Grado de inicio en la cuerda más grave (0 = Tónica, 1 = 2ª, etc.)
-  const startDegreeIdx = (pattern.id - 1) % scaleDegreeCount;
-
-  // Traste de anclaje de la primera nota en la cuerda más grave
-  let baseFret = rootFretLowest;
-  // Offset relativo al patrón 3NPS
-  const targetStartFret = rootFretLowest + pattern.fretSpanOffset.start;
-  const targetNormalized = targetStartFret < 0 ? targetStartFret + 12 : targetStartFret;
-
-  // Encontrar el traste exacto de la nota de inicio en la cuerda más grave
-  const lowestStr = config.strings[lowestStringIdx];
-  const firstNoteName = scaleNotes[startDegreeIdx].note;
-
-  let startFret = -1;
-  let minDiff = 999;
-  for (let f = 0; f <= config.totalFrets; f++) {
-    const fn = getFretNote(lowestStr.midi, f);
-    if (fn.note === firstNoteName) {
-      const diff = Math.abs(f - targetNormalized);
-      if (diff < minDiff) {
-        minDiff = diff;
-        startFret = f;
-      }
-    }
-  }
-
-  if (startFret < 0) startFret = targetNormalized;
-  baseFret = startFret;
-
-  // Construir exactamente 3 notas consecutivas por cuerda desde la más grave hacia la más aguda
-  const stringFretsMap = new Map<number, number[]>();
-  let currentStartDeg = startDegreeIdx;
-  let prevFirstFret = startFret;
-
-  // Recorremos desde lowestStringIdx hacia 0 (arriba)
-  for (let sIdx = lowestStringIdx; sIdx >= 0; sIdx--) {
+  for (let sIdx = 0; sIdx < config.strings.length; sIdx++) {
+    const patternStrIdx = getPatternStringIndex(sIdx);
+    const fretItems = pattern.stringsFrets[patternStrIdx] || [];
     const str = config.strings[sIdx];
-    const fretsThisString: number[] = [];
 
-    // Las 3 notas diatónicas consecutivas
-    const deg1 = currentStartDeg % scaleDegreeCount;
-    const deg2 = (currentStartDeg + 1) % scaleDegreeCount;
-    const deg3 = (currentStartDeg + 2) % scaleDegreeCount;
-
-    const n1 = scaleNotes[deg1].note;
-    const n2 = scaleNotes[deg2].note;
-    const n3 = scaleNotes[deg3].note;
-
-    // Encontrar traste de n1 cercano a prevFirstFret
-    let bestF1 = -1;
-    let bestDiff1 = 999;
-    for (let f = Math.max(0, prevFirstFret - 3); f <= Math.min(config.totalFrets, prevFirstFret + 4); f++) {
-      const fn = getFretNote(str.midi, f);
-      if (fn.note === n1) {
-        const diff = Math.abs(f - prevFirstFret);
-        if (diff < bestDiff1) {
-          bestDiff1 = diff;
-          bestF1 = f;
-        }
-      }
-    }
-
-    if (bestF1 === -1) {
-      // Búsqueda ampliada si la afinación difiere
-      for (let f = 0; f <= config.totalFrets; f++) {
-        if (getFretNote(str.midi, f).note === n1) {
-          const diff = Math.abs(f - prevFirstFret);
-          if (diff < bestDiff1) {
-            bestDiff1 = diff;
-            bestF1 = f;
-          }
-        }
-      }
-    }
-
-    // Traste de n2 posterior a bestF1
-    let bestF2 = -1;
-    for (let f = bestF1 + 1; f <= Math.min(config.totalFrets, bestF1 + 4); f++) {
-      if (getFretNote(str.midi, f).note === n2) {
-        bestF2 = f;
-        break;
-      }
-    }
-
-    // Traste de n3 posterior a bestF2
-    let bestF3 = -1;
-    if (bestF2 !== -1) {
-      for (let f = bestF2 + 1; f <= Math.min(config.totalFrets, bestF2 + 4); f++) {
-        if (getFretNote(str.midi, f).note === n3) {
-          bestF3 = f;
-          break;
-        }
-      }
-    }
-
-    if (bestF1 !== -1 && bestF2 !== -1 && bestF3 !== -1) {
-      fretsThisString.push(bestF1, bestF2, bestF3);
-      prevFirstFret = bestF1;
-    }
-
-    stringFretsMap.set(sIdx, fretsThisString);
-    // Para la siguiente cuerda, avanzar 3 grados en la escala diatónica
-    currentStartDeg = (currentStartDeg + 3) % scaleDegreeCount;
-  }
-
-  let allFrets: number[] = [];
-  stringFretsMap.forEach((frets) => allFrets.push(...frets));
-  const minFret = allFrets.length > 0 ? Math.min(...allFrets) : 0;
-  const maxFret = allFrets.length > 0 ? Math.max(...allFrets) : config.totalFrets;
-
-  // Generar ActiveFretNotes con digitaciones 3NPS
-  for (let sIdx = 0; sIdx < numStrings; sIdx++) {
-    const str = config.strings[sIdx];
-    const fretsOnString = stringFretsMap.get(sIdx) || [];
-
-    fretsOnString.forEach((fret) => {
-      const fn = getFretNote(str.midi, fret);
+    fretItems.forEach((item) => {
+      const fn = getFretNote(str.midi, item.fret);
       const found = noteMap.get(fn.note);
-      if (!found) return;
+      const isRoot = fn.note === rootNote;
 
-      const fingerAssign = calculateFingerAssignment(
-        fret,
-        baseFret,
-        '3nps',
-        fretsOnString
-      );
+      allFrets.push(item.fret);
+
+      const isStretchNote = !!item.isStretch;
 
       notes.push({
         stringIndex: sIdx,
-        fret,
+        fret: item.fret,
         note: fn.note,
-        interval: found.interval,
-        role: found.role,
-        finger: fingerAssign.finger > 0 ? String(fingerAssign.finger) : undefined,
-        fingerAssignment: fingerAssign,
+        interval: found?.interval || (isRoot ? 'R' : ''),
+        role: found?.role || (isRoot ? 'root' : 'other'),
+        finger: item.finger > 0 ? String(item.finger) : undefined,
+        fingerAssignment: {
+          finger: item.finger,
+          isStretch: isStretchNote,
+          stretchType: isStretchNote ? (item.finger === 1 ? 'backward' : 'forward') : undefined,
+        },
         midi: fn.midi,
       });
     });
   }
 
+  const minFret = allFrets.length > 0 ? Math.min(...allFrets) : pattern.minFret;
+  const maxFret = allFrets.length > 0 ? Math.max(...allFrets) : pattern.maxFret;
+
   return {
     notes,
     fretRange: [minFret, maxFret],
-    boxBaseFret: baseFret,
+    boxBaseFret: minFret,
   };
 }
-
