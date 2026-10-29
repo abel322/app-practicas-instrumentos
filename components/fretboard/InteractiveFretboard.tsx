@@ -657,7 +657,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                 {fretFocusRange && (
                   (() => {
                     const [startF, endF] = fretFocusRange;
-                    const pStart = fretPositions.positions[Math.max(1, startF)];
+                    const pStart = fretPositions.positions[Math.max(0, startF)];
                     const pEnd = fretPositions.positions[Math.min(totalFrets, endF)];
                     if (!pStart || !pEnd) return null;
                     const boxX = pStart.startX;

@@ -58,36 +58,37 @@ export const CAGED_C_MAJOR_PATTERNS: SystemPatternDefinition[] = [
       0: [{ fret: 0, finger: 0 }, { fret: 1, finger: 1 }, { fret: 3, finger: 3 }], // E, F, G
     }
   },
+  // CAJA 2: FORMA A (Trastes 2 al 6 - Con Traste 6 en 2ª cuerda)
   {
     id: 2,
     name: 'Caja 2 (Forma A)',
     shortLabel: 'Caja 2 (Forma A)',
-    description: 'Trastes 2 al 5. Tónica en 5ª cuerda (traste 3) y 3ª cuerda (traste 5).',
+    description: 'Trastes 2 al 6. Tónica en 5ª cuerda (traste 3) y 3ª cuerda (traste 5). Incluye Fa en traste 6.',
     minFret: 2,
-    maxFret: 5,
+    maxFret: 6,
     stringsFrets: {
-      5: [{ fret: 3, finger: 2 }, { fret: 5, finger: 4 }],                         // G, A (2 notas)
-      4: [{ fret: 2, finger: 1 }, { fret: 3, finger: 2 }, { fret: 5, finger: 4 }], // B, C (Root), D
-      3: [{ fret: 2, finger: 1 }, { fret: 3, finger: 2 }, { fret: 5, finger: 4 }], // E, F, G
-      2: [{ fret: 2, finger: 1 }, { fret: 4, finger: 3 }, { fret: 5, finger: 4 }], // A, B, C (Root)
-      1: [{ fret: 3, finger: 2 }, { fret: 5, finger: 4 }],                         // D, E (2 notas)
-      0: [{ fret: 3, finger: 2 }, { fret: 5, finger: 4 }],                         // G, A (2 notas)
+      5: [{ fret: 3, finger: 2 }, { fret: 5, finger: 4 }],                                          // G, A
+      4: [{ fret: 2, finger: 1 }, { fret: 3, finger: 2 }, { fret: 5, finger: 4 }],                  // B, C (Root), D
+      3: [{ fret: 2, finger: 1 }, { fret: 3, finger: 2 }, { fret: 5, finger: 4 }],                  // E, F, G
+      2: [{ fret: 2, finger: 1 }, { fret: 4, finger: 3 }, { fret: 5, finger: 4 }],                  // A, B, C (Root)
+      1: [{ fret: 3, finger: 1 }, { fret: 5, finger: 3 }, { fret: 6, finger: 4 }],                  // D, E, F (Traste 6 añadido)
+      0: [{ fret: 3, finger: 1 }, { fret: 5, finger: 3 }],                                          // G, A
     }
   },
   {
     id: 3,
     name: 'Caja 3 (Forma G)',
     shortLabel: 'Caja 3 (Forma G)',
-    description: 'Trastes 5 al 8. Tónica en 6ª cuerda (traste 8) y 1ª cuerda (traste 8).',
+    description: 'Trastes 4 al 8. Tónica en 6ª cuerda (traste 8) y 1ª cuerda (traste 8).',
     minFret: 4,
     maxFret: 8,
     stringsFrets: {
-      5: [{ fret: 5, finger: 1 }, { fret: 7, finger: 3 }, { fret: 8, finger: 4 }], // A, B, C (Root)
-      4: [{ fret: 5, finger: 1 }, { fret: 7, finger: 3 }, { fret: 8, finger: 4 }], // D, E, F
-      3: [{ fret: 5, finger: 1 }, { fret: 7, finger: 3 }],                         // G, A (2 notas)
-      2: [{ fret: 4, finger: 1, isStretch: true }, { fret: 5, finger: 2 }, { fret: 7, finger: 4 }], // B, C (Root), D
-      1: [{ fret: 5, finger: 1 }, { fret: 6, finger: 2 }, { fret: 8, finger: 4 }], // E, F, G
-      0: [{ fret: 5, finger: 1 }, { fret: 7, finger: 3 }, { fret: 8, finger: 4 }], // A, B, C (Root)
+      5: [{ fret: 5, finger: 1 }, { fret: 7, finger: 3 }, { fret: 8, finger: 4 }],                  // A, B, C (Root)
+      4: [{ fret: 5, finger: 1 }, { fret: 7, finger: 3 }, { fret: 8, finger: 4 }],                  // D, E, F
+      3: [{ fret: 5, finger: 1 }, { fret: 7, finger: 3 }],                                          // G, A
+      2: [{ fret: 4, finger: 1, isStretch: true }, { fret: 5, finger: 2 }, { fret: 7, finger: 4 }],  // B, C (Root), D
+      1: [{ fret: 5, finger: 1 }, { fret: 6, finger: 2 }, { fret: 8, finger: 4 }],                  // E, F, G
+      0: [{ fret: 5, finger: 1 }, { fret: 7, finger: 3 }, { fret: 8, finger: 4 }],                  // A, B, C (Root)
     }
   },
   {
@@ -98,28 +99,29 @@ export const CAGED_C_MAJOR_PATTERNS: SystemPatternDefinition[] = [
     minFret: 7,
     maxFret: 10,
     stringsFrets: {
-      5: [{ fret: 7, finger: 1, isStretch: true }, { fret: 8, finger: 2 }, { fret: 10, finger: 4 }], // B, C (Root), D
+      5: [{ fret: 7, finger: 1, isStretch: true }, { fret: 8, finger: 2 }, { fret: 10, finger: 4 }],  // B, C (Root), D
       4: [{ fret: 7, finger: 1 }, { fret: 8, finger: 2 }, { fret: 10, finger: 4 }],                   // E, F, G
       3: [{ fret: 7, finger: 1 }, { fret: 9, finger: 3 }, { fret: 10, finger: 4 }],                   // A, B, C (Root)
       2: [{ fret: 7, finger: 1 }, { fret: 9, finger: 3 }, { fret: 10, finger: 4 }],                   // D, E, F
-      1: [{ fret: 8, finger: 2 }, { fret: 10, finger: 4 }],                                           // G, A (2 notas)
-      0: [{ fret: 7, finger: 1, isStretch: true }, { fret: 8, finger: 2 }, { fret: 10, finger: 4 }], // B, C (Root), D
+      1: [{ fret: 8, finger: 2 }, { fret: 10, finger: 4 }],                                           // G, A
+      0: [{ fret: 7, finger: 1, isStretch: true }, { fret: 8, finger: 2 }, { fret: 10, finger: 4 }],  // B, C (Root), D
     }
   },
+  // CAJA 5: FORMA D (Trastes 8 al 13 - Con Traste 8 en 6ª, 5ª y 1ª cuerda)
   {
     id: 5,
     name: 'Caja 5 (Forma D)',
     shortLabel: 'Caja 5 (Forma D)',
-    description: 'Trastes 9 al 13. Tónica en 4ª cuerda (traste 10) y 2ª cuerda (traste 13).',
-    minFret: 9,
+    description: 'Trastes 8 al 13. Tónica en 4ª cuerda (traste 10), 2ª cuerda (traste 13) y traste 8 en cuerdas 6 y 1.',
+    minFret: 8,
     maxFret: 13,
     stringsFrets: {
-      5: [{ fret: 10, finger: 2 }, { fret: 12, finger: 4 }],                                         // D, E (2 notas)
-      4: [{ fret: 10, finger: 2 }, { fret: 12, finger: 4 }],                                         // G, A (2 notas)
-      3: [{ fret: 9, finger: 1 }, { fret: 10, finger: 2 }, { fret: 12, finger: 4 }],                 // B, C (Root), D
-      2: [{ fret: 9, finger: 1 }, { fret: 10, finger: 2 }, { fret: 12, finger: 4 }],                 // E, F, G
-      1: [{ fret: 10, finger: 2 }, { fret: 12, finger: 4 }, { fret: 13, finger: 4, isStretch: true }],// A, B, C (Root)
-      0: [{ fret: 10, finger: 2 }, { fret: 12, finger: 4 }],                                         // D, E (2 notas)
+      5: [{ fret: 8, finger: 1 }, { fret: 10, finger: 2 }, { fret: 12, finger: 4 }],                  // C (Root en Tr. 8 añadido), D, E
+      4: [{ fret: 8, finger: 1 }, { fret: 10, finger: 2 }, { fret: 12, finger: 4 }],                  // F (en Tr. 8 añadido), G, A
+      3: [{ fret: 9, finger: 1 }, { fret: 10, finger: 2 }, { fret: 12, finger: 4 }],                  // B, C (Root), D
+      2: [{ fret: 9, finger: 1 }, { fret: 10, finger: 2 }, { fret: 12, finger: 4 }],                  // E, F, G
+      1: [{ fret: 10, finger: 1 }, { fret: 12, finger: 3 }, { fret: 13, finger: 4 }],                 // A, B, C (Root)
+      0: [{ fret: 8, finger: 1 }, { fret: 10, finger: 2 }, { fret: 12, finger: 4 }],                  // C (Root en Tr. 8 añadido), D, E
     }
   }
 ];
