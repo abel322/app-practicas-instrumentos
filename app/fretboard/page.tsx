@@ -28,6 +28,7 @@ export default function FretboardPage() {
   const [instrument, setInstrument] = useState<InstrumentType>('guitar_6');
   const [rootNote, setRootNote] = useState<string>('C');
   const [displayMode, setDisplayMode] = useState<'notes' | 'intervals'>('notes');
+  const [fretboardViewMode, setFretboardViewMode] = useState<'scroll' | 'fit'>('scroll');
 
   // Estado Modo 1: Acordes
   const [chordKey, setChordKey] = useState<ChordKey>('major');
@@ -410,6 +411,8 @@ export default function FretboardPage() {
           activeNotes={activeNotes}
           displayMode={displayMode}
           fretFocusRange={fretFocusRange}
+          viewMode={fretboardViewMode}
+          onViewModeChange={setFretboardViewMode}
           title={
             studyMode === 'chords'
               ? `${rootNote} ${CHORDS_CATALOG[chordKey]?.name || ''}`
