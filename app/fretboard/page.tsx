@@ -21,23 +21,31 @@ import { getFretboardAudioEngine } from '@/lib/music-theory/fretboardAudio';
 import { InteractiveFretboard, ActiveFretNote } from '@/components/fretboard/InteractiveFretboard';
 import { FretboardToolbar, StudyMode } from '@/components/fretboard/FretboardToolbar';
 import { ChordTheoryAccordion } from '@/components/fretboard/ChordTheoryAccordion';
+import {
+  ScaleSystemType,
+  NoteDisplayMode,
+  calculateScaleSystemNotes,
+  CAGED_BOXES,
+  THREE_NPS_PATTERNS,
+} from '@/lib/music-theory/scaleSystems';
+import { ScaleSystemControls } from '@/components/fretboard/ScaleSystemControls';
 
 export default function FretboardPage() {
   // Estado General
   const [studyMode, setStudyMode] = useState<StudyMode>('chords');
   const [instrument, setInstrument] = useState<InstrumentType>('guitar_6');
   const [rootNote, setRootNote] = useState<string>('C');
-  const [displayMode, setDisplayMode] = useState<'notes' | 'intervals'>('notes');
+  const [displayMode, setDisplayMode] = useState<NoteDisplayMode>('notes');
   const [fretboardViewMode, setFretboardViewMode] = useState<'scroll' | 'fit'>('scroll');
 
   // Estado Modo 1: Acordes
   const [chordKey, setChordKey] = useState<ChordKey>('major');
   const [selectedVoicingIndex, setSelectedVoicingIndex] = useState<number>(0);
 
-  // Estado Modo 2: Escalas
-  const [scaleKey, setScaleKey] = useState<ScaleKey>('pentatonic_minor');
-  const [scaleViewMode, setScaleViewMode] = useState<'all' | 'boxes'>('all');
-  const [selectedBox, setSelectedBox] = useState<number>(1);
+  // Estado Modo 2: Escalas y Sistema Dual (CAGED vs 3NPS)
+  const [scaleKey, setScaleKey] = useState<ScaleKey>('major');
+  const [scaleSystem, setScaleSystem] = useState<ScaleSystemType>('caged');
+  const [activePatternId, setActivePatternId] = useState<number>(1);
 
   // Estado Modo 3: Progresiones
   const [selectedProgressionId, setSelectedProgressionId] = useState<string>('ii_v_i');
@@ -61,6 +69,18 @@ export default function FretboardPage() {
 
   const activeVoicing: ChordVoicing | undefined = voicings[selectedVoicingIndex] || voicings[0];
 
+  // Cálculo Teórico y Biomecánico del Sistema Dual de Escalas
+  const scaleResult = useMemo(() => {
+    if (studyMode !== 'scales') return null;
+    return calculateScaleSystemNotes(
+      instrument,
+      rootNote,
+      scaleKey,
+      scaleSystem,
+      activePatternId
+    );
+  }, [studyMode, instrument, rootNote, scaleKey, scaleSystem, activePatternId]);
+
   // Cálculo de las notas activas que se mostrarán sobre el diapasón según el modo
   const activeNotes: ActiveFretNote[] = useMemo(() => {
     // -------------------------------------------------------------
@@ -75,69 +95,19 @@ export default function FretboardPage() {
         interval: vn.interval,
         role: vn.role,
         finger: vn.finger,
+        fingerAssignment: {
+          finger: vn.finger ? parseInt(vn.finger, 10) || 0 : 0,
+          isStretch: false,
+        },
         midi: vn.midi,
       }));
     }
 
     // -------------------------------------------------------------
-    // MODO 2: ESCALAS Y MODOS
+    // MODO 2: ESCALAS Y MODOS (SISTEMA DUAL: CAGED vs 3NPS)
     // -------------------------------------------------------------
     if (studyMode === 'scales') {
-      const scaleNotes = getScaleNoteList(rootNote, scaleKey);
-      const noteMap = new Map<string, { interval: string; role: any }>();
-      scaleNotes.forEach((sn) => {
-        noteMap.set(sn.note, {
-          interval: sn.interval.label,
-          role: sn.interval.role,
-        });
-      });
-
-      const notes: ActiveFretNote[] = [];
-
-      // Calcular ventana de trastes si se eligió ver por cajas (Box 1..5)
-      let minBoxFret = 0;
-      let maxBoxFret = config.totalFrets;
-
-      if (scaleViewMode === 'boxes') {
-        const rootIdx = CHROMATIC_NOTES.indexOf(rootNote as any);
-        const lowestStringNoteIdx = CHROMATIC_NOTES.indexOf(config.strings[config.strings.length - 1].note as any);
-        const anchorFret = (rootIdx - lowestStringNoteIdx + 12) % 12;
-
-        const boxOffsets: Record<number, [number, number]> = {
-          1: [anchorFret, anchorFret + 4],
-          2: [anchorFret + 2, anchorFret + 6],
-          3: [anchorFret + 4, anchorFret + 8],
-          4: [anchorFret + 7, anchorFret + 11],
-          5: [anchorFret + 9, anchorFret + 13],
-        };
-
-        const targetOffset = boxOffsets[selectedBox] || [anchorFret, anchorFret + 4];
-        minBoxFret = Math.max(0, targetOffset[0]);
-        maxBoxFret = Math.min(config.totalFrets, targetOffset[1]);
-      }
-
-      config.strings.forEach((str, sIdx) => {
-        for (let fret = 0; fret <= config.totalFrets; fret++) {
-          if (scaleViewMode === 'boxes' && (fret < minBoxFret || fret > maxBoxFret)) {
-            continue;
-          }
-
-          const fn = getFretNote(str.midi, fret);
-          const found = noteMap.get(fn.note);
-          if (found) {
-            notes.push({
-              stringIndex: sIdx,
-              fret,
-              note: fn.note,
-              interval: found.interval,
-              role: found.role,
-              midi: fn.midi,
-            });
-          }
-        }
-      });
-
-      return notes;
+      return scaleResult ? scaleResult.notes : [];
     }
 
     // -------------------------------------------------------------
@@ -171,6 +141,7 @@ export default function FretboardPage() {
               note: fn.note,
               interval: found.interval,
               role: found.role,
+              fingerAssignment: { finger: 0, isStretch: false },
               midi: fn.midi,
             });
           }
@@ -185,9 +156,7 @@ export default function FretboardPage() {
     studyMode,
     activeVoicing,
     rootNote,
-    scaleKey,
-    scaleViewMode,
-    selectedBox,
+    scaleResult,
     config,
     selectedProgressionId,
     currentProgressionStepIndex,
@@ -198,22 +167,11 @@ export default function FretboardPage() {
     if (studyMode === 'chords' && activeVoicing) {
       return activeVoicing.fretRange;
     }
-    if (studyMode === 'scales' && scaleViewMode === 'boxes') {
-      const rootIdx = CHROMATIC_NOTES.indexOf(rootNote as any);
-      const lowestStringNoteIdx = CHROMATIC_NOTES.indexOf(config.strings[config.strings.length - 1].note as any);
-      const anchorFret = (rootIdx - lowestStringNoteIdx + 12) % 12;
-      const boxOffsets: Record<number, [number, number]> = {
-        1: [anchorFret, anchorFret + 4],
-        2: [anchorFret + 2, anchorFret + 6],
-        3: [anchorFret + 4, anchorFret + 8],
-        4: [anchorFret + 7, anchorFret + 11],
-        5: [anchorFret + 9, anchorFret + 13],
-      };
-      const b = boxOffsets[selectedBox] || [anchorFret, anchorFret + 4];
-      return [Math.max(0, b[0]), Math.min(config.totalFrets, b[1])];
+    if (studyMode === 'scales' && scaleResult) {
+      return scaleResult.fretRange;
     }
     return null;
-  }, [studyMode, activeVoicing, scaleViewMode, selectedBox, rootNote, config]);
+  }, [studyMode, activeVoicing, scaleResult]);
 
   // Audio: Rasguear Acorde (de grave a agudo)
   const handleStrumVoicing = useCallback(() => {
@@ -388,10 +346,6 @@ export default function FretboardPage() {
           onArpeggiateVoicing={handleArpeggiateVoicing}
           scaleKey={scaleKey}
           onScaleKeyChange={setScaleKey}
-          scaleViewMode={scaleViewMode}
-          onScaleViewModeChange={setScaleViewMode}
-          selectedBox={selectedBox}
-          onSelectBox={setSelectedBox}
           displayMode={displayMode}
           onDisplayModeChange={setDisplayMode}
           selectedProgressionId={selectedProgressionId}
@@ -405,6 +359,21 @@ export default function FretboardPage() {
           onBpmChange={setBpm}
         />
 
+        {/* 3.1 Controles Biomecánicos del Sistema Dual de Escalas (CAGED vs 3NPS) */}
+        {studyMode === 'scales' && (
+          <ScaleSystemControls
+            system={scaleSystem}
+            onSystemChange={(sys) => {
+              setScaleSystem(sys);
+              setActivePatternId(1);
+            }}
+            activePatternId={activePatternId}
+            onSelectPatternId={setActivePatternId}
+            displayMode={displayMode}
+            onDisplayModeChange={setDisplayMode}
+          />
+        )}
+
         {/* 4. El Diapasón como Protagonista Central (Visible Inmediatamente) */}
         <InteractiveFretboard
           instrument={instrument}
@@ -417,7 +386,7 @@ export default function FretboardPage() {
             studyMode === 'chords'
               ? `${rootNote} ${CHORDS_CATALOG[chordKey]?.name || ''}`
               : studyMode === 'scales'
-              ? `${rootNote} ${SCALES_CATALOG[scaleKey]?.name || ''}`
+              ? `${rootNote} ${SCALES_CATALOG[scaleKey]?.name || ''} • ${scaleSystem === 'caged' ? 'CAGED' : '3NPS'} (${(scaleSystem === 'caged' ? CAGED_BOXES : THREE_NPS_PATTERNS).find((p) => p.id === activePatternId)?.shortLabel || ''})`
               : `${rootNote} ${PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId)?.name || ''}`
           }
         />

@@ -14,6 +14,7 @@ import {
   ChordVoicing,
   getVoicingShortLabel,
 } from '@/lib/music-theory/fretboard';
+import { NoteDisplayMode } from '@/lib/music-theory/scaleSystems';
 import {
   Play,
   Pause,
@@ -49,12 +50,12 @@ interface FretboardToolbarProps {
   // Modo 2: Escalas
   scaleKey: ScaleKey;
   onScaleKeyChange: (scale: ScaleKey) => void;
-  scaleViewMode: 'all' | 'boxes';
-  onScaleViewModeChange: (mode: 'all' | 'boxes') => void;
-  selectedBox: number;
-  onSelectBox: (boxId: number) => void;
-  displayMode: 'notes' | 'intervals';
-  onDisplayModeChange: (mode: 'notes' | 'intervals') => void;
+  scaleViewMode?: 'all' | 'boxes';
+  onScaleViewModeChange?: (mode: 'all' | 'boxes') => void;
+  selectedBox?: number;
+  onSelectBox?: (boxId: number) => void;
+  displayMode: NoteDisplayMode | 'intervals';
+  onDisplayModeChange: (mode: NoteDisplayMode) => void;
 
   // Modo 3: Progresiones
   selectedProgressionId: string;
@@ -256,14 +257,25 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
                   Notas
                 </button>
                 <button
-                  onClick={() => onDisplayModeChange('intervals')}
+                  onClick={() => onDisplayModeChange('degrees')}
                   className={`px-2 py-1 rounded-md transition-colors font-bold ${
-                    displayMode === 'intervals'
+                    displayMode === 'degrees' || displayMode === 'intervals'
                       ? 'bg-[#0891b2]/15 text-[#0891b2] border border-[#0891b2]/30 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/40'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
                   Grados
+                </button>
+                <button
+                  onClick={() => onDisplayModeChange('fingers')}
+                  className={`px-2 py-1 rounded-md transition-colors font-bold ${
+                    displayMode === 'fingers'
+                      ? 'bg-emerald-500 text-slate-950 font-black shadow-sm ring-1 ring-emerald-300'
+                      : 'text-emerald-500 dark:text-emerald-400 hover:text-emerald-300'
+                  }`}
+                  title="Ver digitación (Dedos 1-4)"
+                >
+                  🖐️ Dedos
                 </button>
               </div>
             </div>
@@ -342,81 +354,18 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
               </div>
             </div>
 
-            {/* Fila de Utilidades: Todo el mástil vs Cajas + Etiquetas */}
-            <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-slate-200 dark:border-slate-800/60">
-              <div className="flex items-center gap-1 p-0.5 bg-slate-200/60 dark:bg-slate-950 rounded-lg border border-slate-300/60 dark:border-slate-800 text-[10px]">
-                <button
-                  onClick={() => onScaleViewModeChange('all')}
-                  className={`px-2 py-1 rounded-md font-bold transition-all ${
-                    scaleViewMode === 'all'
-                      ? 'bg-[#0891b2] text-white shadow-sm dark:bg-cyan-500 dark:text-slate-950'
-                      : 'text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  Mástil (0–24)
-                </button>
-                <button
-                  onClick={() => onScaleViewModeChange('boxes')}
-                  className={`px-2 py-1 rounded-md font-bold transition-all ${
-                    scaleViewMode === 'boxes'
-                      ? 'bg-[#0891b2] text-white shadow-sm dark:bg-cyan-500 dark:text-slate-950'
-                      : 'text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  Por Cajas (1–5)
-                </button>
-              </div>
-
-              <div className="flex items-center gap-1 p-0.5 bg-slate-200/60 dark:bg-slate-950 rounded-lg border border-slate-300/60 dark:border-slate-800 text-[10px] font-mono">
-                <button
-                  onClick={() => onDisplayModeChange('notes')}
-                  className={`px-2 py-1 rounded-md transition-colors font-bold ${
-                    displayMode === 'notes'
-                      ? 'bg-[#0891b2]/15 text-[#0891b2] border border-[#0891b2]/30 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/40'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  Notas
-                </button>
-                <button
-                  onClick={() => onDisplayModeChange('intervals')}
-                  className={`px-2 py-1 rounded-md transition-colors font-bold ${
-                    displayMode === 'intervals'
-                      ? 'bg-[#0891b2]/15 text-[#0891b2] border border-[#0891b2]/30 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/40'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  Grados
-                </button>
-              </div>
+            {/* Indicador del Sistema Dual Activo */}
+            <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-slate-200 dark:border-slate-800/60 text-[11px] text-slate-600 dark:text-slate-400">
+              <span className="font-mono text-[10px] font-bold flex items-center gap-1">
+                <span>🎸 Sistema de Estudio:</span>
+                <span className="text-cyan-600 dark:text-cyan-400 font-extrabold">CAGED (5 Cajas)</span>
+                <span>/</span>
+                <span className="text-purple-600 dark:text-purple-400 font-extrabold">3NPS (7 Patrones)</span>
+              </span>
+              <span className="text-[10px] font-bold text-amber-500/90 dark:text-amber-400 flex items-center gap-1">
+                <span>⚡ Biomecánica de Dedos (1-4)</span>
+              </span>
             </div>
-
-            {/* Selector de Cajas 1 a 5 si está en modo Cajas */}
-            {scaleViewMode === 'boxes' && (
-              <div className="flex flex-col gap-1 pt-1 border-t border-slate-200 dark:border-slate-800/60 min-w-0">
-                <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase font-bold">
-                  Caja / Posición:
-                </span>
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 w-full">
-                  {SCALE_BOXES.map((box) => {
-                    const isSelected = selectedBox === box.id;
-                    return (
-                      <button
-                        key={box.id}
-                        onClick={() => onSelectBox(box.id)}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all border shrink-0 flex items-center gap-1.5 ${
-                          isSelected
-                            ? 'bg-[#0891b2]/15 border-[#0891b2]/40 text-[#0891b2] dark:bg-cyan-500/20 dark:border-cyan-400 dark:text-cyan-300 shadow-sm'
-                            : 'bg-slate-50 dark:bg-slate-950/70 border-slate-300/80 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800'
-                        }`}
-                      >
-                        <span className="text-[#0891b2] dark:text-cyan-400">Box {box.id}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
           </div>
         )}
 

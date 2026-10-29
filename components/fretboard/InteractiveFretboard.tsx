@@ -8,6 +8,8 @@ import {
   getFretNote,
 } from '@/lib/music-theory/fretboard';
 import { getFretboardAudioEngine } from '@/lib/music-theory/fretboardAudio';
+import { FingerAssignment, NoteDisplayMode } from '@/lib/music-theory/scaleSystems';
+import { FretboardNoteNode } from './FretboardNoteNode';
 import { Volume2, Sparkles, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import { useTheme } from '@/components/theme/ThemeProvider';
 
@@ -18,6 +20,7 @@ export interface ActiveFretNote {
   interval: string;
   role: NoteRole;
   finger?: string;
+  fingerAssignment?: FingerAssignment;
   midi: number;
 }
 
@@ -105,7 +108,7 @@ export function FretboardViewControls({
 export interface InteractiveFretboardProps {
   instrument: InstrumentType;
   activeNotes: ActiveFretNote[];
-  displayMode: 'notes' | 'intervals';
+  displayMode: NoteDisplayMode | 'intervals';
   fretFocusRange?: [number, number] | null;
   onNoteClick?: (note: ActiveFretNote) => void;
   title?: string;
@@ -371,17 +374,23 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
     });
   }, [activeNotes, viewMode, handleToggleViewMode, fretPositions, scrollToFretZone]);
 
-  // Auto-scroll inteligente al rango enfocado si cambia externamente
+  // Auto-scroll inteligente al rango enfocado si cambia externamente (Centrado anatómico)
   useEffect(() => {
     if (fretFocusRange && containerRef.current && viewMode === 'scroll') {
       const minFret = fretFocusRange[0];
-      const targetPos = fretPositions.positions[minFret];
-      if (targetPos) {
-        const scrollOffset = Math.max(0, targetPos.startX - 60);
-        containerRef.current.scrollTo({
-          left: scrollOffset,
-          behavior: 'smooth',
-        });
+      const fretTargetElement = containerRef.current.querySelector(`[data-fret="${minFret}"]`);
+      if (fretTargetElement && typeof fretTargetElement.scrollIntoView === 'function') {
+        fretTargetElement.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      } else {
+        const targetPos = fretPositions.positions[minFret];
+        if (targetPos) {
+          const cWidth = containerRef.current.clientWidth;
+          const centerScroll = Math.max(0, targetPos.centerX - cWidth / 2);
+          containerRef.current.scrollTo({
+            left: centerScroll,
+            behavior: 'smooth',
+          });
+        }
       }
     }
   }, [fretFocusRange, fretPositions, viewMode]);
@@ -1009,7 +1018,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
             })}
           </g>
 
-          {/* 8. Marcadores de Notas Activas (Acorde / Escala) */}
+          {/* 8. Marcadores de Notas Activas (Acorde / Escala / Biomecánica Anatómica) */}
           <g id="activeNoteMarkers">
             {activeNotes.map((item) => {
               const pos = fretPositions.positions[item.fret];
@@ -1018,20 +1027,21 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
               const key = `${item.stringIndex}_${item.fret}`;
               const isPlayed = lastPlayedKey === key;
               const style = getNoteRoleStyle(item.role);
-
               const isRoot = item.role === 'root';
-              const radius = isCompact ? (isRoot ? 7 : 6) : (isRoot ? 14 : 13);
-              const displayText = displayMode === 'notes' ? item.note : item.interval;
-              const fontSize = isCompact
-                ? (displayText.length > 2 ? 5.5 : isRoot ? 7.5 : 6.8)
-                : (displayText.length > 2 ? 9 : isRoot ? 11 : 10);
+
+              const fingerAssign: FingerAssignment = item.fingerAssignment || {
+                finger: item.finger ? parseInt(item.finger, 10) || 0 : 0,
+                isStretch: false,
+              };
+
+              // Dimensiones centradas para foreignObject
+              const nodeSize = isCompact ? 28 : 36;
+              const halfSize = nodeSize / 2;
 
               return (
                 <g
                   key={`active_${key}`}
                   data-fret={item.fret}
-                  className="cursor-pointer transition-transform hover:scale-110"
-                  onClick={() => handlePlayNote(item.stringIndex, item.fret)}
                   onMouseEnter={() => setHoveredNote(item)}
                   onMouseLeave={() => setHoveredNote(null)}
                 >
@@ -1040,12 +1050,26 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                     <circle
                       cx={pos.centerX}
                       cy={y}
-                      r={radius + (isCompact ? 2 : 4)}
+                      r={isCompact ? 16 : 22}
                       fill="none"
                       stroke="#22d3ee"
-                      strokeWidth={isCompact ? 1.2 : 2}
+                      strokeWidth={isCompact ? 1.5 : 2.5}
                       opacity={0.4}
-                      className="animate-pulse"
+                      className="animate-pulse pointer-events-none"
+                    />
+                  )}
+
+                  {/* Halo ámbar exterior si requiere extensión / estiramiento */}
+                  {fingerAssign.isStretch && (
+                    <circle
+                      cx={pos.centerX}
+                      cy={y}
+                      r={isCompact ? 15 : 20}
+                      fill="none"
+                      stroke="#fbbf24"
+                      strokeWidth={isCompact ? 1.2 : 2}
+                      opacity={0.6}
+                      className="animate-pulse pointer-events-none"
                     />
                   )}
 
@@ -1054,63 +1078,33 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                     <circle
                       cx={pos.centerX}
                       cy={y}
-                      r={radius + (isCompact ? 4 : 8)}
+                      r={isCompact ? 18 : 26}
                       fill="none"
                       stroke={style.stroke}
                       strokeWidth={isCompact ? 1.5 : 2.5}
-                      className="animate-ping"
+                      className="animate-ping pointer-events-none"
                     />
                   )}
 
-                  {/* Círculo Principal de la Nota */}
-                  <circle
-                    cx={pos.centerX}
-                    cy={y}
-                    r={radius}
-                    fill={style.fill}
-                    stroke={style.stroke}
-                    strokeWidth={isRoot ? (isCompact ? 1.8 : 2.5) : (isCompact ? 1.2 : 1.8)}
-                    filter={isRoot ? 'url(#glowCyan)' : item.role === 'third' ? 'url(#glowFuchsia)' : item.role === 'seventh' ? 'url(#glowAmber)' : undefined}
-                  />
-
-                  {/* Texto de la Nota o Intervalo */}
-                  <text
-                    x={pos.centerX}
-                    y={y + (isCompact ? (displayText.length > 2 ? 2 : 2.5) : displayText.length > 2 ? 3.5 : 4)}
-                    textAnchor="middle"
-                    fill={style.textFill}
-                    fontSize={fontSize}
-                    fontWeight="900"
-                    fontFamily="monospace"
-                    className="pointer-events-none select-none"
+                  {/* Nodo visual interactivo con micro-píldora y detección de estiramiento */}
+                  <foreignObject
+                    x={pos.centerX - halfSize}
+                    y={y - halfSize}
+                    width={nodeSize}
+                    height={nodeSize}
+                    className="overflow-visible"
                   >
-                    {displayText}
-                  </text>
-
-                  {/* Badge de Digitado (Dedo 1, 2, 3, 4, T) en modo Acorde */}
-                  {item.finger && !isCompact && (
-                    <g className="pointer-events-none">
-                      <circle
-                        cx={pos.centerX + 9}
-                        cy={y + 9}
-                        r={6}
-                        fill="#09090b"
-                        stroke="#22d3ee"
-                        strokeWidth={1}
+                    <div className="w-full h-full flex items-center justify-center">
+                      <FretboardNoteNode
+                        noteName={item.note}
+                        degreeLabel={item.interval}
+                        fingerAssignment={fingerAssign}
+                        isRoot={isRoot}
+                        displayMode={displayMode}
+                        onClick={() => handlePlayNote(item.stringIndex, item.fret)}
                       />
-                      <text
-                        x={pos.centerX + 9}
-                        y={y + 11.5}
-                        textAnchor="middle"
-                        fill="#22d3ee"
-                        fontSize={8}
-                        fontWeight="bold"
-                        fontFamily="monospace"
-                      >
-                        {item.finger}
-                      </text>
-                    </g>
-                  )}
+                    </div>
+                  </foreignObject>
                 </g>
               );
             })}
@@ -1138,6 +1132,10 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-teal-500 border border-teal-200" />
             <span className="text-amber-200/80 font-medium text-[10px] sm:text-[11px]">5ta</span>
+          </div>
+          <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-md">
+            <span className="text-amber-400 font-black text-xs">⚡</span>
+            <span className="text-amber-300 font-bold text-[10px] sm:text-[11px]">Extensión (Stretch)</span>
           </div>
         </div>
 
