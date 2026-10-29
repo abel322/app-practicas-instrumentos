@@ -15,7 +15,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es" suppressHydrationWarning className="dark">
-      <body className="min-h-screen bg-[#f4f3ef] text-stone-900 dark:bg-zinc-950 dark:text-zinc-100 antialiased selection:bg-teal-500/30 selection:text-teal-900 dark:selection:bg-cyan-500/30 dark:selection:text-cyan-200 transition-colors duration-200">
+      <body className="min-h-screen bg-[#e5e9f0] dark:bg-slate-950 text-slate-800 dark:text-slate-100 antialiased selection:bg-[#0891b2]/30 selection:text-slate-950 dark:selection:bg-cyan-500/30 dark:selection:text-cyan-200 transition-colors duration-200">
         <ThemeProvider>
           <div className="relative min-h-screen flex flex-col justify-between">
             {/* Subtle Ambient Radial Glow */}

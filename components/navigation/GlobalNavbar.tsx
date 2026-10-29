@@ -53,23 +53,23 @@ export const GlobalNavbar: React.FC = () => {
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full backdrop-blur-xl bg-[#f4f3ef]/90 dark:bg-zinc-950/85 border-b border-stone-200/90 dark:border-white/10 transition-colors duration-200">
+    <header className="sticky top-0 z-50 w-full backdrop-blur-md bg-[#dce2ec]/90 dark:bg-slate-950/90 border-b border-slate-300 dark:border-slate-800 transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
         {/* Marca / Logo */}
         <Link href="/" className="flex items-center gap-2.5 group shrink-0">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-zinc-950 font-bold shadow-[0_0_15px_rgba(6,182,212,0.4)] group-hover:scale-105 transition-transform">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#0891b2] to-cyan-700 dark:from-cyan-500 dark:to-cyan-700 flex items-center justify-center text-white dark:text-zinc-950 font-bold shadow-sm dark:shadow-[0_0_15px_rgba(6,182,212,0.4)] group-hover:scale-105 transition-transform">
             <AudioWaveform className="w-4 h-4 stroke-[2.5]" />
           </div>
           <div className="flex flex-col">
-            <span className="text-sm font-black tracking-tight text-slate-900 dark:text-white group-hover:text-cyan-600 dark:group-hover:text-cyan-300 transition-colors flex items-center gap-1.5">
-              SOUNDLAB <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 font-mono font-bold">STUDIO</span>
+            <span className="text-sm font-black tracking-tight text-slate-900 dark:text-white group-hover:text-[#0891b2] dark:group-hover:text-cyan-300 transition-colors flex items-center gap-1.5">
+              SOUNDLAB <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#0891b2]/15 text-[#0891b2] dark:bg-cyan-500/20 dark:text-cyan-400 font-mono font-bold">STUDIO</span>
             </span>
-            <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-medium hidden xs:inline-block">Entorno de Práctica Musical</span>
+            <span className="text-[10px] text-slate-600 dark:text-zinc-400 font-medium hidden xs:inline-block">Entorno de Práctica Musical</span>
           </div>
         </Link>
 
         {/* Navegación Desktop */}
-        <nav className="hidden lg:flex items-center gap-1.5 p-1 rounded-2xl bg-slate-100/90 dark:bg-zinc-900/60 border border-slate-200 dark:border-white/5">
+        <nav className="hidden lg:flex items-center gap-1.5 p-1 rounded-2xl bg-slate-300/60 dark:bg-zinc-900/60 border border-slate-300/80 dark:border-white/5">
           {navLinks.map((link) => {
             const Icon = link.icon;
             return (
@@ -77,13 +77,15 @@ export const GlobalNavbar: React.FC = () => {
                 key={link.href}
                 href={link.href}
                 className={`relative px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors select-none ${
-                  link.active ? 'text-zinc-950 font-bold' : 'text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white'
+                  link.active 
+                    ? 'text-white dark:text-zinc-950 font-bold' 
+                    : 'text-slate-700 hover:text-slate-950 hover:bg-slate-300/60 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-transparent'
                 }`}
               >
                 {link.active && (
                   <motion.div
                     layoutId="activeNavPill"
-                    className="absolute inset-0 rounded-xl bg-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.4)]"
+                    className="absolute inset-0 rounded-xl bg-[#0891b2] dark:bg-cyan-400 shadow-sm dark:shadow-[0_0_20px_rgba(34,211,238,0.4)]"
                     transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                   />
                 )}
@@ -91,7 +93,9 @@ export const GlobalNavbar: React.FC = () => {
                 <span className="relative z-10">{link.name}</span>
                 <span
                   className={`relative z-10 text-[9px] px-1.5 py-0.5 rounded-full font-mono uppercase font-bold transition-colors ${
-                    link.active ? 'bg-zinc-950/20 text-zinc-950' : link.badgeClass
+                    link.active 
+                      ? 'bg-black/20 text-white dark:bg-zinc-950/20 dark:text-zinc-950' 
+                      : link.badgeClass
                   }`}
                 >
                   {link.badge}
@@ -104,9 +108,9 @@ export const GlobalNavbar: React.FC = () => {
         {/* Extremo Derecho: Indicador de Estado, Conmutador Tema y Hamburguesa */}
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Indicador de Estado del Sistema */}
-          <div className="hidden sm:flex items-center gap-2 text-xs font-mono text-slate-500 dark:text-zinc-400">
+          <div className="hidden sm:flex items-center gap-2 text-xs font-mono text-slate-600 dark:text-zinc-400">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[11px] text-slate-600 dark:text-zinc-400">Web Audio Listo</span>
+            <span className="text-[11px] text-slate-700 dark:text-zinc-400 font-medium">Web Audio Listo</span>
           </div>
 
           {/* Botón de Modo Día / Noche */}
@@ -115,7 +119,7 @@ export const GlobalNavbar: React.FC = () => {
           {/* Botón Hamburguesa Móvil */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="lg:hidden p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 border border-slate-300 dark:border-white/10 text-slate-700 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white transition-colors"
+            className="lg:hidden p-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-white/5 dark:hover:bg-white/10 border border-slate-300 dark:border-white/10 text-slate-700 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white transition-colors"
             aria-label="Abrir menú de navegación"
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -131,7 +135,7 @@ export const GlobalNavbar: React.FC = () => {
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.25, ease: 'easeInOut' }}
-            className="lg:hidden border-b border-stone-200/90 dark:border-white/10 bg-[#f4f3ef]/95 dark:bg-zinc-950/95 backdrop-blur-2xl px-4 py-4 overflow-hidden"
+            className="lg:hidden border-b border-slate-300 dark:border-slate-800 bg-[#dce2ec]/95 dark:bg-slate-950/95 backdrop-blur-2xl px-4 py-4 overflow-hidden"
           >
             <div className="flex flex-col gap-2">
               {navLinks.map((link) => {
@@ -143,12 +147,12 @@ export const GlobalNavbar: React.FC = () => {
                     onClick={() => setMobileMenuOpen(false)}
                     className={`flex items-center justify-between p-3 rounded-xl border text-sm font-semibold transition-all ${
                       link.active
-                        ? 'bg-cyan-500/15 border-cyan-500/30 text-cyan-700 dark:text-cyan-300 shadow-[0_0_15px_rgba(34,211,238,0.2)]'
-                        : 'bg-slate-50 dark:bg-white/5 border-slate-200 dark:border-white/5 text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white'
+                        ? 'bg-[#0891b2] text-white border-[#0891b2] shadow-sm font-bold dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30'
+                        : 'bg-white/80 dark:bg-zinc-900/40 border-slate-300/80 dark:border-white/5 text-slate-700 dark:text-zinc-300 hover:bg-slate-300/60 hover:text-slate-950 dark:hover:bg-white/10 dark:hover:text-white'
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <Icon className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+                      <Icon className="w-4 h-4 text-[#0891b2] dark:text-cyan-400" />
                       <span>{link.name}</span>
                     </div>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono uppercase font-bold ${link.badgeClass}`}>
