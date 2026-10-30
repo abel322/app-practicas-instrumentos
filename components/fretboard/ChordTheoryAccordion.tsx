@@ -12,6 +12,7 @@ import {
   PROGRESSIONS_CATALOG,
   resolveProgressionChords,
 } from '@/lib/music-theory/fretboard';
+import { CagedChordVoicing } from '@/lib/music-theory/cagedHarmonics';
 import { StudyMode } from './FretboardToolbar';
 import { Sparkles, BookOpen, Award, Zap, ChevronDown, ChevronUp } from 'lucide-react';
 
@@ -19,22 +20,26 @@ interface ChordTheoryAccordionProps {
   studyMode: StudyMode;
   instrument: InstrumentType;
   rootNote: string;
-  chordKey: ChordKey;
+  chordKey?: ChordKey;
   scaleKey: ScaleKey;
   selectedProgressionId: string;
   currentProgressionStepIndex: number;
   defaultExpanded?: boolean;
+  cagedChord?: CagedChordVoicing;
+  cagedBoxName?: string;
 }
 
 export const ChordTheoryAccordion: React.FC<ChordTheoryAccordionProps> = ({
   studyMode,
   instrument,
   rootNote,
-  chordKey,
+  chordKey = 'major',
   scaleKey,
   selectedProgressionId,
   currentProgressionStepIndex,
   defaultExpanded = false,
+  cagedChord,
+  cagedBoxName,
 }) => {
   const [isExpanded, setIsExpanded] = useState<boolean>(defaultExpanded);
   const isBass = instrument.startsWith('bass');
@@ -42,7 +47,9 @@ export const ChordTheoryAccordion: React.FC<ChordTheoryAccordionProps> = ({
   // Título resumen para la barra del acordeón
   const summaryBadge =
     studyMode === 'chords'
-      ? `${rootNote} ${CHORDS_CATALOG[chordKey]?.name || ''}`
+      ? cagedChord
+        ? `${cagedChord.fullName} (${cagedBoxName || 'CAGED'})`
+        : `${rootNote} Mayor`
       : studyMode === 'scales'
       ? `${rootNote} ${SCALES_CATALOG[scaleKey]?.name || ''}`
       : (() => {
@@ -85,78 +92,66 @@ export const ChordTheoryAccordion: React.FC<ChordTheoryAccordionProps> = ({
         <div className="p-3 sm:p-5 pt-2 border-t border-stone-200/80 dark:border-slate-800/80 bg-stone-50/70 dark:bg-slate-950/40 animate-in fade-in duration-200">
           {studyMode === 'chords' && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {/* Estructura del Acorde */}
-              {(() => {
-                const chordInfo = CHORDS_CATALOG[chordKey];
-                return (
-                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-white/90 dark:bg-slate-900/70 border border-stone-200/90 dark:border-slate-800 shadow-sm">
-                    <div className="flex items-center gap-1.5 text-teal-700 dark:text-cyan-400 text-xs font-mono font-bold uppercase">
-                      <BookOpen className="w-3.5 h-3.5" />
-                      <span>Estructura</span>
-                    </div>
-                    <div className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                      {rootNote} {chordInfo.name}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1 mt-0.5">
-                      <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">Fórmula:</span>
-                      {chordInfo.labels.map((lbl, idx) => (
-                        <span
-                          key={idx}
-                          className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
-                            lbl === 'R'
-                              ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40'
-                              : lbl.includes('3')
-                              ? 'bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-300 border border-fuchsia-500/40'
-                              : lbl.includes('7')
-                              ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40'
-                              : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                          }`}
-                        >
-                          {lbl}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
+              {/* Estructura del Acorde CAGED */}
+              <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-white/90 dark:bg-slate-900/70 border border-stone-200/90 dark:border-slate-800 shadow-sm">
+                <div className="flex items-center gap-1.5 text-teal-700 dark:text-cyan-400 text-xs font-mono font-bold uppercase">
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>Campo Armónico Diatónico</span>
+                </div>
+                <div className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                  {cagedChord ? cagedChord.fullName : `${rootNote} Mayor`}
+                </div>
+                <div className="text-xs font-mono text-slate-600 dark:text-slate-300">
+                  <span>Grado: </span>
+                  <strong className="text-cyan-600 dark:text-cyan-400">
+                    {cagedChord?.degreeRoman} ({cagedChord?.degreeName})
+                  </strong>
+                </div>
+                <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                  <span>Tonalidad: </span>
+                  <strong className="text-slate-800 dark:text-slate-200">{rootNote} Mayor</strong>
+                  <span> • Forma: </span>
+                  <strong className="text-purple-600 dark:text-purple-400">{cagedBoxName || 'CAGED'}</strong>
+                </div>
+              </div>
 
-              {/* Notas y Guías */}
-              {(() => {
-                const notes = getChordNoteList(rootNote, chordKey);
-                return (
-                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-white/80 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 shadow-sm">
-                    <div className="flex items-center gap-1.5 text-fuchsia-600 dark:text-fuchsia-400 text-xs font-mono font-bold uppercase">
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>Notas Guía (3ra y 7ma)</span>
+              {/* Notas del Voicing Posicional */}
+              <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-white/80 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="flex items-center gap-1.5 text-fuchsia-600 dark:text-fuchsia-400 text-xs font-mono font-bold uppercase">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Notas del Voicing Cerrado</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  {cagedChord?.notes.map((n, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800"
+                    >
+                      <span className="text-xs font-black text-slate-900 dark:text-white">
+                        {n.intervalLabel === 'R' ? cagedChord.rootNote : n.intervalLabel}
+                      </span>
+                      <span className="text-[10px] font-mono text-cyan-600 dark:text-cyan-400 font-semibold">
+                        ({n.intervalLabel})
+                      </span>
+                      <span className="text-[9px] font-mono px-1 rounded bg-emerald-500/15 text-emerald-600 font-bold">
+                        D{n.finger}
+                      </span>
                     </div>
-                    <div className="flex flex-wrap gap-1.5 items-center">
-                      {notes.map((n, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800"
-                        >
-                          <span className="text-xs font-black text-slate-900 dark:text-white">{n.note}</span>
-                          <span className="text-[10px] font-mono text-cyan-600 dark:text-cyan-400 font-semibold">({n.interval.label})</span>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed mt-0.5">
-                      Las <strong className="text-fuchsia-600 dark:text-fuchsia-300">notas guía</strong> definen la cualidad (mayor, menor, dominante) para improvisar o acompañar.
-                    </p>
-                  </div>
-                );
-              })()}
+                  ))}
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed mt-0.5">
+                  Las notas fundamentales (<strong className="text-cyan-500">R</strong>), terceras (<strong className="text-fuchsia-500">3/b3</strong>) y quintas (<strong className="text-amber-500">5/b5</strong>) definen la sonoridad posicional del acorde sin salir de la caja.
+                </p>
+              </div>
 
               {/* Tip de Instrumento */}
               <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-white/80 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 shadow-sm">
                 <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 text-xs font-mono font-bold uppercase">
                   <Award className="w-3.5 h-3.5" />
-                  <span>Tip para {isBass ? 'Bajistas' : 'Guitarristas'}</span>
+                  <span>Pedagogía Armónica CAGED</span>
                 </div>
                 <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  {isBass
-                    ? 'En el bajo, tocar 3ra y 7ma en cuerdas agudas aporta textura armónica clara sin saturar el espectro grave.'
-                    : 'En guitarra, usa inversiones con la 3ra en el bajo para crear líneas de bajo descendentes o ascendentes fluidas.'}
+                  En el sistema CAGED, dominar los 7 acordes diatónicos en una sola forma permite acompañar progresiones enteras (ej. ii–V–I o I–vi–IV–V) con mínima tensión biomecánica y economía máxima de movimiento.
                 </p>
               </div>
             </div>

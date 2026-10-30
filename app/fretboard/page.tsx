@@ -15,6 +15,7 @@ import {
   getChordNoteList,
   getFretNote,
   ChordVoicing,
+  NoteRole,
   PROGRESSIONS_CATALOG,
   resolveProgressionChords,
 } from '@/lib/music-theory/fretboard';
@@ -22,6 +23,13 @@ import { getFretboardAudioEngine } from '@/lib/music-theory/fretboardAudio';
 import { InteractiveFretboard, ActiveFretNote } from '@/components/fretboard/InteractiveFretboard';
 import { FretboardToolbar, StudyMode } from '@/components/fretboard/FretboardToolbar';
 import { ChordTheoryAccordion } from '@/components/fretboard/ChordTheoryAccordion';
+import {
+  CagedChordVoicing,
+  CAGED_BOX_DEFINITIONS,
+  getCagedDiatonicChords,
+  getCagedBoxFretRange,
+} from '@/lib/music-theory/cagedHarmonics';
+import { CagedHarmonicChordsView } from '@/components/fretboard/CagedHarmonicChordsView';
 import {
   ScaleSystemType,
   NoteDisplayMode,
@@ -53,9 +61,9 @@ export default function FretboardPage() {
   const [displayMode, setDisplayMode] = useState<NoteDisplayMode>('notes');
   const [fretboardViewMode, setFretboardViewMode] = useState<'scroll' | 'fit'>('scroll');
 
-  // Estado Modo 1: Acordes
-  const [chordKey, setChordKey] = useState<ChordKey>('major');
-  const [selectedVoicingIndex, setSelectedVoicingIndex] = useState<number>(0);
+  // Estado Modo 1: Laboratorio de Armonía Diatónica CAGED (7 Acordes por Forma)
+  const [activeCagedBoxId, setActiveCagedBoxId] = useState<number>(1);
+  const [activeChordDegreeIndex, setActiveChordDegreeIndex] = useState<number>(0);
 
   // Estado Modo 2: Escalas y Sistema Dual (CAGED vs 3NPS)
   const [scaleKey, setScaleKey] = useState<ScaleKey>('major');
@@ -84,19 +92,21 @@ export default function FretboardPage() {
 
   const config = INSTRUMENTS[instrument];
 
-  // Voicings para el acorde actual
-  const voicings = useMemo(() => {
-    return getChordVoicings(instrument, rootNote, chordKey);
-  }, [instrument, rootNote, chordKey]);
+  // Voicings de los 7 Acordes Diatónicos en CAGED
+  const cagedChords: CagedChordVoicing[] = useMemo(() => {
+    if (studyMode !== 'chords') return [];
+    return getCagedDiatonicChords(rootNote, activeCagedBoxId, instrument);
+  }, [studyMode, rootNote, activeCagedBoxId, instrument]);
 
-  // Si cambia el instrumento o acorde, mantener índice de voicing seguro
+  // Si cambia la caja o tonalidad, asegurar índice de grado seguro
   useEffect(() => {
-    if (selectedVoicingIndex >= voicings.length) {
-      setSelectedVoicingIndex(0);
+    if (activeChordDegreeIndex >= 7) {
+      setActiveChordDegreeIndex(0);
     }
-  }, [voicings, selectedVoicingIndex]);
+  }, [activeChordDegreeIndex]);
 
-  const activeVoicing: ChordVoicing | undefined = voicings[selectedVoicingIndex] || voicings[0];
+  const activeCagedChord: CagedChordVoicing | undefined =
+    cagedChords[activeChordDegreeIndex] || cagedChords[0];
 
   // Cálculo Teórico y Biomecánico del Sistema Dual de Escalas
   const scaleResult = useMemo(() => {
@@ -458,23 +468,35 @@ export default function FretboardPage() {
     }
 
     // -------------------------------------------------------------
-    // MODO 1: ACORDES Y POSICIONES
+    // MODO 1: ACORDES Y POSICIONES (CAMPO ARMÓNICO DIATÓNICO CAGED)
     // -------------------------------------------------------------
     if (studyMode === 'chords') {
-      if (!activeVoicing) return [];
-      return activeVoicing.notes.map((vn) => ({
-        stringIndex: vn.stringIndex,
-        fret: vn.fret,
-        note: vn.note,
-        interval: vn.interval,
-        role: vn.role,
-        finger: vn.finger,
-        fingerAssignment: {
-          finger: vn.finger ? parseInt(vn.finger, 10) || 0 : 0,
-          isStretch: false,
-        },
-        midi: vn.midi,
-      }));
+      if (!activeCagedChord) return [];
+      return activeCagedChord.notes.map((cn) => {
+        const str = config.strings[cn.stringIndex];
+        const fn = getFretNote(str?.midi ?? 40, cn.fret);
+        const isRoot = cn.isRoot;
+
+        let role: NoteRole = 'other';
+        if (isRoot) role = 'root';
+        else if (cn.intervalLabel === '3' || cn.intervalLabel === 'b3') role = 'third';
+        else if (cn.intervalLabel === '5' || cn.intervalLabel === 'b5') role = 'fifth';
+        else if (cn.intervalLabel === '7' || cn.intervalLabel === 'b7') role = 'seventh';
+
+        return {
+          stringIndex: cn.stringIndex,
+          fret: cn.fret,
+          note: fn.note,
+          interval: cn.intervalLabel,
+          role,
+          finger: cn.finger > 0 ? String(cn.finger) : undefined,
+          fingerAssignment: {
+            finger: cn.finger,
+            isStretch: false,
+          },
+          midi: fn.midi,
+        };
+      });
     }
 
     // -------------------------------------------------------------
@@ -570,7 +592,7 @@ export default function FretboardPage() {
     editingGrid,
     customDbPattern,
     studyMode,
-    activeVoicing,
+    activeCagedChord,
     rootNote,
     scaleResult,
     config,
@@ -590,8 +612,8 @@ export default function FretboardPage() {
       }
       return scaleResult ? scaleResult.fretRange : [0, 12];
     }
-    if (studyMode === 'chords' && activeVoicing) {
-      return activeVoicing.fretRange;
+    if (studyMode === 'chords') {
+      return getCagedBoxFretRange(activeCagedBoxId, rootNote);
     }
     if (studyMode === 'scales') {
       if (customDbPattern && customDbPattern.notesData.length > 0) {
@@ -618,27 +640,33 @@ export default function FretboardPage() {
     editingGrid,
     customDbPattern,
     studyMode,
-    activeVoicing,
+    activeCagedBoxId,
     scaleResult,
     rootNote,
     config.totalFrets,
   ]);
 
-  // Audio: Rasguear Acorde (de grave a agudo)
-  const handleStrumVoicing = useCallback(() => {
-    if (!activeVoicing || activeVoicing.notes.length === 0) return;
-    const sorted = [...activeVoicing.notes].sort((a, b) => b.stringIndex - a.stringIndex);
-    const midis = sorted.map((n) => n.midi);
+  // Audio: Rasguear Acorde CAGED (de grave a agudo)
+  const handlePlayCagedStrum = useCallback(() => {
+    if (!activeCagedChord || activeCagedChord.notes.length === 0) return;
+    const sorted = [...activeCagedChord.notes].sort((a, b) => b.stringIndex - a.stringIndex);
+    const midis = sorted.map((n) => {
+      const str = config.strings[n.stringIndex];
+      return (str?.midi ?? 40) + n.fret;
+    });
     getFretboardAudioEngine().playChord(midis, 'strum');
-  }, [activeVoicing]);
+  }, [activeCagedChord, config]);
 
-  // Audio: Arpegiar Acorde
-  const handleArpeggiateVoicing = useCallback(() => {
-    if (!activeVoicing || activeVoicing.notes.length === 0) return;
-    const sorted = [...activeVoicing.notes].sort((a, b) => b.stringIndex - a.stringIndex);
-    const midis = sorted.map((n) => n.midi);
+  // Audio: Arpegiar Acorde CAGED
+  const handlePlayCagedArpeggio = useCallback(() => {
+    if (!activeCagedChord || activeCagedChord.notes.length === 0) return;
+    const sorted = [...activeCagedChord.notes].sort((a, b) => b.stringIndex - a.stringIndex);
+    const midis = sorted.map((n) => {
+      const str = config.strings[n.stringIndex];
+      return (str?.midi ?? 40) + n.fret;
+    });
     getFretboardAudioEngine().playChord(midis, 'arpeggio');
-  }, [activeVoicing]);
+  }, [activeCagedChord, config]);
 
   // Modo Progresiones: Secuenciador con reproducción continua
   const progTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -697,14 +725,16 @@ export default function FretboardPage() {
     instrument: InstrumentType;
     mode: StudyMode;
     root: string;
-    chord?: ChordKey;
+    cagedBoxId?: number;
+    cagedDegreeIndex?: number;
     scale?: ScaleKey;
     progression?: string;
   }) => {
     setInstrument(preset.instrument);
     setStudyMode(preset.mode);
     setRootNote(preset.root);
-    if (preset.chord) setChordKey(preset.chord);
+    if (preset.cagedBoxId) setActiveCagedBoxId(preset.cagedBoxId);
+    if (preset.cagedDegreeIndex !== undefined) setActiveChordDegreeIndex(preset.cagedDegreeIndex);
     if (preset.scale) setScaleKey(preset.scale);
     if (preset.progression) setSelectedProgressionId(preset.progression);
   };
@@ -730,16 +760,17 @@ export default function FretboardPage() {
               <button
                 onClick={() =>
                   applyPreset({
-                    instrument: 'bass_5',
+                    instrument: 'guitar_6',
                     mode: 'chords',
-                    root: 'D',
-                    chord: 'm7',
+                    root: 'C',
+                    cagedBoxId: 4,
+                    cagedDegreeIndex: 3,
                   })
                 }
                 className="px-2 py-1 rounded-lg text-[10px] font-mono font-bold bg-slate-200/80 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-[#0891b2] dark:text-cyan-300 border border-slate-300 dark:border-slate-700 transition-colors shrink-0"
-                title="Bajo 5C D m7"
+                title="Guitarra: IV - F (Forma E)"
               >
-                ⚡ D m7 (B5)
+                🎸 IV - F (Forma E)
               </button>
               <button
                 onClick={() =>
@@ -773,7 +804,7 @@ export default function FretboardPage() {
           </div>
 
           <p className="hidden sm:block text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-            Laboratorio interactivo de acordes, escalas modales e inversiones armónicas para{' '}
+            Laboratorio interactivo de acordes diatónicos CAGED, escalas modales e inversiones armónicas para{' '}
             <strong className="text-slate-900 dark:text-white">Guitarra (6C)</strong>,{' '}
             <strong className="text-[#0891b2] dark:text-cyan-400">Bajo (4C)</strong> y{' '}
             <strong className="text-fuchsia-600 dark:text-fuchsia-400">Bajo (5C con Low B)</strong>.
@@ -788,13 +819,6 @@ export default function FretboardPage() {
           onInstrumentChange={setInstrument}
           rootNote={rootNote}
           onRootNoteChange={setRootNote}
-          chordKey={chordKey}
-          onChordKeyChange={setChordKey}
-          voicings={voicings}
-          selectedVoicingIndex={selectedVoicingIndex}
-          onSelectVoicingIndex={setSelectedVoicingIndex}
-          onStrumVoicing={handleStrumVoicing}
-          onArpeggiateVoicing={handleArpeggiateVoicing}
           scaleKey={scaleKey}
           onScaleKeyChange={setScaleKey}
           displayMode={displayMode}
@@ -809,6 +833,23 @@ export default function FretboardPage() {
           bpm={bpm}
           onBpmChange={setBpm}
         />
+
+        {/* 3.0 Laboratorio de Armonía Diatónica CAGED (Pestaña Acordes) */}
+        {studyMode === 'chords' && (
+          <CagedHarmonicChordsView
+            selectedKeyRoot={rootNote}
+            onKeyRootChange={setRootNote}
+            activeCagedBoxId={activeCagedBoxId}
+            onSelectCagedBoxId={setActiveCagedBoxId}
+            activeChordDegreeIndex={activeChordDegreeIndex}
+            onSelectChordDegreeIndex={setActiveChordDegreeIndex}
+            onPlayStrum={handlePlayCagedStrum}
+            onPlayArpeggio={handlePlayCagedArpeggio}
+            displayMode={displayMode}
+            onDisplayModeChange={setDisplayMode}
+            instrumentType={instrument}
+          />
+        )}
 
         {/* 3.1 Controles Biomecánicos del Sistema Dual de Escalas (CAGED vs 3NPS) */}
         {studyMode === 'scales' && (
@@ -862,7 +903,7 @@ export default function FretboardPage() {
           onToggleRootInEditor={handleToggleRootInEditor}
           title={
             studyMode === 'chords'
-              ? `${rootNote} ${CHORDS_CATALOG[chordKey]?.name || ''}`
+              ? `${rootNote} Mayor • ${activeCagedChord?.fullName || ''} (${CAGED_BOX_DEFINITIONS.find((b) => b.id === activeCagedBoxId)?.shortLabel || ''})`
               : studyMode === 'scales'
               ? `${isEditorActive ? '🛠️ [MODO EDITOR ACTIVO] ' : isCustomFromDb ? '☁️ [PERSONALIZADO EN NUBE] ' : ''}${rootNote} ${SCALES_CATALOG[scaleKey]?.name || ''} • ${scaleSystem === 'caged' ? 'CAGED' : '3NPS'} (${(scaleSystem === 'caged' ? CAGED_BOXES : THREE_NPS_PATTERNS).find((p) => p.id === activePatternId)?.shortLabel || ''})`
               : `${rootNote} ${PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId)?.name || ''}`
@@ -874,10 +915,11 @@ export default function FretboardPage() {
           studyMode={studyMode}
           instrument={instrument}
           rootNote={rootNote}
-          chordKey={chordKey}
           scaleKey={scaleKey}
           selectedProgressionId={selectedProgressionId}
           currentProgressionStepIndex={currentProgressionStepIndex}
+          cagedChord={activeCagedChord}
+          cagedBoxName={CAGED_BOX_DEFINITIONS.find((b) => b.id === activeCagedBoxId)?.name}
         />
       </main>
     </div>

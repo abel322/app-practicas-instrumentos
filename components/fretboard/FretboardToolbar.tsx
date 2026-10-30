@@ -5,14 +5,12 @@ import {
   InstrumentType,
   INSTRUMENTS,
   DISPLAY_ROOTS,
-  CHORDS_CATALOG,
   ChordKey,
   SCALES_CATALOG,
   ScaleKey,
   SCALE_BOXES,
   PROGRESSIONS_CATALOG,
   ChordVoicing,
-  getVoicingShortLabel,
 } from '@/lib/music-theory/fretboard';
 import { NoteDisplayMode } from '@/lib/music-theory/scaleSystems';
 import {
@@ -38,14 +36,14 @@ interface FretboardToolbarProps {
   rootNote: string;
   onRootNoteChange: (root: string) => void;
 
-  // Modo 1: Acordes
-  chordKey: ChordKey;
-  onChordKeyChange: (chord: ChordKey) => void;
-  voicings: ChordVoicing[];
-  selectedVoicingIndex: number;
-  onSelectVoicingIndex: (idx: number) => void;
-  onStrumVoicing: () => void;
-  onArpeggiateVoicing: () => void;
+  // Modo 1: Acordes (Opcional - gestionado por CagedHarmonicChordsView)
+  chordKey?: ChordKey;
+  onChordKeyChange?: (chord: ChordKey) => void;
+  voicings?: ChordVoicing[];
+  selectedVoicingIndex?: number;
+  onSelectVoicingIndex?: (idx: number) => void;
+  onStrumVoicing?: () => void;
+  onArpeggiateVoicing?: () => void;
 
   // Modo 2: Escalas
   scaleKey: ScaleKey;
@@ -184,138 +182,11 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
         </button>
       </div>
 
-      {/* 3. Panel de Controles Ultra-Compacto según el Modo */}
-      <div className="p-2.5 sm:p-3 rounded-2xl bg-[#f8fafc] dark:bg-slate-900/80 border border-slate-300/80 dark:border-slate-800 shadow-sm backdrop-blur-xl flex flex-col gap-2 w-full min-w-0 transition-colors">
-        {/* ======================= MODO 1: ACORDES ======================= */}
-        {studyMode === 'chords' && (
-          <div className="flex flex-col gap-2 min-w-0">
-            {/* Cuadrícula de 2 Columnas para Tónica y Tipo de Acorde */}
-            <div className="grid grid-cols-2 gap-2 w-full">
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase font-bold">
-                  Tónica (Root)
-                </label>
-                <select
-                  value={rootNote}
-                  onChange={(e) => onRootNoteChange(e.target.value)}
-                  className="w-full h-9 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700/80 text-slate-900 dark:text-white text-xs font-mono font-bold rounded-xl px-2.5 focus:outline-none focus:border-cyan-400 cursor-pointer"
-                >
-                  {DISPLAY_ROOTS.map((r) => (
-                    <option key={r.value} value={r.value}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase font-bold">
-                  Tipo de Acorde
-                </label>
-                <select
-                  value={chordKey}
-                  onChange={(e) => onChordKeyChange(e.target.value as ChordKey)}
-                  className="w-full h-9 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700/80 text-slate-900 dark:text-white text-xs font-mono font-bold rounded-xl px-2.5 focus:outline-none focus:border-cyan-400 cursor-pointer"
-                >
-                  {Object.entries(CHORDS_CATALOG).map(([key, item]) => (
-                    <option key={key} value={key}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Fila de Utilidades: Rasguear / Arpegiar + Nombres/Intervalos */}
-            <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-slate-200 dark:border-slate-800/60">
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={onStrumVoicing}
-                  className="h-8 px-3 rounded-lg bg-[#0891b2] hover:bg-[#0e7490] text-white font-bold text-xs flex items-center gap-1.5 shadow-sm dark:bg-gradient-to-r dark:from-cyan-500 dark:to-cyan-600 dark:text-slate-950 dark:shadow-[0_0_10px_rgba(6,182,212,0.3)] transition-all active:scale-95"
-                >
-                  <Volume2 className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>Rasguear</span>
-                </button>
-                <button
-                  onClick={onArpeggiateVoicing}
-                  className="h-8 px-2.5 rounded-lg bg-slate-200/80 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-white font-bold text-xs flex items-center gap-1 border border-slate-300 dark:border-slate-700 transition-all active:scale-95"
-                >
-                  <Sparkles className="w-3 h-3 text-[#0891b2] dark:text-cyan-400" />
-                  <span>Arpegiar</span>
-                </button>
-              </div>
-
-              <div className="flex items-center gap-1 p-0.5 bg-slate-200/60 dark:bg-slate-950 rounded-lg border border-slate-300/60 dark:border-slate-800 text-[10px] font-mono">
-                <button
-                  onClick={() => onDisplayModeChange('notes')}
-                  className={`px-2 py-1 rounded-md transition-colors font-bold ${
-                    displayMode === 'notes'
-                      ? 'bg-[#0891b2]/15 text-[#0891b2] border border-[#0891b2]/30 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/40'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  Notas
-                </button>
-                <button
-                  onClick={() => onDisplayModeChange('degrees')}
-                  className={`px-2 py-1 rounded-md transition-colors font-bold ${
-                    displayMode === 'degrees' || displayMode === 'intervals'
-                      ? 'bg-[#0891b2]/15 text-[#0891b2] border border-[#0891b2]/30 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/40'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  Grados
-                </button>
-                <button
-                  onClick={() => onDisplayModeChange('fingers')}
-                  className={`px-2 py-1 rounded-md transition-colors font-bold ${
-                    displayMode === 'fingers'
-                      ? 'bg-emerald-500 text-slate-950 font-black shadow-sm ring-1 ring-emerald-300'
-                      : 'text-emerald-500 dark:text-emerald-400 hover:text-emerald-300'
-                  }`}
-                  title="Ver digitación (Dedos 1-4)"
-                >
-                  🖐️ Dedos
-                </button>
-              </div>
-            </div>
-
-            {/* Carrusel Horizontal de Posiciones con Etiquetas Cortas */}
-            <div className="flex flex-col gap-1 pt-1 border-t border-slate-200 dark:border-slate-800/60 min-w-0">
-              <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase font-bold">
-                Posición / Inversión:
-              </span>
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 w-full">
-                {voicings.length === 0 ? (
-                  <span className="text-xs text-slate-500">Calculando digitaciones...</span>
-                ) : (
-                  voicings.map((v, idx) => {
-                    const isSelected = selectedVoicingIndex === idx;
-                    const shortLabel = getVoicingShortLabel(v, idx);
-                    return (
-                      <button
-                        key={v.id}
-                        onClick={() => onSelectVoicingIndex(idx)}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all border shrink-0 flex items-center gap-1.5 ${
-                          isSelected
-                            ? 'bg-[#0891b2]/15 border-[#0891b2]/40 text-[#0891b2] dark:bg-cyan-500/20 dark:border-cyan-400 dark:text-cyan-300 shadow-sm'
-                            : 'bg-slate-50 dark:bg-slate-950/70 border-slate-300/80 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800'
-                        }`}
-                        title={v.name}
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#0891b2] dark:bg-cyan-500 shrink-0" />
-                        <span>{shortLabel}</span>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ======================= MODO 2: ESCALAS ======================= */}
-        {studyMode === 'scales' && (
+      {/* 3. Panel de Controles según el Modo (Escalas y Progresiones) */}
+      {studyMode !== 'chords' && (
+        <div className="p-2.5 sm:p-3 rounded-2xl bg-[#f8fafc] dark:bg-slate-900/80 border border-slate-300/80 dark:border-slate-800 shadow-sm backdrop-blur-xl flex flex-col gap-2 w-full min-w-0 transition-colors">
+          {/* ======================= MODO 2: ESCALAS ======================= */}
+          {studyMode === 'scales' && (
           <div className="flex flex-col gap-2 min-w-0">
             {/* Cuadrícula de 2 Columnas para Tónica y Escala */}
             <div className="grid grid-cols-2 gap-2 w-full">
@@ -488,6 +359,7 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 };
