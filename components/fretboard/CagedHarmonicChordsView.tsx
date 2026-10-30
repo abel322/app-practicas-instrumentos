@@ -260,3 +260,4 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
     </div>
   );
 };
+

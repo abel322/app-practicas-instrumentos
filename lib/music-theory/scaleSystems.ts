@@ -8,6 +8,7 @@ import {
   NoteRole,
 } from './fretboard';
 import { ActiveFretNote } from '@/components/fretboard/InteractiveFretboard';
+import { PositionZone } from '@/components/fretboard/PositionMapBrackets';
 import { ALL_SCALES_CATALOG, ScaleFormula } from './scaleDefinitions';
 
 export type ScaleSystemType = 'caged' | '3nps';
@@ -565,4 +566,147 @@ export function calculateScaleSystemNotes(
     fretRange: [minFret, maxFret],
     boxBaseFret,
   };
+}
+
+
+/**
+ * Calcula todas las zonas/posiciones a lo largo del mástil para el sistema de estudio seleccionado
+ */
+export function getScalePositionZones(
+  system: ScaleSystemType,
+  rootNote: string,
+  totalFrets: number = 24
+): PositionZone[] {
+  const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
+  const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
+  const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+
+  const zones: PositionZone[] = [];
+
+  if (system === 'caged') {
+    CAGED_BASE_BOXES.forEach((b) => {
+      let startF = b.baseMinFret + shift;
+      let endF = b.baseMaxFret + shift;
+
+      if (endF > totalFrets) {
+        startF -= 12;
+        endF -= 12;
+      } else if (startF < 0) {
+        startF += 12;
+        endF += 12;
+      }
+
+      zones.push({
+        id: b.id,
+        label: b.name,
+        shortLabel: b.shortLabel,
+        startFret: Math.max(0, startF),
+        endFret: Math.min(totalFrets, endF),
+      });
+
+      // Si la octava superior (+12) cabe en el mástil
+      const octStart = startF + 12;
+      const octEnd = endF + 12;
+      if (octStart <= totalFrets) {
+        zones.push({
+          id: b.id,
+          label: `${b.shortLabel} (8va)`,
+          shortLabel: `${b.shortLabel} 8va`,
+          startFret: octStart,
+          endFret: Math.min(totalFrets, octEnd),
+          isOctaveUp: true,
+        });
+      }
+    });
+  } else {
+    // 3NPS (7 Patrones)
+    THREE_NPS_BASE_PATTERNS.forEach((p) => {
+      let startF = p.baseMinFret + shift;
+      let endF = p.baseMaxFret + shift;
+
+      if (endF > totalFrets) {
+        startF -= 12;
+        endF -= 12;
+      } else if (startF < 0) {
+        startF += 12;
+        endF += 12;
+      }
+
+      zones.push({
+        id: p.id,
+        label: p.name,
+        shortLabel: p.shortLabel,
+        startFret: Math.max(0, startF),
+        endFret: Math.min(totalFrets, endF),
+      });
+
+      const octStart = startF + 12;
+      const octEnd = endF + 12;
+      if (octStart <= totalFrets) {
+        zones.push({
+          id: p.id,
+          label: `${p.shortLabel} (8va)`,
+          shortLabel: `${p.shortLabel} 8va`,
+          startFret: octStart,
+          endFret: Math.min(totalFrets, octEnd),
+          isOctaveUp: true,
+        });
+      }
+    });
+  }
+
+  return zones.sort((a, b) => a.startFret - b.startFret || a.endFret - b.endFret);
+}
+
+/**
+ * Calcula todas las notas de la escala a lo largo de todo el mástil (trastes 0 a 24)
+ */
+export function calculateFullNeckScaleNotes(
+  instrument: InstrumentType,
+  rootNote: string,
+  scaleKey: ScaleKey
+): ActiveFretNote[] {
+  const config = INSTRUMENTS[instrument];
+  const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
+  const formula = ALL_SCALES_CATALOG[scaleKey] || ALL_SCALES_CATALOG.major;
+  const totalFrets = config.totalFrets;
+
+  const notes: ActiveFretNote[] = [];
+
+  for (let sIdx = 0; sIdx < config.strings.length; sIdx++) {
+    const str = config.strings[sIdx];
+    for (let fret = 0; fret <= totalFrets; fret++) {
+      const fn = getFretNote(str.midi, fret);
+      const noteIdx = CHROMATIC_NOTES.indexOf(fn.note);
+      const semitones = (noteIdx - targetRootIdx + 12) % 12;
+
+      const intervalIdx = formula.intervals.indexOf(semitones);
+      if (intervalIdx !== -1) {
+        const degree = formula.degrees[intervalIdx];
+
+        let role: NoteRole = 'other';
+        if (degree === 'R') {
+          role = 'root';
+        } else if (degree.includes('3')) {
+          role = 'third';
+        } else if (degree.includes('5')) {
+          role = 'fifth';
+        } else if (degree.includes('7')) {
+          role = 'seventh';
+        }
+
+        notes.push({
+          stringIndex: sIdx,
+          fret,
+          note: fn.note,
+          interval: degree,
+          role,
+          fingerAssignment: { finger: 0, isStretch: false },
+          midi: fn.midi,
+        });
+      }
+    }
+  }
+
+  return notes;
 }

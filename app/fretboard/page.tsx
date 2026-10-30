@@ -30,10 +30,13 @@ import {
   getCagedBoxFretRange,
 } from '@/lib/music-theory/cagedHarmonics';
 import { CagedHarmonicChordsView } from '@/components/fretboard/CagedHarmonicChordsView';
+import { PositionMapBrackets } from '@/components/fretboard/PositionMapBrackets';
 import {
   ScaleSystemType,
   NoteDisplayMode,
   calculateScaleSystemNotes,
+  calculateFullNeckScaleNotes,
+  getScalePositionZones,
   CAGED_BOXES,
   THREE_NPS_PATTERNS,
 } from '@/lib/music-theory/scaleSystems';
@@ -69,6 +72,7 @@ export default function FretboardPage() {
   const [scaleKey, setScaleKey] = useState<ScaleKey>('major');
   const [scaleSystem, setScaleSystem] = useState<ScaleSystemType>('caged');
   const [activePatternId, setActivePatternId] = useState<number>(1);
+  const [scaleViewMode, setScaleViewMode] = useState<'single_box' | 'full_neck_map'>('single_box');
 
   // Estado de Persistencia en Base de Datos PostgreSQL
   const [customDbPattern, setCustomDbPattern] = useState<{
@@ -119,6 +123,17 @@ export default function FretboardPage() {
       activePatternId
     );
   }, [studyMode, instrument, rootNote, scaleKey, scaleSystem, activePatternId]);
+
+  // Zonas / Brackets de Posición a lo largo de todo el mástil (0 a 24 trastes)
+  const positionZones = useMemo(() => {
+    return getScalePositionZones(scaleSystem, rootNote, config.totalFrets);
+  }, [scaleSystem, rootNote, config.totalFrets]);
+
+  // Todas las notas de la escala en el mástil completo (0 a 24 trastes)
+  const fullNeckScaleNotes = useMemo(() => {
+    if (studyMode !== 'scales' || scaleViewMode !== 'full_neck_map') return [];
+    return calculateFullNeckScaleNotes(instrument, rootNote, scaleKey);
+  }, [studyMode, scaleViewMode, instrument, rootNote, scaleKey]);
 
   // Carga automática del patrón personalizado desde la Base de Datos PostgreSQL
   useEffect(() => {
@@ -503,12 +518,13 @@ export default function FretboardPage() {
     // MODO 2: ESCALAS Y MODOS (SISTEMA DUAL: CAGED vs 3NPS)
     // -------------------------------------------------------------
     if (studyMode === 'scales') {
+      let activeBoxNotes: ActiveFretNote[] = [];
+
       if (customDbPattern && customDbPattern.notesData.length > 0) {
         const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
         const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
         const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
 
-        const notes: ActiveFretNote[] = [];
         customDbPattern.notesData.forEach((item) => {
           const str = config.strings[item.stringIndex];
           if (!str) return;
@@ -520,7 +536,7 @@ export default function FretboardPage() {
           const fn = getFretNote(str.midi, f);
           const isRoot = !!item.isRoot;
 
-          notes.push({
+          activeBoxNotes.push({
             stringIndex: item.stringIndex,
             fret: f,
             note: fn.note,
@@ -539,10 +555,46 @@ export default function FretboardPage() {
             midi: fn.midi,
           });
         });
-        return notes;
+      } else if (scaleResult) {
+        activeBoxNotes = scaleResult.notes;
       }
 
-      return scaleResult ? scaleResult.notes : [];
+      // Si la vista es por caja individual, devolvemos las notas de la caja
+      if (scaleViewMode === 'single_box') {
+        return activeBoxNotes;
+      }
+
+      // Si la vista es Mástil Completo (Mapa de Posiciones):
+      const activeMap = new Map<string, ActiveFretNote>();
+      activeBoxNotes.forEach((n) => {
+        activeMap.set(`${n.stringIndex}_${n.fret}`, n);
+        if (n.fret + 12 <= config.totalFrets) {
+          activeMap.set(`${n.stringIndex}_${n.fret + 12}`, {
+            ...n,
+            fret: n.fret + 12,
+            midi: n.midi + 12,
+          });
+        }
+      });
+
+      return fullNeckScaleNotes.map((fn) => {
+        const key = `${fn.stringIndex}_${fn.fret}`;
+        const activeItem = activeMap.get(key);
+        if (activeItem) {
+          return {
+            ...fn,
+            finger: activeItem.finger,
+            fingerAssignment: activeItem.fingerAssignment,
+            isDimmed: false,
+          };
+        }
+        return {
+          ...fn,
+          finger: undefined,
+          fingerAssignment: { finger: 0, isStretch: false },
+          isDimmed: true,
+        };
+      });
     }
 
     // -------------------------------------------------------------
@@ -592,6 +644,8 @@ export default function FretboardPage() {
     editingGrid,
     customDbPattern,
     studyMode,
+    scaleViewMode,
+    fullNeckScaleNotes,
     activeCagedChord,
     rootNote,
     scaleResult,
@@ -616,6 +670,9 @@ export default function FretboardPage() {
       return getCagedBoxFretRange(activeCagedBoxId, rootNote);
     }
     if (studyMode === 'scales') {
+      if (scaleViewMode === 'full_neck_map') {
+        return scaleResult ? scaleResult.fretRange : [0, 24];
+      }
       if (customDbPattern && customDbPattern.notesData.length > 0) {
         const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
         const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
@@ -640,6 +697,7 @@ export default function FretboardPage() {
     editingGrid,
     customDbPattern,
     studyMode,
+    scaleViewMode,
     activeCagedBoxId,
     scaleResult,
     rootNote,
@@ -863,11 +921,13 @@ export default function FretboardPage() {
             onSelectPatternId={setActivePatternId}
             displayMode={displayMode}
             onDisplayModeChange={setDisplayMode}
+            scaleViewMode={scaleViewMode}
+            onScaleViewModeChange={setScaleViewMode}
           />
         )}
 
-        {/* 3.2 Barra del Editor Visual de Patrones y Generador de Código TS/JSON */}
-        {studyMode === 'scales' && (
+        {/* 3.2 Barra del Editor Visual de Patrones y Generador de Código TS/JSON (solo en vista por caja) */}
+        {studyMode === 'scales' && scaleViewMode === 'single_box' && (
           <ScalePatternExportBar
             isEditorActive={isEditorActive}
             onToggleEditor={handleToggleEditor}
@@ -898,14 +958,24 @@ export default function FretboardPage() {
           fretFocusRange={fretFocusRange}
           viewMode={fretboardViewMode}
           onViewModeChange={setFretboardViewMode}
-          isEditorActive={isEditorActive && studyMode === 'scales'}
+          isEditorActive={isEditorActive && studyMode === 'scales' && scaleViewMode === 'single_box'}
           onFretClickInEditor={handleFretClickInEditor}
           onToggleRootInEditor={handleToggleRootInEditor}
+          topBanner={
+            studyMode === 'scales' && scaleViewMode === 'full_neck_map' ? (
+              <PositionMapBrackets
+                zones={positionZones}
+                activeZoneId={activePatternId}
+                onSelectZone={setActivePatternId}
+                totalFrets={config.totalFrets}
+              />
+            ) : undefined
+          }
           title={
             studyMode === 'chords'
               ? `${rootNote} Mayor • ${activeCagedChord?.fullName || ''} (${CAGED_BOX_DEFINITIONS.find((b) => b.id === activeCagedBoxId)?.shortLabel || ''})`
               : studyMode === 'scales'
-              ? `${isEditorActive ? '🛠️ [MODO EDITOR ACTIVO] ' : isCustomFromDb ? '☁️ [PERSONALIZADO EN NUBE] ' : ''}${rootNote} ${SCALES_CATALOG[scaleKey]?.name || ''} • ${scaleSystem === 'caged' ? 'CAGED' : '3NPS'} (${(scaleSystem === 'caged' ? CAGED_BOXES : THREE_NPS_PATTERNS).find((p) => p.id === activePatternId)?.shortLabel || ''})`
+              ? `${scaleViewMode === 'full_neck_map' ? '🌐 [MÁSTIL COMPLETO] ' : ''}${isEditorActive ? '🛠️ [MODO EDITOR ACTIVO] ' : isCustomFromDb ? '☁️ [PERSONALIZADO EN NUBE] ' : ''}${rootNote} ${SCALES_CATALOG[scaleKey]?.name || ''} • ${scaleSystem === 'caged' ? 'CAGED' : '3NPS'} (${(scaleSystem === 'caged' ? CAGED_BOXES : THREE_NPS_PATTERNS).find((p) => p.id === activePatternId)?.shortLabel || ''})`
               : `${rootNote} ${PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId)?.name || ''}`
           }
         />

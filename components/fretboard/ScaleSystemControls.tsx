@@ -15,6 +15,8 @@ export interface ScaleSystemControlsProps {
   onSelectPatternId: (id: number) => void;
   displayMode: NoteDisplayMode;
   onDisplayModeChange: (mode: NoteDisplayMode) => void;
+  scaleViewMode?: 'single_box' | 'full_neck_map';
+  onScaleViewModeChange?: (mode: 'single_box' | 'full_neck_map') => void;
 }
 
 export function ScaleSystemControls({
@@ -23,14 +25,16 @@ export function ScaleSystemControls({
   activePatternId,
   onSelectPatternId,
   displayMode,
-  onDisplayModeChange
+  onDisplayModeChange,
+  scaleViewMode = 'single_box',
+  onScaleViewModeChange,
 }: ScaleSystemControlsProps) {
   const patterns = system === 'caged' ? CAGED_BOXES : THREE_NPS_PATTERNS;
 
   return (
     <div className="flex flex-col gap-2.5 w-full my-3 px-1 sm:px-0">
       
-      {/* Barra de Controles: Sistema + Triple Conmutador */}
+      {/* Barra de Controles: Sistema + Triple Conmutador + Modo Mástil Completo */}
       <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900/90 dark:bg-slate-950/90 p-2 sm:p-2.5 rounded-2xl border border-slate-800 shadow-md">
         
         {/* Selector de Sistema */}
@@ -64,6 +68,34 @@ export function ScaleSystemControls({
             ⚡ 3 Notas x Cuerda (7 Patrones)
           </button>
         </div>
+
+        {/* Selector de Sub-Vista: Por Caja Individual vs Mástil Completo (Mapa de Posiciones) */}
+        {onScaleViewModeChange && (
+          <div className="inline-flex p-1 bg-slate-950 dark:bg-slate-900 rounded-xl border border-slate-800 text-xs">
+            <button
+              type="button"
+              onClick={() => onScaleViewModeChange('single_box')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                scaleViewMode === 'single_box'
+                  ? 'bg-slate-700 text-white shadow-sm ring-1 ring-slate-500 font-black'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              📦 Por Caja Individual
+            </button>
+            <button
+              type="button"
+              onClick={() => onScaleViewModeChange('full_neck_map')}
+              className={`px-3 py-1.5 rounded-lg font-black transition-all flex items-center gap-1.5 ${
+                scaleViewMode === 'full_neck_map'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md ring-2 ring-cyan-400/40'
+                  : 'text-cyan-400 hover:text-cyan-300'
+              }`}
+            >
+              <span>🌐 Mástil Completo (Mapa de Posiciones)</span>
+            </button>
+          </div>
+        )}
 
         {/* Triple Switch: Notas / Grados / Dedos */}
         <div className="inline-flex p-1 bg-slate-950 dark:bg-slate-900 rounded-xl border border-slate-800 text-xs">

@@ -22,6 +22,7 @@ export interface ActiveFretNote {
   finger?: string;
   fingerAssignment?: FingerAssignment;
   midi: number;
+  isDimmed?: boolean;
 }
 
 export interface FretboardViewControlsProps {
@@ -117,6 +118,7 @@ export interface InteractiveFretboardProps {
   isEditorActive?: boolean;
   onFretClickInEditor?: (stringIndex: number, fret: number) => void;
   onToggleRootInEditor?: (e: React.MouseEvent, stringIndex: number, fret: number) => void;
+  topBanner?: React.ReactNode;
 }
 
 // Inlays estándar: simples en 3, 5, 7, 9, 15, 17, 19, 21; dobles en 12 y 24
@@ -135,6 +137,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   isEditorActive = false,
   onFretClickInEditor,
   onToggleRootInEditor,
+  topBanner,
 }) => {
   const { theme } = useTheme();
   const isLight = theme === 'light';
@@ -513,6 +516,9 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
           )}
         </div>
       </div>
+
+      {/* Franja Delimitadora de Posiciones / Top Banner (si se proporciona) */}
+      {topBanner}
 
       {/* 3. Contenedor Relativo para el Mástil y Flechas Flotantes */}
       <div className="relative w-full max-w-full">
@@ -1058,6 +1064,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                 <g
                   key={`active_${key}`}
                   data-fret={item.fret}
+                  className={item.isDimmed ? 'opacity-35 transition-opacity' : 'transition-opacity'}
                   onMouseEnter={() => setHoveredNote(item)}
                   onMouseLeave={() => setHoveredNote(null)}
                   onContextMenu={(e) => {

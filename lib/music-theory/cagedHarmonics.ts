@@ -697,3 +697,4 @@ export function getCagedBoxFretRange(boxId: number, keyRoot: string): [number, n
 
   return [Math.max(0, minFret), Math.min(24, maxFret)];
 }
+
