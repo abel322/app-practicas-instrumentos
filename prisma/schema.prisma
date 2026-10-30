@@ -52,3 +52,20 @@ model CustomScalePattern {
   @@index([instrumentType, system, scaleKey])
 }
 
+model CustomChordVoicing {
+  id             String   @id @default(cuid())
+  instrumentType String   // "guitar_6", "bass_4", "bass_5"
+  keyRoot        String   // "C", "D", "E", etc.
+  cagedBoxId     Int      // 1 a 5 (C, A, G, E, D)
+  extension      String   // "triad", "seventh", "ninth", "suspended"
+  degreeIndex    Int      // 0 a 6 (I al vii°)
+  chordName      String   // ej. "Cmaj7", "Dm9", "Gsus4"
+  notesData      Json     // Array: { stringIndex: number, fret: number, finger: number, intervalLabel: string, isRoot: boolean }[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([instrumentType, keyRoot, cagedBoxId, extension, degreeIndex], name: "voicing_unique_identifier")
+  @@index([instrumentType, keyRoot, cagedBoxId])
+}
+
+

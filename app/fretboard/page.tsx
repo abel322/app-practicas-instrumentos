@@ -28,6 +28,8 @@ import {
   CAGED_BOX_DEFINITIONS,
   getCagedDiatonicChords,
   getCagedBoxFretRange,
+  ChordExtensionFamily,
+  getIntervalLabel,
 } from '@/lib/music-theory/cagedHarmonics';
 import { CagedHarmonicChordsView } from '@/components/fretboard/CagedHarmonicChordsView';
 import { PositionMapBrackets } from '@/components/fretboard/PositionMapBrackets';
@@ -48,6 +50,12 @@ import {
   resetScalePatternAction,
   ScaleNotePayload,
 } from '@/app/actions/scalePatternActions';
+import {
+  getCustomChordVoicingAction,
+  saveChordVoicingAction,
+  resetChordVoicingAction,
+  ChordNotePayload,
+} from '@/app/actions/chordVoicingActions';
 
 export interface EditableNote {
   fret: number;
@@ -67,6 +75,13 @@ export default function FretboardPage() {
   // Estado Modo 1: Laboratorio de Armonía Diatónica CAGED (7 Acordes por Forma)
   const [activeCagedBoxId, setActiveCagedBoxId] = useState<number>(1);
   const [activeChordDegreeIndex, setActiveChordDegreeIndex] = useState<number>(0);
+  const [activeExtensionFamily, setActiveExtensionFamily] = useState<ChordExtensionFamily>('triad');
+
+  // Estado Modo Editor Visual y Persistencia de Acordes en PostgreSQL
+  const [isChordEditorActive, setIsChordEditorActive] = useState<boolean>(false);
+  const [customChordNotes, setCustomChordNotes] = useState<ChordNotePayload[] | null>(null);
+  const [isCustomChordFromDb, setIsCustomChordFromDb] = useState<boolean>(false);
+  const [isSavingChordDb, setIsSavingChordDb] = useState<boolean>(false);
 
   // Estado Modo 2: Escalas y Sistema Dual (CAGED vs 3NPS)
   const [scaleKey, setScaleKey] = useState<ScaleKey>('major');
@@ -96,11 +111,11 @@ export default function FretboardPage() {
 
   const config = INSTRUMENTS[instrument];
 
-  // Voicings de los 7 Acordes Diatónicos en CAGED
+  // Voicings de los 7 Acordes Diatónicos en CAGED con Selector de Extensiones
   const cagedChords: CagedChordVoicing[] = useMemo(() => {
     if (studyMode !== 'chords') return [];
-    return getCagedDiatonicChords(rootNote, activeCagedBoxId, instrument);
-  }, [studyMode, rootNote, activeCagedBoxId, instrument]);
+    return getCagedDiatonicChords(rootNote, activeCagedBoxId, instrument, activeExtensionFamily);
+  }, [studyMode, rootNote, activeCagedBoxId, instrument, activeExtensionFamily]);
 
   // Si cambia la caja o tonalidad, asegurar índice de grado seguro
   useEffect(() => {
@@ -109,8 +124,23 @@ export default function FretboardPage() {
     }
   }, [activeChordDegreeIndex]);
 
-  const activeCagedChord: CagedChordVoicing | undefined =
-    cagedChords[activeChordDegreeIndex] || cagedChords[0];
+  const activeCagedChord: CagedChordVoicing | undefined = useMemo(() => {
+    const baseChord = cagedChords[activeChordDegreeIndex] || cagedChords[0];
+    if (!baseChord) return undefined;
+    if (customChordNotes !== null) {
+      return {
+        ...baseChord,
+        notes: customChordNotes.map((n) => ({
+          stringIndex: n.stringIndex,
+          fret: n.fret,
+          finger: n.finger,
+          intervalLabel: n.intervalLabel,
+          isRoot: n.isRoot,
+        })),
+      };
+    }
+    return baseChord;
+  }, [cagedChords, activeChordDegreeIndex, customChordNotes]);
 
   // Cálculo Teórico y Biomecánico del Sistema Dual de Escalas
   const scaleResult = useMemo(() => {
@@ -166,12 +196,57 @@ export default function FretboardPage() {
     };
   }, [studyMode, instrument, scaleSystem, scaleKey, activePatternId]);
 
-  // Si se cambia de modo (ej. a acordes o progresiones), desactivar el editor
+  // Carga automática del voicing de acorde personalizado desde la Base de Datos PostgreSQL
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (studyMode === 'chords') {
+      getCustomChordVoicingAction(
+        instrument,
+        rootNote,
+        activeCagedBoxId,
+        activeExtensionFamily,
+        activeChordDegreeIndex
+      ).then((res) => {
+        if (isCancelled) return;
+        if (res.success && res.data && Array.isArray(res.data.notesData)) {
+          setCustomChordNotes(res.data.notesData as unknown as ChordNotePayload[]);
+          setIsCustomChordFromDb(true);
+        } else {
+          setCustomChordNotes(null);
+          setIsCustomChordFromDb(false);
+        }
+      });
+    } else {
+      setCustomChordNotes(null);
+      setIsCustomChordFromDb(false);
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    studyMode,
+    instrument,
+    rootNote,
+    activeCagedBoxId,
+    activeExtensionFamily,
+    activeChordDegreeIndex,
+  ]);
+
+  // Si se cambia de modo (ej. a acordes o progresiones), desactivar el editor de escalas
   useEffect(() => {
     if (studyMode !== 'scales' && isEditorActive) {
       setIsEditorActive(false);
     }
   }, [studyMode, isEditorActive]);
+
+  // Si se cambia de modo (ej. a escalas o progresiones), desactivar el editor de acordes
+  useEffect(() => {
+    if (studyMode !== 'chords' && isChordEditorActive) {
+      setIsChordEditorActive(false);
+    }
+  }, [studyMode, isChordEditorActive]);
 
   // Manejador para abrir/cerrar editor cargando las notas actuales de la caja
   const handleToggleEditor = useCallback(() => {
@@ -425,6 +500,174 @@ export default function FretboardPage() {
     },
     [isEditorActive]
   );
+
+  // Manejador para abrir/cerrar editor de acordes
+  const handleToggleChordEditor = useCallback(() => {
+    setIsChordEditorActive((prev) => {
+      const next = !prev;
+      if (next && customChordNotes === null && activeCagedChord) {
+        setCustomChordNotes(
+          activeCagedChord.notes.map((n) => ({
+            stringIndex: n.stringIndex,
+            fret: n.fret,
+            finger: n.finger,
+            intervalLabel: n.intervalLabel,
+            isRoot: n.isRoot,
+          }))
+        );
+      }
+      return next;
+    });
+  }, [customChordNotes, activeCagedChord]);
+
+  // Clic en traste durante la edición de acordes: añadir / ciclar dedo (1->2->3->4->eliminar)
+  const handleChordFretClick = useCallback(
+    (stringIndex: number, fret: number) => {
+      if (!isChordEditorActive) return;
+
+      setCustomChordNotes((prev) => {
+        const currentNotes: ChordNotePayload[] =
+          prev !== null
+            ? prev
+            : (activeCagedChord?.notes.map((n) => ({
+                stringIndex: n.stringIndex,
+                fret: n.fret,
+                finger: n.finger,
+                intervalLabel: n.intervalLabel,
+                isRoot: n.isRoot,
+              })) || []);
+
+        const existingSameFretIndex = currentNotes.findIndex(
+          (n) => n.stringIndex === stringIndex && n.fret === fret
+        );
+
+        if (existingSameFretIndex !== -1) {
+          const existing = currentNotes[existingSameFretIndex];
+          if (existing.finger < 4) {
+            const updated = [...currentNotes];
+            updated[existingSameFretIndex] = { ...existing, finger: existing.finger + 1 };
+            return updated;
+          } else {
+            return currentNotes.filter((_, idx) => idx !== existingSameFretIndex);
+          }
+        } else {
+          // Reemplaza cualquier otra nota en la misma cuerda (en acorde cada cuerda pulsa un solo traste)
+          const filtered = currentNotes.filter((n) => n.stringIndex !== stringIndex);
+          const str = config.strings[stringIndex];
+          const fn = getFretNote(str?.midi ?? 40, fret);
+          const chordRoot = activeCagedChord ? activeCagedChord.rootNote : rootNote;
+          const interval = getIntervalLabel(fn.note, chordRoot);
+          const isRoot = interval === 'R';
+          return [
+            ...filtered,
+            {
+              stringIndex,
+              fret,
+              finger: 1,
+              intervalLabel: interval,
+              isRoot,
+            },
+          ].sort((a, b) => b.stringIndex - a.stringIndex);
+        }
+      });
+    },
+    [isChordEditorActive, activeCagedChord, config.strings, rootNote]
+  );
+
+  // Clic secundario (derecho) en traste durante la edición de acordes: alternar Fundamental (Root)
+  const handleChordToggleRoot = useCallback(
+    (e: React.MouseEvent, stringIndex: number, fret: number) => {
+      e.preventDefault();
+      if (!isChordEditorActive) return;
+
+      setCustomChordNotes((prev) => {
+        const currentNotes: ChordNotePayload[] =
+          prev !== null
+            ? prev
+            : (activeCagedChord?.notes.map((n) => ({
+                stringIndex: n.stringIndex,
+                fret: n.fret,
+                finger: n.finger,
+                intervalLabel: n.intervalLabel,
+                isRoot: n.isRoot,
+              })) || []);
+
+        const idx = currentNotes.findIndex((n) => n.stringIndex === stringIndex && n.fret === fret);
+        if (idx === -1) return prev;
+
+        const updated = [...currentNotes];
+        const target = updated[idx];
+        const newIsRoot = !target.isRoot;
+
+        const str = config.strings[stringIndex];
+        const fn = getFretNote(str?.midi ?? 40, fret);
+        const chordRoot = activeCagedChord ? activeCagedChord.rootNote : rootNote;
+        const interval = newIsRoot ? 'R' : getIntervalLabel(fn.note, chordRoot);
+
+        updated[idx] = {
+          ...target,
+          isRoot: newIsRoot,
+          intervalLabel: interval,
+        };
+        return updated;
+      });
+    },
+    [isChordEditorActive, activeCagedChord, config.strings, rootNote]
+  );
+
+  // Guardar acorde en PostgreSQL
+  const handleSaveChordToDb = useCallback(async () => {
+    if (!activeCagedChord) return;
+    setIsSavingChordDb(true);
+    try {
+      const notesToSave: ChordNotePayload[] = (
+        customChordNotes !== null ? customChordNotes : activeCagedChord.notes
+      ).map((n) => ({
+        stringIndex: n.stringIndex,
+        fret: n.fret,
+        finger: n.finger,
+        intervalLabel: n.intervalLabel,
+        isRoot: n.isRoot,
+      }));
+
+      const res = await saveChordVoicingAction({
+        instrumentType: instrument,
+        keyRoot: rootNote,
+        cagedBoxId: activeCagedBoxId,
+        extension: activeExtensionFamily,
+        degreeIndex: activeChordDegreeIndex,
+        chordName: activeCagedChord.chordName,
+        notesData: notesToSave,
+      });
+
+      if (res.success) {
+        setIsCustomChordFromDb(true);
+      }
+    } finally {
+      setIsSavingChordDb(false);
+    }
+  }, [
+    activeCagedChord,
+    customChordNotes,
+    instrument,
+    rootNote,
+    activeCagedBoxId,
+    activeExtensionFamily,
+    activeChordDegreeIndex,
+  ]);
+
+  // Restablecer acorde eliminando el registro de PostgreSQL
+  const handleResetChordDb = useCallback(async () => {
+    await resetChordVoicingAction(
+      instrument,
+      rootNote,
+      activeCagedBoxId,
+      activeExtensionFamily,
+      activeChordDegreeIndex
+    );
+    setCustomChordNotes(null);
+    setIsCustomChordFromDb(false);
+  }, [instrument, rootNote, activeCagedBoxId, activeExtensionFamily, activeChordDegreeIndex]);
 
   // Rango mínimo y máximo del patrón actualmente editado
   const { editorMinFret, editorMaxFret } = useMemo(() => {
@@ -901,11 +1144,19 @@ export default function FretboardPage() {
             onSelectCagedBoxId={setActiveCagedBoxId}
             activeChordDegreeIndex={activeChordDegreeIndex}
             onSelectChordDegreeIndex={setActiveChordDegreeIndex}
+            activeExtensionFamily={activeExtensionFamily}
+            onSelectExtensionFamily={setActiveExtensionFamily}
             onPlayStrum={handlePlayCagedStrum}
             onPlayArpeggio={handlePlayCagedArpeggio}
             displayMode={displayMode}
             onDisplayModeChange={setDisplayMode}
             instrumentType={instrument}
+            isEditing={isChordEditorActive}
+            onToggleEditing={handleToggleChordEditor}
+            onSaveToDB={handleSaveChordToDb}
+            onResetFactory={handleResetChordDb}
+            isSaving={isSavingChordDb}
+            isCustom={isCustomChordFromDb}
           />
         )}
 
@@ -958,9 +1209,12 @@ export default function FretboardPage() {
           fretFocusRange={fretFocusRange}
           viewMode={fretboardViewMode}
           onViewModeChange={setFretboardViewMode}
-          isEditorActive={isEditorActive && studyMode === 'scales' && scaleViewMode === 'single_box'}
-          onFretClickInEditor={handleFretClickInEditor}
-          onToggleRootInEditor={handleToggleRootInEditor}
+          isEditorActive={
+            (isEditorActive && studyMode === 'scales' && scaleViewMode === 'single_box') ||
+            (isChordEditorActive && studyMode === 'chords')
+          }
+          onFretClickInEditor={studyMode === 'chords' ? handleChordFretClick : handleFretClickInEditor}
+          onToggleRootInEditor={studyMode === 'chords' ? handleChordToggleRoot : handleToggleRootInEditor}
           topBanner={
             studyMode === 'scales' && scaleViewMode === 'full_neck_map' ? (
               <PositionMapBrackets
