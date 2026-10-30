@@ -32,6 +32,12 @@ import {
   getIntervalLabel,
   HARMONIC_FAMILIES_CONFIG,
 } from '@/lib/music-theory/cagedHarmonics';
+import {
+  ChordTensionVariation,
+  getVariationsForDegree,
+  applyChordTensionVariation,
+  isStandardVariation,
+} from '@/lib/music-theory/chordVariationsCatalog';
 import { CagedHarmonicChordsView } from '@/components/fretboard/CagedHarmonicChordsView';
 import { PositionMapBrackets } from '@/components/fretboard/PositionMapBrackets';
 import {
@@ -77,6 +83,7 @@ export default function FretboardPage() {
   const [activeCagedBoxId, setActiveCagedBoxId] = useState<number>(1);
   const [activeChordDegreeIndex, setActiveChordDegreeIndex] = useState<number>(0);
   const [activeExtensionFamily, setActiveExtensionFamily] = useState<ChordExtensionFamily>('triad');
+  const [activeVariationId, setActiveVariationId] = useState<string>('dom_std');
 
   // Estado Modo Editor Visual y Persistencia de Acordes en PostgreSQL
   const [isChordEditorActive, setIsChordEditorActive] = useState<boolean>(false);
@@ -125,6 +132,30 @@ export default function FretboardPage() {
     }
   }, [activeChordDegreeIndex]);
 
+  // Lista de Variaciones Armónicas Contextuales para el grado activo
+  const degreeVariations = useMemo(() => {
+    return getVariationsForDegree(activeChordDegreeIndex, rootNote);
+  }, [activeChordDegreeIndex, rootNote]);
+
+  // Sincronizar activeVariationId cuando cambia el grado
+  useEffect(() => {
+    if (!degreeVariations.some((v) => v.id === activeVariationId)) {
+      setActiveVariationId(degreeVariations[0]?.id || 'std');
+    }
+  }, [degreeVariations, activeVariationId]);
+
+  const activeVariation = useMemo(() => {
+    return degreeVariations.find((v) => v.id === activeVariationId) || degreeVariations[0];
+  }, [degreeVariations, activeVariationId]);
+
+  // Clave de extensión efectiva para persistencia en PostgreSQL (CustomChordVoicing.extension)
+  const effectiveChordExtensionKey = useMemo(() => {
+    if (!activeVariation || isStandardVariation(activeVariation.id)) {
+      return activeExtensionFamily;
+    }
+    return activeVariation.id;
+  }, [activeVariation, activeExtensionFamily]);
+
   const activeCagedChord: CagedChordVoicing | undefined = useMemo(() => {
     const baseChord = cagedChords[activeChordDegreeIndex] || cagedChords[0];
     if (!baseChord) return undefined;
@@ -140,8 +171,25 @@ export default function FretboardPage() {
         })),
       };
     }
+    if (activeVariation) {
+      return applyChordTensionVariation(
+        baseChord,
+        activeVariation,
+        rootNote,
+        activeCagedBoxId,
+        instrument
+      );
+    }
     return baseChord;
-  }, [cagedChords, activeChordDegreeIndex, customChordNotes]);
+  }, [
+    cagedChords,
+    activeChordDegreeIndex,
+    customChordNotes,
+    activeVariation,
+    rootNote,
+    activeCagedBoxId,
+    instrument,
+  ]);
 
   // Cálculo Teórico y Biomecánico del Sistema Dual de Escalas
   const scaleResult = useMemo(() => {
@@ -206,7 +254,7 @@ export default function FretboardPage() {
         instrument,
         rootNote,
         activeCagedBoxId,
-        activeExtensionFamily,
+        effectiveChordExtensionKey,
         activeChordDegreeIndex
       ).then((res) => {
         if (isCancelled) return;
@@ -231,7 +279,7 @@ export default function FretboardPage() {
     instrument,
     rootNote,
     activeCagedBoxId,
-    activeExtensionFamily,
+    effectiveChordExtensionKey,
     activeChordDegreeIndex,
   ]);
 
@@ -637,7 +685,7 @@ export default function FretboardPage() {
         instrumentType: instrument,
         keyRoot: rootNote,
         cagedBoxId: activeCagedBoxId,
-        extension: activeExtensionFamily,
+        extension: effectiveChordExtensionKey,
         degreeIndex: activeChordDegreeIndex,
         chordName: activeCagedChord.chordName,
         notesData: notesToSave,
@@ -655,7 +703,7 @@ export default function FretboardPage() {
     instrument,
     rootNote,
     activeCagedBoxId,
-    activeExtensionFamily,
+    effectiveChordExtensionKey,
     activeChordDegreeIndex,
   ]);
 
@@ -665,12 +713,12 @@ export default function FretboardPage() {
       instrument,
       rootNote,
       activeCagedBoxId,
-      activeExtensionFamily,
+      effectiveChordExtensionKey,
       activeChordDegreeIndex
     );
     setCustomChordNotes(null);
     setIsCustomChordFromDb(false);
-  }, [instrument, rootNote, activeCagedBoxId, activeExtensionFamily, activeChordDegreeIndex]);
+  }, [instrument, rootNote, activeCagedBoxId, effectiveChordExtensionKey, activeChordDegreeIndex]);
 
   // Rango mínimo y máximo del patrón actualmente editado
   const { editorMinFret, editorMaxFret } = useMemo(() => {
@@ -1146,7 +1194,10 @@ export default function FretboardPage() {
             activeCagedBoxId={activeCagedBoxId}
             onSelectCagedBoxId={setActiveCagedBoxId}
             activeChordDegreeIndex={activeChordDegreeIndex}
-            onSelectChordDegreeIndex={setActiveChordDegreeIndex}
+            onSelectChordDegreeIndex={(degIdx) => {
+              setActiveChordDegreeIndex(degIdx);
+              setCustomChordNotes(null);
+            }}
             activeExtensionFamily={activeExtensionFamily}
             onSelectExtensionFamily={setActiveExtensionFamily}
             onPlayStrum={handlePlayCagedStrum}
@@ -1160,6 +1211,12 @@ export default function FretboardPage() {
             onResetFactory={handleResetChordDb}
             isSaving={isSavingChordDb}
             isCustom={isCustomChordFromDb}
+            activeVariationId={activeVariationId}
+            onSelectVariation={(v) => {
+              setActiveVariationId(v.id);
+              setCustomChordNotes(null);
+            }}
+            activeChordOverride={activeCagedChord}
           />
         )}
 

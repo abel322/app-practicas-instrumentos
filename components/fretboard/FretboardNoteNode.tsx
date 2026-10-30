@@ -27,7 +27,20 @@ export function FretboardNoteNode({
   // Detección de intervalos armónicos
   const isThird = degreeLabel === '3' || degreeLabel === 'b3';
   const isFifth = degreeLabel === '5' || degreeLabel === 'b5';
-  const isSeventh = degreeLabel === '7' || degreeLabel === 'b7';
+  const isSeventh = degreeLabel === '7' || degreeLabel === 'b7' || degreeLabel === 'bb7';
+  const isAlteredTension =
+    degreeLabel === '#9' ||
+    degreeLabel === 'b9' ||
+    degreeLabel === '#11' ||
+    degreeLabel === 'b13' ||
+    degreeLabel === '7alt';
+  const isSixthOrExtension =
+    degreeLabel === '6' ||
+    degreeLabel === '9' ||
+    degreeLabel === 'add9' ||
+    degreeLabel === '11' ||
+    degreeLabel === '13' ||
+    degreeLabel === '4';
 
   // Estilo visual del círculo de nota
   let nodeStyle = 'bg-slate-900/90 text-white border border-slate-600';
@@ -37,6 +50,12 @@ export function FretboardNoteNode({
   } else if (isStretch && displayMode === 'fingers') {
     nodeStyle =
       'bg-amber-400 text-slate-950 ring-2 ring-amber-300/80 font-black shadow-amber-500/20';
+  } else if (isAlteredTension) {
+    nodeStyle =
+      'bg-rose-500 text-white ring-2 ring-rose-400/80 font-black shadow-[0_0_10px_rgba(244,63,94,0.6)]';
+  } else if (isSixthOrExtension) {
+    nodeStyle =
+      'bg-emerald-500 text-slate-950 ring-2 ring-emerald-300/80 font-black shadow-[0_0_10px_rgba(16,185,129,0.5)]';
   } else if (isThird) {
     nodeStyle =
       'bg-fuchsia-600 text-white ring-2 ring-fuchsia-400/50 font-black shadow-[0_0_8px_rgba(217,70,239,0.5)]';

@@ -12,6 +12,11 @@ import { NoteDisplayMode } from '@/lib/music-theory/scaleSystems';
 import { Volume2, Sparkles, Layers, Music2, SlidersHorizontal } from 'lucide-react';
 import { ChordEditToolbar } from './ChordEditToolbar';
 import { ChordExtensionSelector, EXTENSION_FAMILIES_LIST } from './ChordExtensionSelector';
+import {
+  ChordTensionVariation,
+  getVariationsForDegree,
+} from '@/lib/music-theory/chordVariationsCatalog';
+import { ChordVariationChips } from './ChordVariationChips';
 
 interface CagedHarmonicChordsViewProps {
   selectedKeyRoot: string;
@@ -34,6 +39,10 @@ interface CagedHarmonicChordsViewProps {
   onResetFactory?: () => void;
   isSaving?: boolean;
   isCustom?: boolean;
+  // Variaciones Contextuales de Tensiones
+  activeVariationId?: string;
+  onSelectVariation?: (variation: ChordTensionVariation) => void;
+  activeChordOverride?: CagedChordVoicing;
 }
 
 export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = ({
@@ -56,6 +65,9 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
   onResetFactory,
   isSaving = false,
   isCustom = false,
+  activeVariationId,
+  onSelectVariation,
+  activeChordOverride,
 }) => {
   // Obtenemos los 7 acordes diatónicos calculados para la tonalidad, caja activa y familia de extensiones
   const diatonicChords: CagedChordVoicing[] = getCagedDiatonicChords(
@@ -65,7 +77,11 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
     activeExtensionFamily
   );
 
-  const activeChord = diatonicChords[activeChordDegreeIndex] || diatonicChords[0];
+  const baseActiveChord = diatonicChords[activeChordDegreeIndex] || diatonicChords[0];
+  const variations = getVariationsForDegree(activeChordDegreeIndex, selectedKeyRoot);
+  const currentVariationId = activeVariationId || (variations[0]?.id ?? '');
+
+  const activeChord = activeChordOverride || baseActiveChord;
   const activeBoxMeta =
     CAGED_BOX_DEFINITIONS.find((b) => b.id === activeCagedBoxId) || CAGED_BOX_DEFINITIONS[0];
 
@@ -227,6 +243,16 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
             );
           })}
         </div>
+
+        {/* 3.1 Selector Contextual de Tensiones y Variaciones del Acorde */}
+        {onSelectVariation && variations.length > 1 && (
+          <ChordVariationChips
+            variations={variations}
+            activeVariationId={currentVariationId}
+            onSelectVariation={onSelectVariation}
+            chordBaseLabel={`${baseActiveChord?.rootNote || selectedKeyRoot} (${baseActiveChord?.degreeRoman || 'I'})`}
+          />
+        )}
       </div>
 
       {/* 4. Barra de Edición Visual de Acordes (CRUD en PostgreSQL) */}
