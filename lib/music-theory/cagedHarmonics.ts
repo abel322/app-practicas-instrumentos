@@ -1,6 +1,13 @@
 import { CHROMATIC_NOTES, InstrumentType } from './fretboard';
 
-export type ChordExtensionFamily = 'triad' | 'seventh' | 'ninth' | 'suspended';
+export type ChordExtensionFamily = 
+  | 'triad' 
+  | 'seventh' 
+  | 'ninth' 
+  | 'eleventh' 
+  | 'thirteenth' 
+  | 'added' 
+  | 'suspended';
 
 export interface ChordFormulaDefinition {
   degreeIndex: number;
@@ -8,10 +15,11 @@ export interface ChordFormulaDefinition {
   labelSuffix: string;
   fullNameSuffix: string;
   chordType: 'maj' | 'min' | 'dim' | 'dom7' | 'sus';
-  intervals: { label: string; semitones: number }[];
+  intervals: { label: string; semitones: number; isOmitRecommended?: boolean }[];
 }
 
 export const HARMONIC_FAMILIES_CONFIG: Record<ChordExtensionFamily, ChordFormulaDefinition[]> = {
+  // 1. TRÍADAS (R - 3 - 5)
   triad: [
     { degreeIndex: 0, roman: 'I', labelSuffix: '', fullNameSuffix: 'Mayor', chordType: 'maj', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: '5', semitones: 7 }] },
     { degreeIndex: 1, roman: 'ii', labelSuffix: 'm', fullNameSuffix: 'menor', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: '5', semitones: 7 }] },
@@ -21,6 +29,8 @@ export const HARMONIC_FAMILIES_CONFIG: Record<ChordExtensionFamily, ChordFormula
     { degreeIndex: 5, roman: 'vi', labelSuffix: 'm', fullNameSuffix: 'menor', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: '5', semitones: 7 }] },
     { degreeIndex: 6, roman: 'vii°', labelSuffix: 'dim', fullNameSuffix: 'disminuido', chordType: 'dim', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b5', semitones: 6 }] },
   ],
+
+  // 2. SÉPTIMAS (R - 3 - 5 - 7)
   seventh: [
     { degreeIndex: 0, roman: 'I', labelSuffix: 'maj7', fullNameSuffix: 'Maj7', chordType: 'maj', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: '5', semitones: 7 }, { label: '7', semitones: 11 }] },
     { degreeIndex: 1, roman: 'ii', labelSuffix: 'm7', fullNameSuffix: 'menor 7', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: '5', semitones: 7 }, { label: 'b7', semitones: 10 }] },
@@ -30,15 +40,52 @@ export const HARMONIC_FAMILIES_CONFIG: Record<ChordExtensionFamily, ChordFormula
     { degreeIndex: 5, roman: 'vi', labelSuffix: 'm7', fullNameSuffix: 'menor 7', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: '5', semitones: 7 }, { label: 'b7', semitones: 10 }] },
     { degreeIndex: 6, roman: 'vii°', labelSuffix: 'm7b5', fullNameSuffix: 'Semidisminuido', chordType: 'dim', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b5', semitones: 6 }, { label: 'b7', semitones: 10 }] },
   ],
+
+  // 3. NOVENAS (R - 3 - [5 omitible] - 7 - 9)
   ninth: [
-    { degreeIndex: 0, roman: 'I', labelSuffix: 'maj9', fullNameSuffix: 'Maj9', chordType: 'maj', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: '5', semitones: 7 }, { label: '7', semitones: 11 }, { label: '9', semitones: 2 }] },
-    { degreeIndex: 1, roman: 'ii', labelSuffix: 'm9', fullNameSuffix: 'menor 9', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: '5', semitones: 7 }, { label: 'b7', semitones: 10 }, { label: '9', semitones: 2 }] },
-    { degreeIndex: 2, roman: 'iii', labelSuffix: 'm(b9)', fullNameSuffix: 'menor b9', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: '5', semitones: 7 }, { label: 'b7', semitones: 10 }, { label: 'b9', semitones: 1 }] },
-    { degreeIndex: 3, roman: 'IV', labelSuffix: 'maj9', fullNameSuffix: 'Maj9', chordType: 'maj', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: '5', semitones: 7 }, { label: '7', semitones: 11 }, { label: '9', semitones: 2 }] },
-    { degreeIndex: 4, roman: 'V', labelSuffix: '9', fullNameSuffix: 'Dominante 9', chordType: 'dom7', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: '5', semitones: 7 }, { label: 'b7', semitones: 10 }, { label: '9', semitones: 2 }] },
-    { degreeIndex: 5, roman: 'vi', labelSuffix: 'm9', fullNameSuffix: 'menor 9', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: '5', semitones: 7 }, { label: 'b7', semitones: 10 }, { label: '9', semitones: 2 }] },
-    { degreeIndex: 6, roman: 'vii°', labelSuffix: 'dim(b9)', fullNameSuffix: 'disminuido b9', chordType: 'dim', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b5', semitones: 6 }, { label: 'b7', semitones: 10 }] },
+    { degreeIndex: 0, roman: 'I', labelSuffix: 'maj9', fullNameSuffix: 'Maj9', chordType: 'maj', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: '7', semitones: 11 }, { label: '9', semitones: 2 }] },
+    { degreeIndex: 1, roman: 'ii', labelSuffix: 'm9', fullNameSuffix: 'menor 9', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b7', semitones: 10 }, { label: '9', semitones: 2 }] },
+    { degreeIndex: 2, roman: 'iii', labelSuffix: 'm(b9)', fullNameSuffix: 'menor (b9)', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b7', semitones: 10 }, { label: 'b9', semitones: 1 }] },
+    { degreeIndex: 3, roman: 'IV', labelSuffix: 'maj9', fullNameSuffix: 'Maj9', chordType: 'maj', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: '7', semitones: 11 }, { label: '9', semitones: 2 }] },
+    { degreeIndex: 4, roman: 'V', labelSuffix: '9', fullNameSuffix: 'Dominante 9', chordType: 'dom7', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: 'b7', semitones: 10 }, { label: '9', semitones: 2 }] },
+    { degreeIndex: 5, roman: 'vi', labelSuffix: 'm9', fullNameSuffix: 'menor 9', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b7', semitones: 10 }, { label: '9', semitones: 2 }] },
+    { degreeIndex: 6, roman: 'vii°', labelSuffix: 'dim(b9)', fullNameSuffix: 'disminuido (b9)', chordType: 'dim', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b5', semitones: 6 }, { label: 'b7', semitones: 10 }, { label: 'b9', semitones: 1 }] },
   ],
+
+  // 4. ONCENAS (Guitar-Friendly: 5ª Omitida, 4-5 notas limpias)
+  eleventh: [
+    { degreeIndex: 0, roman: 'I', labelSuffix: 'maj11', fullNameSuffix: 'Maj11 (sin 5ª)', chordType: 'maj', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: '7', semitones: 11 }, { label: '11', semitones: 5 }] },
+    { degreeIndex: 1, roman: 'ii', labelSuffix: 'm11', fullNameSuffix: 'menor 11', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b7', semitones: 10 }, { label: '11', semitones: 5 }] },
+    { degreeIndex: 2, roman: 'iii', labelSuffix: 'm11', fullNameSuffix: 'menor 11', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b7', semitones: 10 }, { label: '11', semitones: 5 }] },
+    { degreeIndex: 3, roman: 'IV', labelSuffix: 'maj7(#11)', fullNameSuffix: 'Maj7(#11) Lidio', chordType: 'maj', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: '7', semitones: 11 }, { label: '#11', semitones: 6 }] },
+    { degreeIndex: 4, roman: 'V', labelSuffix: '11', fullNameSuffix: 'Dominante 11 (9sus4)', chordType: 'dom7', intervals: [{ label: 'R', semitones: 0 }, { label: 'b7', semitones: 10 }, { label: '9', semitones: 2 }, { label: '11', semitones: 5 }] },
+    { degreeIndex: 5, roman: 'vi', labelSuffix: 'm11', fullNameSuffix: 'menor 11', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b7', semitones: 10 }, { label: '11', semitones: 5 }] },
+    { degreeIndex: 6, roman: 'vii°', labelSuffix: 'm7b5(11)', fullNameSuffix: 'Semidisminuido 11', chordType: 'dim', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b5', semitones: 6 }, { label: 'b7', semitones: 10 }, { label: '11', semitones: 5 }] },
+  ],
+
+  // 5. TRECENAS (Guitar-Friendly: 5ª Omitida, voicing Shell/Drop cómodo)
+  thirteenth: [
+    { degreeIndex: 0, roman: 'I', labelSuffix: 'maj13', fullNameSuffix: 'Maj13 (sin 5ª)', chordType: 'maj', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: '7', semitones: 11 }, { label: '13', semitones: 9 }] },
+    { degreeIndex: 1, roman: 'ii', labelSuffix: 'm13', fullNameSuffix: 'menor 13', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b7', semitones: 10 }, { label: '13', semitones: 9 }] },
+    { degreeIndex: 2, roman: 'iii', labelSuffix: 'm7(b13)', fullNameSuffix: 'menor 7(b13)', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b7', semitones: 10 }, { label: 'b13', semitones: 8 }] },
+    { degreeIndex: 3, roman: 'IV', labelSuffix: 'maj13', fullNameSuffix: 'Maj13', chordType: 'maj', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: '7', semitones: 11 }, { label: '13', semitones: 9 }] },
+    { degreeIndex: 4, roman: 'V', labelSuffix: '13', fullNameSuffix: 'Dominante 13 (sin 5ª)', chordType: 'dom7', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: 'b7', semitones: 10 }, { label: '13', semitones: 9 }] },
+    { degreeIndex: 5, roman: 'vi', labelSuffix: 'm7(b13)', fullNameSuffix: 'menor 7(b13)', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b7', semitones: 10 }, { label: 'b13', semitones: 8 }] },
+    { degreeIndex: 6, roman: 'vii°', labelSuffix: 'm7b5(b13)', fullNameSuffix: 'Semidisminuido b13', chordType: 'dim', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b5', semitones: 6 }, { label: 'b7', semitones: 10 }, { label: 'b13', semitones: 8 }] },
+  ],
+
+  // 6. FAMILIA ADD (Tríadas con Color, Sin Séptima)
+  added: [
+    { degreeIndex: 0, roman: 'I', labelSuffix: 'add9', fullNameSuffix: 'add9', chordType: 'maj', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: '5', semitones: 7 }, { label: '9', semitones: 2 }] },
+    { degreeIndex: 1, roman: 'ii', labelSuffix: 'm(add9)', fullNameSuffix: 'menor add9', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: '5', semitones: 7 }, { label: '9', semitones: 2 }] },
+    { degreeIndex: 2, roman: 'iii', labelSuffix: 'm(add11)', fullNameSuffix: 'menor add11', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: '5', semitones: 7 }, { label: '11', semitones: 5 }] },
+    { degreeIndex: 3, roman: 'IV', labelSuffix: 'add9', fullNameSuffix: 'add9', chordType: 'maj', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: '5', semitones: 7 }, { label: '9', semitones: 2 }] },
+    { degreeIndex: 4, roman: 'V', labelSuffix: 'add9', fullNameSuffix: 'add9', chordType: 'maj', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: '5', semitones: 7 }, { label: '9', semitones: 2 }] },
+    { degreeIndex: 5, roman: 'vi', labelSuffix: 'm(add9)', fullNameSuffix: 'menor add9', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: '5', semitones: 7 }, { label: '9', semitones: 2 }] },
+    { degreeIndex: 6, roman: 'vii°', labelSuffix: 'dim(add11)', fullNameSuffix: 'disminuido add11', chordType: 'dim', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b5', semitones: 6 }, { label: '11', semitones: 5 }] },
+  ],
+
+  // 7. SUSPENDIDOS (sus2 / sus4)
   suspended: [
     { degreeIndex: 0, roman: 'I', labelSuffix: 'sus4', fullNameSuffix: 'sus4', chordType: 'sus', intervals: [{ label: 'R', semitones: 0 }, { label: '4', semitones: 5 }, { label: '5', semitones: 7 }] },
     { degreeIndex: 1, roman: 'ii', labelSuffix: 'sus2', fullNameSuffix: 'sus2', chordType: 'sus', intervals: [{ label: 'R', semitones: 0 }, { label: '2', semitones: 2 }, { label: '5', semitones: 7 }] },
@@ -47,7 +94,7 @@ export const HARMONIC_FAMILIES_CONFIG: Record<ChordExtensionFamily, ChordFormula
     { degreeIndex: 4, roman: 'V', labelSuffix: 'sus4', fullNameSuffix: 'sus4', chordType: 'sus', intervals: [{ label: 'R', semitones: 0 }, { label: '4', semitones: 5 }, { label: '5', semitones: 7 }] },
     { degreeIndex: 5, roman: 'vi', labelSuffix: 'sus2', fullNameSuffix: 'sus2', chordType: 'sus', intervals: [{ label: 'R', semitones: 0 }, { label: '2', semitones: 2 }, { label: '5', semitones: 7 }] },
     { degreeIndex: 6, roman: 'vii°', labelSuffix: 'dim', fullNameSuffix: 'dim', chordType: 'dim', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b5', semitones: 6 }] },
-  ]
+  ],
 };
 
 export interface CagedChordVoicing {
@@ -1428,15 +1475,728 @@ const GUITAR_CAGED_VOICINGS_EXTENSIONS_C_MAJOR: Record<
       ],
     },
   },
+  eleventh: {
+    // Caja 1 (Forma C)
+    1: {
+      0: [
+        { stringIndex: 4, fret: 3, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 2, finger: 2, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 0, finger: 1, intervalLabel: '7', isRoot: false },
+        { stringIndex: 0, fret: 1, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+      1: [
+        { stringIndex: 3, fret: 0, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 0, finger: 1, intervalLabel: '11', isRoot: false },
+        { stringIndex: 1, fret: 1, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 0, fret: 1, finger: 1, intervalLabel: 'b3', isRoot: false },
+      ],
+      2: [
+        { stringIndex: 5, fret: 0, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 0, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 2, fret: 0, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 0, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 0, fret: 0, finger: 1, intervalLabel: 'R', isRoot: true },
+      ],
+      3: [
+        { stringIndex: 3, fret: 3, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 2, finger: 2, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 0, finger: 1, intervalLabel: '#11', isRoot: false },
+        { stringIndex: 0, fret: 0, finger: 1, intervalLabel: '7', isRoot: false },
+      ],
+      4: [
+        { stringIndex: 5, fret: 3, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 2, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 2, fret: 2, finger: 1, intervalLabel: '9', isRoot: false },
+        { stringIndex: 1, fret: 1, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+      5: [
+        { stringIndex: 4, fret: 0, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 0, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 1, fret: 1, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 0, fret: 3, finger: 3, intervalLabel: '11', isRoot: false },
+      ],
+      6: [
+        { stringIndex: 4, fret: 2, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 3, intervalLabel: 'b5', isRoot: false },
+        { stringIndex: 2, fret: 2, finger: 2, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 4, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 0, fret: 0, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+    },
+    // Caja 2 (Forma A)
+    2: {
+      0: [
+        { stringIndex: 4, fret: 3, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 1, intervalLabel: '11', isRoot: false },
+        { stringIndex: 2, fret: 4, finger: 2, intervalLabel: '7', isRoot: false },
+        { stringIndex: 1, fret: 5, finger: 4, intervalLabel: '3', isRoot: false },
+      ],
+      1: [
+        { stringIndex: 4, fret: 5, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 2, fret: 5, finger: 3, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 1, fret: 5, finger: 4, intervalLabel: '11', isRoot: false },
+      ],
+      2: [
+        { stringIndex: 4, fret: 7, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 5, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 2, fret: 7, finger: 4, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 1, fret: 5, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+      3: [
+        { stringIndex: 3, fret: 3, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 2, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 5, finger: 3, intervalLabel: '7', isRoot: false },
+        { stringIndex: 0, fret: 7, finger: 4, intervalLabel: '#11', isRoot: false },
+      ],
+      4: [
+        { stringIndex: 5, fret: 3, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 4, fret: 5, finger: 3, intervalLabel: '5', isRoot: false },
+        { stringIndex: 3, fret: 3, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 2, fret: 4, finger: 2, intervalLabel: '9', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+      5: [
+        { stringIndex: 5, fret: 5, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 5, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 2, fret: 5, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+      6: [
+        { stringIndex: 4, fret: 2, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 2, intervalLabel: 'b5', isRoot: false },
+        { stringIndex: 2, fret: 2, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 0, fret: 0, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+    },
+    // Caja 3 (Forma G)
+    3: {
+      0: [
+        { stringIndex: 5, fret: 8, finger: 4, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 4, fret: 7, finger: 3, intervalLabel: '3', isRoot: false },
+        { stringIndex: 2, fret: 4, finger: 1, intervalLabel: '7', isRoot: false },
+        { stringIndex: 1, fret: 6, finger: 2, intervalLabel: '11', isRoot: false },
+      ],
+      1: [
+        { stringIndex: 4, fret: 5, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 5, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 1, fret: 6, finger: 2, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 0, fret: 5, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+      2: [
+        { stringIndex: 4, fret: 7, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 7, finger: 3, intervalLabel: '11', isRoot: false },
+        { stringIndex: 2, fret: 7, finger: 4, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 1, fret: 8, finger: 4, intervalLabel: 'b3', isRoot: false },
+      ],
+      3: [
+        { stringIndex: 4, fret: 8, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 7, finger: 2, intervalLabel: '3', isRoot: false },
+        { stringIndex: 2, fret: 9, finger: 4, intervalLabel: '7', isRoot: false },
+        { stringIndex: 0, fret: 7, finger: 1, intervalLabel: '#11', isRoot: false },
+      ],
+      4: [
+        { stringIndex: 5, fret: 3, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 2, fret: 2, finger: 1, intervalLabel: '9', isRoot: false },
+        { stringIndex: 1, fret: 1, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+      5: [
+        { stringIndex: 5, fret: 5, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 5, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 2, fret: 5, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 0, fret: 5, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+      6: [
+        { stringIndex: 5, fret: 7, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 4, fret: 8, finger: 3, intervalLabel: 'b5', isRoot: false },
+        { stringIndex: 3, fret: 7, finger: 2, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 2, fret: 7, finger: 2, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 0, fret: 7, finger: 2, intervalLabel: '11', isRoot: false },
+      ],
+    },
+    // Caja 4 (Forma E)
+    4: {
+      0: [
+        { stringIndex: 5, fret: 8, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 4, fret: 7, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 3, fret: 9, finger: 3, intervalLabel: '7', isRoot: false },
+        { stringIndex: 2, fret: 10, finger: 4, intervalLabel: '11', isRoot: false },
+      ],
+      1: [
+        { stringIndex: 5, fret: 10, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 10, finger: 4, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 2, fret: 10, finger: 4, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 8, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+      2: [
+        { stringIndex: 4, fret: 7, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 7, finger: 1, intervalLabel: '11', isRoot: false },
+        { stringIndex: 2, fret: 7, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 1, fret: 8, finger: 2, intervalLabel: 'b3', isRoot: false },
+      ],
+      3: [
+        { stringIndex: 4, fret: 8, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 7, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 2, fret: 9, finger: 3, intervalLabel: '7', isRoot: false },
+        { stringIndex: 0, fret: 7, finger: 1, intervalLabel: '#11', isRoot: false },
+      ],
+      4: [
+        { stringIndex: 4, fret: 10, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 10, finger: 3, intervalLabel: '11', isRoot: false },
+        { stringIndex: 2, fret: 10, finger: 3, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 1, fret: 10, finger: 3, intervalLabel: '9', isRoot: false },
+      ],
+      5: [
+        { stringIndex: 3, fret: 7, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 7, finger: 1, intervalLabel: '11', isRoot: false },
+        { stringIndex: 1, fret: 8, finger: 2, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 0, fret: 8, finger: 3, intervalLabel: 'b3', isRoot: false },
+      ],
+      6: [
+        { stringIndex: 3, fret: 9, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 7, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 6, finger: 1, intervalLabel: 'b5', isRoot: false },
+        { stringIndex: 0, fret: 7, finger: 2, intervalLabel: '11', isRoot: false },
+      ],
+    },
+    // Caja 5 (Forma D)
+    5: {
+      0: [
+        { stringIndex: 3, fret: 10, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 9, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 12, finger: 4, intervalLabel: '7', isRoot: false },
+        { stringIndex: 0, fret: 13, finger: 4, intervalLabel: '11', isRoot: false },
+      ],
+      1: [
+        { stringIndex: 3, fret: 12, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 10, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 13, finger: 4, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 0, fret: 10, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+      2: [
+        { stringIndex: 3, fret: 2, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 2, finger: 1, intervalLabel: '11', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 3, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 0, fret: 3, finger: 4, intervalLabel: 'b3', isRoot: false },
+      ],
+      3: [
+        { stringIndex: 3, fret: 3, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 4, finger: 2, intervalLabel: '#11', isRoot: false },
+        { stringIndex: 1, fret: 5, finger: 3, intervalLabel: '7', isRoot: false },
+        { stringIndex: 0, fret: 5, finger: 4, intervalLabel: '3', isRoot: false },
+      ],
+      4: [
+        { stringIndex: 3, fret: 5, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 5, finger: 2, intervalLabel: '11', isRoot: false },
+        { stringIndex: 1, fret: 6, finger: 3, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 0, fret: 5, finger: 1, intervalLabel: '9', isRoot: false },
+      ],
+      5: [
+        { stringIndex: 4, fret: 12, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 10, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 2, fret: 12, finger: 4, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 1, fret: 10, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+      6: [
+        { stringIndex: 4, fret: 2, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 2, finger: 1, intervalLabel: '11', isRoot: false },
+        { stringIndex: 2, fret: 2, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 2, intervalLabel: 'b3', isRoot: false },
+      ],
+    },
+  },
+  thirteenth: {
+    // Caja 1 (Forma C)
+    1: {
+      0: [
+        { stringIndex: 4, fret: 3, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 2, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 2, fret: 2, finger: 1, intervalLabel: '13', isRoot: false },
+        { stringIndex: 1, fret: 0, finger: 1, intervalLabel: '7', isRoot: false },
+      ],
+      1: [
+        { stringIndex: 3, fret: 0, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 1, fret: 0, finger: 1, intervalLabel: '13', isRoot: false },
+        { stringIndex: 1, fret: 1, finger: 2, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 0, fret: 1, finger: 2, intervalLabel: 'b3', isRoot: false },
+      ],
+      2: [
+        { stringIndex: 5, fret: 0, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 0, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 2, fret: 0, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 1, finger: 1, intervalLabel: 'b13', isRoot: false },
+      ],
+      3: [
+        { stringIndex: 3, fret: 3, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 2, finger: 2, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 4, intervalLabel: '13', isRoot: false },
+        { stringIndex: 0, fret: 0, finger: 1, intervalLabel: '7', isRoot: false },
+      ],
+      4: [
+        { stringIndex: 5, fret: 3, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 2, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 2, fret: 4, finger: 3, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 5, finger: 4, intervalLabel: '13', isRoot: false },
+      ],
+      5: [
+        { stringIndex: 4, fret: 0, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 0, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 1, fret: 1, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 0, fret: 1, finger: 1, intervalLabel: 'b13', isRoot: false },
+      ],
+      6: [
+        { stringIndex: 4, fret: 2, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 2, intervalLabel: 'b5', isRoot: false },
+        { stringIndex: 2, fret: 0, finger: 1, intervalLabel: 'b13', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 4, intervalLabel: 'b3', isRoot: false },
+      ],
+    },
+    // Caja 2 (Forma A)
+    2: {
+      0: [
+        { stringIndex: 4, fret: 3, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 4, finger: 2, intervalLabel: '7', isRoot: false },
+        { stringIndex: 1, fret: 5, finger: 3, intervalLabel: '3', isRoot: false },
+        { stringIndex: 0, fret: 5, finger: 4, intervalLabel: '13', isRoot: false },
+      ],
+      1: [
+        { stringIndex: 4, fret: 5, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 2, fret: 4, finger: 2, intervalLabel: '13', isRoot: false },
+        { stringIndex: 1, fret: 5, finger: 3, intervalLabel: 'b7', isRoot: false },
+      ],
+      2: [
+        { stringIndex: 4, fret: 7, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 5, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 2, fret: 7, finger: 4, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 0, fret: 8, finger: 4, intervalLabel: 'b13', isRoot: false },
+      ],
+      3: [
+        { stringIndex: 4, fret: 8, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 7, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 2, fret: 9, finger: 3, intervalLabel: '7', isRoot: false },
+        { stringIndex: 1, fret: 10, finger: 4, intervalLabel: '13', isRoot: false },
+      ],
+      4: [
+        { stringIndex: 5, fret: 3, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 2, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 2, fret: 4, finger: 3, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 5, finger: 4, intervalLabel: '13', isRoot: false },
+      ],
+      5: [
+        { stringIndex: 5, fret: 5, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 5, finger: 3, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 2, fret: 5, finger: 3, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 6, finger: 4, intervalLabel: 'b13', isRoot: false },
+      ],
+      6: [
+        { stringIndex: 4, fret: 2, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 2, intervalLabel: 'b5', isRoot: false },
+        { stringIndex: 2, fret: 2, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 0, fret: 3, finger: 4, intervalLabel: 'b13', isRoot: false },
+      ],
+    },
+    // Caja 3 (Forma G)
+    3: {
+      0: [
+        { stringIndex: 5, fret: 8, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 7, finger: 2, intervalLabel: '13', isRoot: false },
+        { stringIndex: 2, fret: 9, finger: 4, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 0, finger: 1, intervalLabel: '7', isRoot: false },
+      ],
+      1: [
+        { stringIndex: 5, fret: 10, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 9, finger: 1, intervalLabel: '13', isRoot: false },
+        { stringIndex: 2, fret: 10, finger: 3, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 10, finger: 4, intervalLabel: 'b7', isRoot: false },
+      ],
+      2: [
+        { stringIndex: 5, fret: 0, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 0, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 1, finger: 1, intervalLabel: 'b13', isRoot: false },
+        { stringIndex: 0, fret: 0, finger: 1, intervalLabel: 'R', isRoot: true },
+      ],
+      3: [
+        { stringIndex: 5, fret: 1, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 2, finger: 2, intervalLabel: '7', isRoot: false },
+        { stringIndex: 2, fret: 2, finger: 3, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 4, intervalLabel: '13', isRoot: false },
+      ],
+      4: [
+        { stringIndex: 3, fret: 5, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 4, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 6, finger: 3, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 0, fret: 9, finger: 4, intervalLabel: '13', isRoot: false },
+      ],
+      5: [
+        { stringIndex: 5, fret: 5, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 1, intervalLabel: 'b13', isRoot: false },
+        { stringIndex: 2, fret: 5, finger: 3, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 0, fret: 3, finger: 1, intervalLabel: 'b7', isRoot: false },
+      ],
+      6: [
+        { stringIndex: 5, fret: 7, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 4, fret: 8, finger: 3, intervalLabel: 'b5', isRoot: false },
+        { stringIndex: 3, fret: 7, finger: 2, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 0, fret: 3, finger: 1, intervalLabel: 'b13', isRoot: false },
+      ],
+    },
+    // Caja 4 (Forma E)
+    4: {
+      0: [
+        { stringIndex: 5, fret: 8, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 9, finger: 2, intervalLabel: '7', isRoot: false },
+        { stringIndex: 2, fret: 9, finger: 3, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 10, finger: 4, intervalLabel: '13', isRoot: false },
+      ],
+      1: [
+        { stringIndex: 5, fret: 10, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 9, finger: 1, intervalLabel: '13', isRoot: false },
+        { stringIndex: 2, fret: 10, finger: 3, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 10, finger: 4, intervalLabel: 'b7', isRoot: false },
+      ],
+      2: [
+        { stringIndex: 5, fret: 12, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 12, finger: 4, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 2, fret: 12, finger: 4, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 13, finger: 4, intervalLabel: 'b13', isRoot: false },
+      ],
+      3: [
+        { stringIndex: 4, fret: 8, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 7, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 2, fret: 9, finger: 3, intervalLabel: '7', isRoot: false },
+        { stringIndex: 1, fret: 10, finger: 4, intervalLabel: '13', isRoot: false },
+      ],
+      4: [
+        { stringIndex: 4, fret: 10, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 9, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 2, fret: 10, finger: 3, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 0, fret: 12, finger: 4, intervalLabel: '13', isRoot: false },
+      ],
+      5: [
+        { stringIndex: 3, fret: 7, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 5, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 6, finger: 3, intervalLabel: 'b13', isRoot: false },
+        { stringIndex: 0, fret: 5, finger: 1, intervalLabel: 'b7', isRoot: false },
+      ],
+      6: [
+        { stringIndex: 3, fret: 9, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 7, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 8, finger: 2, intervalLabel: 'b13', isRoot: false },
+        { stringIndex: 0, fret: 7, finger: 1, intervalLabel: 'R', isRoot: true },
+      ],
+    },
+    // Caja 5 (Forma D)
+    5: {
+      0: [
+        { stringIndex: 3, fret: 10, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 9, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 10, finger: 3, intervalLabel: '13', isRoot: false },
+        { stringIndex: 0, fret: 7, finger: 1, intervalLabel: '7', isRoot: false },
+      ],
+      1: [
+        { stringIndex: 3, fret: 12, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 10, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 12, finger: 4, intervalLabel: '13', isRoot: false },
+        { stringIndex: 0, fret: 10, finger: 1, intervalLabel: 'b7', isRoot: false },
+      ],
+      2: [
+        { stringIndex: 4, fret: 7, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 7, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 1, fret: 8, finger: 3, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 0, fret: 8, finger: 4, intervalLabel: 'b13', isRoot: false },
+      ],
+      3: [
+        { stringIndex: 3, fret: 3, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 1, fret: 3, finger: 1, intervalLabel: '13', isRoot: false },
+        { stringIndex: 0, fret: 5, finger: 3, intervalLabel: '3', isRoot: false },
+      ],
+      4: [
+        { stringIndex: 4, fret: 10, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 9, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 2, fret: 10, finger: 3, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 0, fret: 12, finger: 4, intervalLabel: '13', isRoot: false },
+      ],
+      5: [
+        { stringIndex: 4, fret: 12, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 10, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 2, fret: 10, finger: 1, intervalLabel: 'b13', isRoot: false },
+        { stringIndex: 1, fret: 12, finger: 4, intervalLabel: 'b7', isRoot: false },
+      ],
+      6: [
+        { stringIndex: 4, fret: 2, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 2, intervalLabel: 'b5', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 3, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 0, fret: 3, finger: 4, intervalLabel: 'b13', isRoot: false },
+      ],
+    },
+  },
+  added: {
+    // Caja 1 (Forma C)
+    1: {
+      0: [
+        { stringIndex: 4, fret: 3, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 2, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 2, fret: 0, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 3, intervalLabel: '9', isRoot: false },
+        { stringIndex: 0, fret: 0, finger: 1, intervalLabel: '3', isRoot: false },
+      ],
+      1: [
+        { stringIndex: 3, fret: 0, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 2, finger: 2, intervalLabel: '5', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 0, fret: 0, finger: 1, intervalLabel: '9', isRoot: false },
+      ],
+      2: [
+        { stringIndex: 5, fret: 0, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 4, fret: 2, finger: 2, intervalLabel: '5', isRoot: false },
+        { stringIndex: 3, fret: 2, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 2, finger: 4, intervalLabel: '11', isRoot: false },
+        { stringIndex: 1, fret: 0, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 0, fret: 0, finger: 1, intervalLabel: 'R', isRoot: true },
+      ],
+      3: [
+        { stringIndex: 3, fret: 3, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 2, finger: 2, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 1, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 0, fret: 3, finger: 4, intervalLabel: '9', isRoot: false },
+      ],
+      4: [
+        { stringIndex: 5, fret: 3, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 4, fret: 2, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 3, fret: 0, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 2, fret: 2, finger: 2, intervalLabel: '9', isRoot: false },
+        { stringIndex: 1, fret: 0, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 0, fret: 3, finger: 4, intervalLabel: 'R', isRoot: true },
+      ],
+      5: [
+        { stringIndex: 4, fret: 0, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 2, finger: 2, intervalLabel: '5', isRoot: false },
+        { stringIndex: 2, fret: 2, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 1, fret: 0, finger: 1, intervalLabel: '9', isRoot: false },
+        { stringIndex: 0, fret: 0, finger: 1, intervalLabel: '5', isRoot: false },
+      ],
+      6: [
+        { stringIndex: 4, fret: 2, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 2, intervalLabel: 'b5', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 3, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 0, fret: 0, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+    },
+    // Caja 2 (Forma A)
+    2: {
+      0: [
+        { stringIndex: 4, fret: 3, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 5, finger: 3, intervalLabel: '5', isRoot: false },
+        { stringIndex: 2, fret: 5, finger: 4, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 1, fret: 3, finger: 1, intervalLabel: '9', isRoot: false },
+        { stringIndex: 0, fret: 3, finger: 1, intervalLabel: '5', isRoot: false },
+      ],
+      1: [
+        { stringIndex: 4, fret: 5, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 7, finger: 3, intervalLabel: '5', isRoot: false },
+        { stringIndex: 2, fret: 7, finger: 4, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 1, fret: 6, finger: 2, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 0, fret: 0, finger: 1, intervalLabel: '9', isRoot: false },
+      ],
+      2: [
+        { stringIndex: 4, fret: 7, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 5, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 2, fret: 4, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 1, fret: 5, finger: 2, intervalLabel: '11', isRoot: false },
+      ],
+      3: [
+        { stringIndex: 4, fret: 8, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 7, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 2, fret: 5, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 0, fret: 3, finger: 1, intervalLabel: '9', isRoot: false },
+      ],
+      4: [
+        { stringIndex: 4, fret: 10, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 9, finger: 2, intervalLabel: '3', isRoot: false },
+        { stringIndex: 2, fret: 7, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 1, fret: 10, finger: 4, intervalLabel: '9', isRoot: false },
+      ],
+      5: [
+        { stringIndex: 5, fret: 5, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 4, fret: 7, finger: 3, intervalLabel: '5', isRoot: false },
+        { stringIndex: 3, fret: 7, finger: 4, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 5, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 0, finger: 1, intervalLabel: '9', isRoot: false },
+      ],
+      6: [
+        { stringIndex: 4, fret: 2, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 2, intervalLabel: 'b5', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 3, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 0, fret: 0, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+    },
+    // Caja 3 (Forma G)
+    3: {
+      0: [
+        { stringIndex: 5, fret: 8, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 4, fret: 7, finger: 2, intervalLabel: '3', isRoot: false },
+        { stringIndex: 3, fret: 5, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 2, fret: 7, finger: 4, intervalLabel: '9', isRoot: false },
+        { stringIndex: 1, fret: 5, finger: 1, intervalLabel: '3', isRoot: false },
+      ],
+      1: [
+        { stringIndex: 4, fret: 5, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 2, fret: 2, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 0, fret: 0, finger: 1, intervalLabel: '9', isRoot: false },
+      ],
+      2: [
+        { stringIndex: 5, fret: 7, finger: 2, intervalLabel: '5', isRoot: false },
+        { stringIndex: 4, fret: 7, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 5, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 5, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+      3: [
+        { stringIndex: 5, fret: 1, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 4, fret: 3, finger: 3, intervalLabel: '5', isRoot: false },
+        { stringIndex: 3, fret: 3, finger: 4, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 2, finger: 2, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 1, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 0, fret: 3, finger: 4, intervalLabel: '9', isRoot: false },
+      ],
+      4: [
+        { stringIndex: 5, fret: 3, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 4, fret: 0, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 3, fret: 0, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 2, finger: 2, intervalLabel: '9', isRoot: false },
+        { stringIndex: 1, fret: 0, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 0, fret: 3, finger: 4, intervalLabel: 'R', isRoot: true },
+      ],
+      5: [
+        { stringIndex: 4, fret: 0, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 2, finger: 2, intervalLabel: '5', isRoot: false },
+        { stringIndex: 2, fret: 4, finger: 4, intervalLabel: '9', isRoot: false },
+        { stringIndex: 1, fret: 1, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 0, fret: 0, finger: 1, intervalLabel: '5', isRoot: false },
+      ],
+      6: [
+        { stringIndex: 5, fret: 7, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 4, fret: 8, finger: 3, intervalLabel: 'b5', isRoot: false },
+        { stringIndex: 2, fret: 7, finger: 2, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 0, fret: 0, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+    },
+    // Caja 4 (Forma E)
+    4: {
+      0: [
+        { stringIndex: 5, fret: 8, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 4, fret: 10, finger: 3, intervalLabel: '5', isRoot: false },
+        { stringIndex: 3, fret: 10, finger: 4, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 9, finger: 2, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 8, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 0, fret: 10, finger: 4, intervalLabel: '9', isRoot: false },
+      ],
+      1: [
+        { stringIndex: 5, fret: 10, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 4, fret: 12, finger: 3, intervalLabel: '5', isRoot: false },
+        { stringIndex: 3, fret: 12, finger: 4, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 10, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 0, fret: 12, finger: 4, intervalLabel: '9', isRoot: false },
+      ],
+      2: [
+        { stringIndex: 4, fret: 7, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 9, finger: 4, intervalLabel: '5', isRoot: false },
+        { stringIndex: 2, fret: 9, finger: 4, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 1, fret: 8, finger: 3, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 0, fret: 5, finger: 1, intervalLabel: '11', isRoot: false },
+      ],
+      3: [
+        { stringIndex: 4, fret: 8, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 10, finger: 4, intervalLabel: '5', isRoot: false },
+        { stringIndex: 2, fret: 10, finger: 4, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 1, fret: 10, finger: 4, intervalLabel: '3', isRoot: false },
+        { stringIndex: 0, fret: 5, finger: 1, intervalLabel: '9', isRoot: false },
+      ],
+      4: [
+        { stringIndex: 5, fret: 3, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 4, finger: 3, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 2, intervalLabel: '5', isRoot: false },
+        { stringIndex: 0, fret: 5, finger: 4, intervalLabel: '9', isRoot: false },
+      ],
+      5: [
+        { stringIndex: 3, fret: 7, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 5, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 5, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 0, fret: 7, finger: 3, intervalLabel: '9', isRoot: false },
+      ],
+      6: [
+        { stringIndex: 3, fret: 9, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 7, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 6, finger: 1, intervalLabel: 'b5', isRoot: false },
+        { stringIndex: 0, fret: 7, finger: 2, intervalLabel: '11', isRoot: false },
+      ],
+    },
+    // Caja 5 (Forma D)
+    5: {
+      0: [
+        { stringIndex: 3, fret: 10, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 9, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 8, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 0, fret: 10, finger: 3, intervalLabel: '9', isRoot: false },
+      ],
+      1: [
+        { stringIndex: 3, fret: 12, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 10, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 10, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 0, fret: 12, finger: 3, intervalLabel: '9', isRoot: false },
+      ],
+      2: [
+        { stringIndex: 3, fret: 2, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 0, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 0, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 0, fret: 5, finger: 4, intervalLabel: '11', isRoot: false },
+      ],
+      3: [
+        { stringIndex: 3, fret: 3, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 2, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 1, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 0, fret: 3, finger: 3, intervalLabel: '9', isRoot: false },
+      ],
+      4: [
+        { stringIndex: 3, fret: 5, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 4, finger: 1, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 0, fret: 5, finger: 3, intervalLabel: '9', isRoot: false },
+      ],
+      5: [
+        { stringIndex: 4, fret: 12, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 10, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 2, fret: 9, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 0, fret: 7, finger: 1, intervalLabel: '9', isRoot: false },
+      ],
+      6: [
+        { stringIndex: 4, fret: 2, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 2, finger: 1, intervalLabel: '11', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 2, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 0, fret: 1, finger: 1, intervalLabel: 'b5', isRoot: false },
+      ],
+    },
+  },
 };
 
 /**
  * Asigna la función interválica de cualquier nota en semitonos relativa a la tónica del acorde
  */
-export function getIntervalLabel(noteName: string, chordRootNote: string): string {
+export function getIntervalLabel(
+  noteName: string,
+  chordRootNote: string,
+  targetIntervals?: { label: string; semitones: number }[]
+): string {
   const rootIdx = normalizeToChromaticIndex(chordRootNote);
   const noteIdx = normalizeToChromaticIndex(noteName);
   const semitones = (noteIdx - rootIdx + 12) % 12;
+
+  if (targetIntervals && targetIntervals.length > 0) {
+    const match = targetIntervals.find((ti) => (ti.semitones % 12) === semitones);
+    if (match) return match.label;
+  }
 
   switch (semitones) {
     case 0:
@@ -1450,15 +2210,15 @@ export function getIntervalLabel(noteName: string, chordRootNote: string): strin
     case 4:
       return '3';
     case 5:
-      return '4';
+      return '11';
     case 6:
       return 'b5';
     case 7:
       return '5';
     case 8:
-      return 'b6';
+      return 'b13';
     case 9:
-      return '6';
+      return '13';
     case 10:
       return 'b7';
     case 11:

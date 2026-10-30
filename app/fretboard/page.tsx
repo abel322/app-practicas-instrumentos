@@ -30,6 +30,7 @@ import {
   getCagedBoxFretRange,
   ChordExtensionFamily,
   getIntervalLabel,
+  HARMONIC_FAMILIES_CONFIG,
 } from '@/lib/music-theory/cagedHarmonics';
 import { CagedHarmonicChordsView } from '@/components/fretboard/CagedHarmonicChordsView';
 import { PositionMapBrackets } from '@/components/fretboard/PositionMapBrackets';
@@ -556,7 +557,8 @@ export default function FretboardPage() {
           const str = config.strings[stringIndex];
           const fn = getFretNote(str?.midi ?? 40, fret);
           const chordRoot = activeCagedChord ? activeCagedChord.rootNote : rootNote;
-          const interval = getIntervalLabel(fn.note, chordRoot);
+          const formulaDef = HARMONIC_FAMILIES_CONFIG[activeExtensionFamily]?.[activeChordDegreeIndex];
+          const interval = getIntervalLabel(fn.note, chordRoot, formulaDef?.intervals);
           const isRoot = interval === 'R';
           return [
             ...filtered,
@@ -571,7 +573,7 @@ export default function FretboardPage() {
         }
       });
     },
-    [isChordEditorActive, activeCagedChord, config.strings, rootNote]
+    [isChordEditorActive, activeCagedChord, config.strings, rootNote, activeExtensionFamily, activeChordDegreeIndex]
   );
 
   // Clic secundario (derecho) en traste durante la edición de acordes: alternar Fundamental (Root)
@@ -602,7 +604,8 @@ export default function FretboardPage() {
         const str = config.strings[stringIndex];
         const fn = getFretNote(str?.midi ?? 40, fret);
         const chordRoot = activeCagedChord ? activeCagedChord.rootNote : rootNote;
-        const interval = newIsRoot ? 'R' : getIntervalLabel(fn.note, chordRoot);
+        const formulaDef = HARMONIC_FAMILIES_CONFIG[activeExtensionFamily]?.[activeChordDegreeIndex];
+        const interval = newIsRoot ? 'R' : getIntervalLabel(fn.note, chordRoot, formulaDef?.intervals);
 
         updated[idx] = {
           ...target,
@@ -612,7 +615,7 @@ export default function FretboardPage() {
         return updated;
       });
     },
-    [isChordEditorActive, activeCagedChord, config.strings, rootNote]
+    [isChordEditorActive, activeCagedChord, config.strings, rootNote, activeExtensionFamily, activeChordDegreeIndex]
   );
 
   // Guardar acorde en PostgreSQL
