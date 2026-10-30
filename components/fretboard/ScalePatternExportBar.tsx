@@ -12,6 +12,10 @@ import {
   FileJson,
   Hand,
   Target,
+  Save,
+  Loader2,
+  Cloud,
+  RefreshCw,
 } from 'lucide-react';
 
 export interface ScalePatternExportBarProps {
@@ -28,6 +32,11 @@ export interface ScalePatternExportBarProps {
   onResetGrid?: () => void;
   touchMode?: 'cycle' | 'root';
   onTouchModeChange?: (mode: 'cycle' | 'root') => void;
+  // Persistencia en Base de Datos PostgreSQL
+  isCustomFromDb?: boolean;
+  isSavingDb?: boolean;
+  onSaveToDb?: () => Promise<void>;
+  onResetDb?: () => Promise<void>;
 }
 
 export function ScalePatternExportBar({
@@ -41,11 +50,16 @@ export function ScalePatternExportBar({
   onResetGrid,
   touchMode = 'cycle',
   onTouchModeChange,
+  isCustomFromDb = false,
+  isSavingDb = false,
+  onSaveToDb,
+  onResetDb,
 }: ScalePatternExportBarProps) {
   const [copiedTs, setCopiedTs] = useState(false);
   const [copiedJson, setCopiedJson] = useState(false);
   const [showCodePreview, setShowCodePreview] = useState(false);
   const [previewTab, setPreviewTab] = useState<'ts' | 'json'>('ts');
+  const [dbSuccessMessage, setDbSuccessMessage] = useState<string | null>(null);
 
   // Generador de Código TypeScript formateado
   const generateTypeScriptCode = () => {
@@ -84,7 +98,10 @@ export function ScalePatternExportBar({
 
   // Generador de JSON estructurado
   const generateJsonCode = () => {
-    const cleaned: Record<number, { fret: number; finger: number; isRoot?: boolean; isStretch?: boolean }[]> = {};
+    const cleaned: Record<
+      number,
+      { fret: number; finger: number; isRoot?: boolean; isStretch?: boolean }[]
+    > = {};
     [5, 4, 3, 2, 1, 0].forEach((strIdx) => {
       cleaned[strIdx] = (stringsFrets[strIdx] || []).map((n) => ({
         fret: n.fret,
@@ -120,6 +137,28 @@ export function ScalePatternExportBar({
     setTimeout(() => setCopiedJson(false), 2500);
   };
 
+  const handleTriggerSaveDb = async () => {
+    if (!onSaveToDb) return;
+    try {
+      await onSaveToDb();
+      setDbSuccessMessage('¡Guardado en la nube con éxito!');
+      setTimeout(() => setDbSuccessMessage(null), 3000);
+    } catch {
+      // Error manejado en la Server Action
+    }
+  };
+
+  const handleTriggerResetDb = async () => {
+    if (!onResetDb) return;
+    try {
+      await onResetDb();
+      setDbSuccessMessage('¡Restablecido a valores de fábrica!');
+      setTimeout(() => setDbSuccessMessage(null), 3000);
+    } catch {
+      // Error manejado en la Server Action
+    }
+  };
+
   // Conteo total de notas activas en la cuadrícula
   const totalNotesCount = Object.values(stringsFrets).reduce(
     (sum, list) => sum + (list ? list.length : 0),
@@ -133,10 +172,12 @@ export function ScalePatternExportBar({
         className={`w-full p-2.5 sm:p-3 rounded-2xl border transition-all duration-300 shadow-xl flex flex-wrap items-center justify-between gap-2.5 ${
           isEditorActive
             ? 'bg-slate-900/95 dark:bg-slate-950/95 border-amber-500/50 ring-2 ring-amber-400/20 shadow-amber-500/10'
+            : isCustomFromDb
+            ? 'bg-slate-900/90 dark:bg-slate-950/90 border-cyan-500/40 ring-1 ring-cyan-500/20'
             : 'bg-slate-900/80 dark:bg-slate-950/80 border-slate-800'
         }`}
       >
-        {/* Izquierda: Botón de Toggle del Editor + Estado */}
+        {/* Izquierda: Botón de Toggle del Editor + Estados (BD / Nube / Teórico) */}
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -153,6 +194,20 @@ export function ScalePatternExportBar({
             <span>{isEditorActive ? 'Finalizar Edición' : '🛠️ Abrir Editor de Notas'}</span>
           </button>
 
+          {/* Indicador de Origen del Patrón (Nube vs Teórico) */}
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold border shadow-inner">
+            {isCustomFromDb ? (
+              <span className="flex items-center gap-1.5 text-cyan-400 bg-cyan-500/10 border-cyan-500/30">
+                <Cloud className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Nube BD</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-slate-400">
+                <span>📐 Teórico Base</span>
+              </span>
+            )}
+          </div>
+
           {isEditorActive && (
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-mono font-bold">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
@@ -161,20 +216,28 @@ export function ScalePatternExportBar({
               <span>Trastes {minFret}-{maxFret}</span>
             </div>
           )}
+
+          {/* Aviso Flotante de Éxito en BD */}
+          {dbSuccessMessage && (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400 text-emerald-300 text-xs font-bold animate-bounce shadow-md">
+              <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
+              <span>{dbSuccessMessage}</span>
+            </div>
+          )}
         </div>
 
-        {/* Centro / Instrucción contextual cuando está activo */}
+        {/* Centro: Instrucción contextual cuando está activo */}
         {isEditorActive && (
-          <div className="hidden lg:flex items-center gap-2 text-[11px] text-slate-300 font-mono bg-slate-950/70 px-3 py-1.5 rounded-xl border border-slate-800">
+          <div className="hidden xl:flex items-center gap-2 text-[11px] text-slate-300 font-mono bg-slate-950/70 px-3 py-1.5 rounded-xl border border-slate-800">
             <span className="text-cyan-400 font-bold">Clic:</span>
-            <span>Añadir / Cambiar dedo (1→2→3→4→Eliminar)</span>
+            <span>Añadir / Cambiar dedo (1→4)</span>
             <span className="text-slate-600">|</span>
             <span className="text-amber-400 font-bold">Clic Secundario (Derecho):</span>
             <span>Marcar Tónica (Root)</span>
           </div>
         )}
 
-        {/* Derecha: Botones de Acción (Copiar TS, Copiar JSON, Modal y Reset) */}
+        {/* Derecha: Botones de Acción (Guardar en BD, Restablecer Fábrica, Copiar TS, JSON) */}
         {isEditorActive && (
           <div className="flex flex-wrap items-center gap-1.5 ml-auto">
             {/* Alternador Táctil para Móviles / Tablets */}
@@ -223,13 +286,13 @@ export function ScalePatternExportBar({
               <Eye className="w-3.5 h-3.5" />
             </button>
 
-            {/* Botón Reiniciar a Escala Original */}
+            {/* Botón Reiniciar a Escala Teórica Original */}
             {onResetGrid && (
               <button
                 type="button"
                 onClick={onResetGrid}
                 className="p-2 rounded-xl text-xs font-bold bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 hover:text-white transition-all"
-                title="Restablecer a la escala original"
+                title="Restablecer cuadrícula local a la escala teórica"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
               </button>
@@ -247,11 +310,24 @@ export function ScalePatternExportBar({
               </button>
             )}
 
+            {/* Botón Restablecer de Fábrica (Borra de la BD) */}
+            {onResetDb && isCustomFromDb && (
+              <button
+                type="button"
+                onClick={handleTriggerResetDb}
+                className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-rose-950/60 hover:bg-rose-900 text-rose-200 border border-rose-500/40 transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                title="Eliminar de la BD y volver a la configuración matemática por defecto"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-rose-400" />
+                <span className="hidden sm:inline">Restablecer Fábrica</span>
+              </button>
+            )}
+
             {/* Botón Copiar JSON */}
             <button
               type="button"
               onClick={handleCopyJson}
-              className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-sm border ${
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-sm border ${
                 copiedJson
                   ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black'
                   : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 hover:border-slate-600'
@@ -266,28 +342,66 @@ export function ScalePatternExportBar({
               <span className="hidden sm:inline">JSON</span>
             </button>
 
-            {/* Botón Copiar TypeScript (Protagonista) */}
+            {/* Botón Copiar TypeScript */}
             <button
               type="button"
               onClick={handleCopyTs}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-md active:scale-95 border ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 border ${
                 copiedTs
-                  ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black ring-2 ring-emerald-300/40'
-                  : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 border-cyan-400 font-black ring-2 ring-cyan-400/20'
+                  ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
               }`}
               title="Copiar código TypeScript listo para scaleSystems.ts"
             >
               {copiedTs ? (
                 <>
-                  <Check className="w-3.5 h-3.5" />
-                  <span>¡Código TS Copiado!</span>
+                  <Check className="w-3.5 h-3.5 text-slate-950" />
+                  <span>Copiado</span>
                 </>
               ) : (
                 <>
-                  <Code2 className="w-3.5 h-3.5" />
-                  <span>📋 Copiar Código TS</span>
+                  <Code2 className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Código TS</span>
                 </>
               )}
+            </button>
+
+            {/* Botón Protagonista: Guardar en Base de Datos */}
+            {onSaveToDb && (
+              <button
+                type="button"
+                onClick={handleTriggerSaveDb}
+                disabled={isSavingDb}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-md active:scale-95 border bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-black ring-2 ring-cyan-400/30 disabled:opacity-50 cursor-pointer"
+                title="Guardar patrón en la base de datos PostgreSQL para sincronizar con todos tus dispositivos"
+              >
+                {isSavingDb ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Guardando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>💾 Guardar en BD</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Si el editor no está activo pero el patrón fue personalizado en BD */}
+        {!isEditorActive && isCustomFromDb && onResetDb && (
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              type="button"
+              onClick={handleTriggerResetDb}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1.5 transition-colors"
+              title="Restablecer patrón a la forma original de fábrica"
+            >
+              <RefreshCw className="w-3 h-3 text-cyan-400" />
+              <span>Restablecer de Fábrica</span>
             </button>
           </div>
         )}

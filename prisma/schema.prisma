@@ -34,3 +34,21 @@ model StringExercise {
   tabData       Json     // Array con notas de tablatura (cuerda, traste, técnica, duración)
   createdAt     DateTime @default(now())
 }
+
+model CustomScalePattern {
+  id             String   @id @default(cuid())
+  instrumentType String   // "guitar_6", "bass_4", "bass_5"
+  system         String   // "caged", "3nps"
+  scaleKey       String   // "major", "pentatonic_minor", "dorian", "blues", etc.
+  patternId      Int      // 1 al 5 (CAGED) o 1 al 7 (3NPS)
+  name           String
+  minFret        Int
+  maxFret        Int
+  notesData      Json     // Array de objetos: { stringIndex: number, fret: number, finger: number, isRoot: boolean, isStretch?: boolean }
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([instrumentType, system, scaleKey, patternId], name: "pattern_unique_identifier")
+  @@index([instrumentType, system, scaleKey])
+}
+

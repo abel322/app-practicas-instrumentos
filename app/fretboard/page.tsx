@@ -5,6 +5,7 @@ import {
   InstrumentType,
   INSTRUMENTS,
   CHROMATIC_NOTES,
+  ChromaticNote,
   ChordKey,
   ScaleKey,
   SCALES_CATALOG,
@@ -30,6 +31,12 @@ import {
 } from '@/lib/music-theory/scaleSystems';
 import { ScaleSystemControls } from '@/components/fretboard/ScaleSystemControls';
 import { ScalePatternExportBar } from '@/components/fretboard/ScalePatternExportBar';
+import {
+  getCustomScalePatternAction,
+  saveScalePatternAction,
+  resetScalePatternAction,
+  ScaleNotePayload,
+} from '@/app/actions/scalePatternActions';
 
 export interface EditableNote {
   fret: number;
@@ -54,6 +61,15 @@ export default function FretboardPage() {
   const [scaleKey, setScaleKey] = useState<ScaleKey>('major');
   const [scaleSystem, setScaleSystem] = useState<ScaleSystemType>('caged');
   const [activePatternId, setActivePatternId] = useState<number>(1);
+
+  // Estado de Persistencia en Base de Datos PostgreSQL
+  const [customDbPattern, setCustomDbPattern] = useState<{
+    minFret: number;
+    maxFret: number;
+    notesData: ScaleNotePayload[];
+  } | null>(null);
+  const [isCustomFromDb, setIsCustomFromDb] = useState<boolean>(false);
+  const [isSavingDb, setIsSavingDb] = useState<boolean>(false);
 
   // Estado Modo Editor Visual de Escalas / Patrones
   const [isEditorActive, setIsEditorActive] = useState<boolean>(false);
@@ -94,6 +110,37 @@ export default function FretboardPage() {
     );
   }, [studyMode, instrument, rootNote, scaleKey, scaleSystem, activePatternId]);
 
+  // Carga automática del patrón personalizado desde la Base de Datos PostgreSQL
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (studyMode === 'scales') {
+      getCustomScalePatternAction(instrument, scaleSystem, scaleKey, activePatternId).then(
+        (res) => {
+          if (isCancelled) return;
+          if (res.success && res.data && Array.isArray(res.data.notesData)) {
+            setCustomDbPattern({
+              minFret: res.data.minFret,
+              maxFret: res.data.maxFret,
+              notesData: res.data.notesData as unknown as ScaleNotePayload[],
+            });
+            setIsCustomFromDb(true);
+          } else {
+            setCustomDbPattern(null);
+            setIsCustomFromDb(false);
+          }
+        }
+      );
+    } else {
+      setCustomDbPattern(null);
+      setIsCustomFromDb(false);
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [studyMode, instrument, scaleSystem, scaleKey, activePatternId]);
+
   // Si se cambia de modo (ej. a acordes o progresiones), desactivar el editor
   useEffect(() => {
     if (studyMode !== 'scales' && isEditorActive) {
@@ -107,7 +154,29 @@ export default function FretboardPage() {
       const next = !prev;
       if (next) {
         const initialGrid: Record<number, EditableNote[]> = {};
-        if (scaleResult && scaleResult.notes.length > 0) {
+
+        // Si existe un patrón guardado en BD, cargar ese; si no, el patrón teórico calculado
+        if (customDbPattern && customDbPattern.notesData.length > 0) {
+          const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
+          const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
+          const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+
+          customDbPattern.notesData.forEach((n) => {
+            if (!initialGrid[n.stringIndex]) {
+              initialGrid[n.stringIndex] = [];
+            }
+            let transposedFret = n.fret + shift;
+            if (transposedFret > config.totalFrets) transposedFret -= 12;
+            if (transposedFret < 0) transposedFret += 12;
+
+            initialGrid[n.stringIndex].push({
+              fret: transposedFret,
+              finger: n.finger > 0 ? n.finger : 1,
+              isRoot: !!n.isRoot,
+              isStretch: !!n.isStretch,
+            });
+          });
+        } else if (scaleResult && scaleResult.notes.length > 0) {
           scaleResult.notes.forEach((n) => {
             if (!initialGrid[n.stringIndex]) {
               initialGrid[n.stringIndex] = [];
@@ -121,15 +190,17 @@ export default function FretboardPage() {
               isStretch: n.fingerAssignment?.isStretch || false,
             });
           });
-          Object.keys(initialGrid).forEach((str) => {
-            initialGrid[Number(str)].sort((a, b) => a.fret - b.fret);
-          });
         }
+
+        Object.keys(initialGrid).forEach((str) => {
+          initialGrid[Number(str)].sort((a, b) => a.fret - b.fret);
+        });
+
         setEditingGrid(initialGrid);
       }
       return next;
     });
-  }, [scaleResult]);
+  }, [scaleResult, customDbPattern, rootNote, config.totalFrets]);
 
   // Restablecer la cuadrícula a las notas teóricas de la escala
   const handleResetEditorGrid = useCallback(() => {
@@ -159,6 +230,95 @@ export default function FretboardPage() {
   const handleClearEditorGrid = useCallback(() => {
     setEditingGrid({});
   }, []);
+
+  // Guardar el patrón editado en PostgreSQL a través de Server Action
+  const handleSaveToDb = useCallback(async () => {
+    setIsSavingDb(true);
+    try {
+      const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
+      const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
+      const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+
+      const flatNotes: ScaleNotePayload[] = [];
+      const allFrets: number[] = [];
+
+      Object.entries(editingGrid).forEach(([strIdxStr, list]) => {
+        const sIdx = Number(strIdxStr);
+        list.forEach((n) => {
+          let baseFret = n.fret - shift;
+          if (baseFret < 0) baseFret += 12;
+          allFrets.push(baseFret);
+
+          flatNotes.push({
+            stringIndex: sIdx,
+            fret: baseFret,
+            finger: n.finger,
+            isRoot: !!n.isRoot,
+            isStretch: !!n.isStretch,
+          });
+        });
+      });
+
+      const patternName =
+        scaleSystem === 'caged'
+          ? `${SCALES_CATALOG[scaleKey]?.name || ''} - Caja ${activePatternId}`
+          : `${SCALES_CATALOG[scaleKey]?.name || ''} - Patrón ${activePatternId}`;
+
+      const minFret = allFrets.length > 0 ? Math.min(...allFrets) : 0;
+      const maxFret = allFrets.length > 0 ? Math.max(...allFrets) : 12;
+
+      const res = await saveScalePatternAction({
+        instrumentType: instrument,
+        system: scaleSystem,
+        scaleKey,
+        patternId: activePatternId,
+        name: patternName,
+        minFret,
+        maxFret,
+        notesData: flatNotes,
+      });
+
+      if (res.success && res.data) {
+        setCustomDbPattern({
+          minFret,
+          maxFret,
+          notesData: flatNotes,
+        });
+        setIsCustomFromDb(true);
+      }
+    } finally {
+      setIsSavingDb(false);
+    }
+  }, [editingGrid, instrument, scaleSystem, scaleKey, activePatternId, rootNote]);
+
+  // Restablecer el patrón eliminando el registro de PostgreSQL
+  const handleResetDb = useCallback(async () => {
+    await resetScalePatternAction(instrument, scaleSystem, scaleKey, activePatternId);
+    setCustomDbPattern(null);
+    setIsCustomFromDb(false);
+
+    // Restablecer inmediatamente editingGrid a las notas teóricas
+    const initialGrid: Record<number, EditableNote[]> = {};
+    if (scaleResult && scaleResult.notes.length > 0) {
+      scaleResult.notes.forEach((n) => {
+        if (!initialGrid[n.stringIndex]) {
+          initialGrid[n.stringIndex] = [];
+        }
+        const fingerNum =
+          n.fingerAssignment?.finger || (n.finger ? parseInt(n.finger, 10) : 1) || 1;
+        initialGrid[n.stringIndex].push({
+          fret: n.fret,
+          finger: fingerNum > 0 ? fingerNum : 1,
+          isRoot: n.role === 'root',
+          isStretch: n.fingerAssignment?.isStretch || false,
+        });
+      });
+      Object.keys(initialGrid).forEach((str) => {
+        initialGrid[Number(str)].sort((a, b) => a.fret - b.fret);
+      });
+    }
+    setEditingGrid(initialGrid);
+  }, [instrument, scaleSystem, scaleKey, activePatternId, scaleResult]);
 
   // Clic en traste durante el modo editor: añadir / ciclar dedo (1->2->3->4->eliminar)
   const handleFretClickInEditor = useCallback(
@@ -321,6 +481,45 @@ export default function FretboardPage() {
     // MODO 2: ESCALAS Y MODOS (SISTEMA DUAL: CAGED vs 3NPS)
     // -------------------------------------------------------------
     if (studyMode === 'scales') {
+      if (customDbPattern && customDbPattern.notesData.length > 0) {
+        const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
+        const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
+        const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+
+        const notes: ActiveFretNote[] = [];
+        customDbPattern.notesData.forEach((item) => {
+          const str = config.strings[item.stringIndex];
+          if (!str) return;
+
+          let f = item.fret + shift;
+          if (f > config.totalFrets) f -= 12;
+          if (f < 0) f += 12;
+
+          const fn = getFretNote(str.midi, f);
+          const isRoot = !!item.isRoot;
+
+          notes.push({
+            stringIndex: item.stringIndex,
+            fret: f,
+            note: fn.note,
+            interval: isRoot ? 'R' : '',
+            role: isRoot ? 'root' : 'other',
+            finger: item.finger > 0 ? String(item.finger) : undefined,
+            fingerAssignment: {
+              finger: item.finger,
+              isStretch: !!item.isStretch,
+              stretchType: item.isStretch
+                ? item.finger === 1
+                  ? 'backward'
+                  : 'forward'
+                : undefined,
+            },
+            midi: fn.midi,
+          });
+        });
+        return notes;
+      }
+
       return scaleResult ? scaleResult.notes : [];
     }
 
@@ -369,6 +568,7 @@ export default function FretboardPage() {
   }, [
     isEditorActive,
     editingGrid,
+    customDbPattern,
     studyMode,
     activeVoicing,
     rootNote,
@@ -393,11 +593,36 @@ export default function FretboardPage() {
     if (studyMode === 'chords' && activeVoicing) {
       return activeVoicing.fretRange;
     }
-    if (studyMode === 'scales' && scaleResult) {
-      return scaleResult.fretRange;
+    if (studyMode === 'scales') {
+      if (customDbPattern && customDbPattern.notesData.length > 0) {
+        const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
+        const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
+        const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+
+        let minF = customDbPattern.minFret + shift;
+        let maxF = customDbPattern.maxFret + shift;
+        if (maxF > config.totalFrets) {
+          minF -= 12;
+          maxF -= 12;
+        } else if (minF < 0) {
+          minF += 12;
+          maxF += 12;
+        }
+        return [minF, maxF];
+      }
+      return scaleResult ? scaleResult.fretRange : null;
     }
     return null;
-  }, [isEditorActive, editingGrid, studyMode, activeVoicing, scaleResult]);
+  }, [
+    isEditorActive,
+    editingGrid,
+    customDbPattern,
+    studyMode,
+    activeVoicing,
+    scaleResult,
+    rootNote,
+    config.totalFrets,
+  ]);
 
   // Audio: Rasguear Acorde (de grave a agudo)
   const handleStrumVoicing = useCallback(() => {
@@ -617,6 +842,10 @@ export default function FretboardPage() {
             onResetGrid={handleResetEditorGrid}
             touchMode={editorTouchMode}
             onTouchModeChange={setEditorTouchMode}
+            isCustomFromDb={isCustomFromDb}
+            isSavingDb={isSavingDb}
+            onSaveToDb={handleSaveToDb}
+            onResetDb={handleResetDb}
           />
         )}
 
@@ -635,7 +864,7 @@ export default function FretboardPage() {
             studyMode === 'chords'
               ? `${rootNote} ${CHORDS_CATALOG[chordKey]?.name || ''}`
               : studyMode === 'scales'
-              ? `${isEditorActive ? '🛠️ [MODO EDITOR ACTIVO] ' : ''}${rootNote} ${SCALES_CATALOG[scaleKey]?.name || ''} • ${scaleSystem === 'caged' ? 'CAGED' : '3NPS'} (${(scaleSystem === 'caged' ? CAGED_BOXES : THREE_NPS_PATTERNS).find((p) => p.id === activePatternId)?.shortLabel || ''})`
+              ? `${isEditorActive ? '🛠️ [MODO EDITOR ACTIVO] ' : isCustomFromDb ? '☁️ [PERSONALIZADO EN NUBE] ' : ''}${rootNote} ${SCALES_CATALOG[scaleKey]?.name || ''} • ${scaleSystem === 'caged' ? 'CAGED' : '3NPS'} (${(scaleSystem === 'caged' ? CAGED_BOXES : THREE_NPS_PATTERNS).find((p) => p.id === activePatternId)?.shortLabel || ''})`
               : `${rootNote} ${PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId)?.name || ''}`
           }
         />
