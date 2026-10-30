@@ -1,11 +1,13 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { DISPLAY_ROOTS } from '@/lib/music-theory/fretboard';
 import {
   CAGED_BOX_DEFINITIONS,
   CagedChordVoicing,
   ChordExtensionFamily,
+  TonalityMode,
+  TONALITY_MODE_LABELS,
   getCagedDiatonicChords,
 } from '@/lib/music-theory/cagedHarmonics';
 import { NoteDisplayMode } from '@/lib/music-theory/scaleSystems';
@@ -21,6 +23,8 @@ import { ChordVariationChips } from './ChordVariationChips';
 interface CagedHarmonicChordsViewProps {
   selectedKeyRoot: string;
   onKeyRootChange: (root: string) => void;
+  tonalityMode?: TonalityMode;
+  onTonalityModeChange?: (mode: TonalityMode) => void;
   activeCagedBoxId: number; // 1 a 5 (C, A, G, E, D)
   onSelectCagedBoxId: (boxId: number) => void;
   activeChordDegreeIndex: number; // 0 a 6 (I, ii, iii, IV, V, vi, vii°)
@@ -48,6 +52,8 @@ interface CagedHarmonicChordsViewProps {
 export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = ({
   selectedKeyRoot,
   onKeyRootChange,
+  tonalityMode: controlledTonalityMode,
+  onTonalityModeChange,
   activeCagedBoxId,
   onSelectCagedBoxId,
   activeChordDegreeIndex,
@@ -69,16 +75,27 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
   onSelectVariation,
   activeChordOverride,
 }) => {
-  // Obtenemos los 7 acordes diatónicos calculados para la tonalidad, caja activa y familia de extensiones
+  const [internalTonalityMode, setInternalTonalityMode] = useState<TonalityMode>('major');
+  const tonalityMode = controlledTonalityMode ?? internalTonalityMode;
+  const setTonalityMode = (mode: TonalityMode) => {
+    if (onTonalityModeChange) {
+      onTonalityModeChange(mode);
+    } else {
+      setInternalTonalityMode(mode);
+    }
+  };
+
+  // Obtenemos los 7 acordes diatónicos calculados para la tonalidad, modo, caja activa y familia de extensiones
   const diatonicChords: CagedChordVoicing[] = getCagedDiatonicChords(
     selectedKeyRoot,
     activeCagedBoxId,
     instrumentType,
-    activeExtensionFamily
+    activeExtensionFamily,
+    tonalityMode
   );
 
   const baseActiveChord = diatonicChords[activeChordDegreeIndex] || diatonicChords[0];
-  const variations = getVariationsForDegree(activeChordDegreeIndex, selectedKeyRoot);
+  const variations = getVariationsForDegree(activeChordDegreeIndex, selectedKeyRoot, tonalityMode);
   const currentVariationId = activeVariationId || (variations[0]?.id ?? '');
 
   const activeChord = activeChordOverride || baseActiveChord;
@@ -87,10 +104,10 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
 
   return (
     <div className="w-full flex flex-col gap-2.5 p-3 sm:p-4 rounded-2xl bg-[#f8fafc] dark:bg-slate-900/90 border border-slate-300/80 dark:border-slate-800 shadow-sm backdrop-blur-xl transition-all">
-      {/* 1. Fila Superior: Tonalidad (Key) y Selector de las 5 Cajas CAGED */}
+      {/* 1. Fila Superior: Tonalidad (Key), Modo y Selector de las 5 Cajas CAGED */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-200 dark:border-slate-800">
-        {/* Selector de Tonalidad */}
-        <div className="flex items-center gap-2">
+        {/* Selector de Tonalidad y Modo */}
+        <div className="flex flex-wrap items-center gap-2">
           <label className="text-[10px] sm:text-xs font-mono font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
             <Music2 className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
             <span>Tonalidad:</span>
@@ -106,9 +123,20 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
               </option>
             ))}
           </select>
-          <span className="text-xs font-mono font-bold text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 dark:bg-cyan-500/20 px-2 py-1 rounded-lg border border-cyan-500/30">
-            Escala Diatónica Mayor
-          </span>
+
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-slate-400">Modo:</label>
+            <select
+              value={tonalityMode}
+              onChange={(e) => setTonalityMode(e.target.value as TonalityMode)}
+              className="bg-slate-900 border border-slate-700/80 text-cyan-300 font-bold text-xs rounded-xl px-3 py-1.5 focus:ring-2 focus:ring-cyan-400 focus:outline-none cursor-pointer"
+            >
+              <option value="major">Escala Mayor (Jónica)</option>
+              <option value="minor_natural">Escala Menor Natural (Eólica)</option>
+              <option value="minor_harmonic">Escala Menor Armónica</option>
+              <option value="minor_melodic">Escala Menor Melódica</option>
+            </select>
+          </div>
         </div>
 
         {/* Selector de Cajas CAGED (1 al 5) */}
@@ -156,7 +184,7 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
           <span className="text-[10px] font-mono uppercase font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
             <span>Campo Armónico Diatónico en</span>
             <span className="text-slate-900 dark:text-white font-black">
-              {selectedKeyRoot} Mayor
+              {selectedKeyRoot} {TONALITY_MODE_LABELS[tonalityMode]}
             </span>
             <span className="text-cyan-600 dark:text-cyan-400 font-bold">
               ({activeBoxMeta.shortLabel} • {EXTENSION_FAMILIES_LIST.find((f) => f.id === activeExtensionFamily)?.label})
@@ -175,11 +203,13 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
             // Código de color musical:
             // - Grados Mayores (I, IV, V): Acento cian / esmeralda
             // - Grados Menores (ii, iii, vi): Acento índigo / violeta
+            // - Grado Aumentado (♭III+): Acento púrpura / fuchsia
             // - Grado Disminuido / Semidisminuido (vii°): Acento carmesí / rose
             // - Dominante 7/9 (V): Acento ámbar
             const isDominant = chord.chordType === 'dom7';
             const isMajor = chord.chordType === 'maj';
             const isMinor = chord.chordType === 'min';
+            const isAugmented = chord.chordType === 'aug';
             const isSus = chord.chordType === 'sus';
 
             let baseColorClasses = '';
@@ -193,6 +223,9 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
               } else if (isMinor) {
                 baseColorClasses =
                   'bg-indigo-600 text-white border-indigo-400 ring-2 ring-indigo-400/50 shadow-md shadow-indigo-500/30';
+              } else if (isAugmented) {
+                baseColorClasses =
+                  'bg-fuchsia-600 text-white border-fuchsia-400 ring-2 ring-fuchsia-400/50 shadow-md shadow-fuchsia-500/30';
               } else if (isSus) {
                 baseColorClasses =
                   'bg-emerald-500 text-slate-950 border-emerald-300 ring-2 ring-emerald-400/50 shadow-md shadow-emerald-500/30';
@@ -210,6 +243,9 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
               } else if (isMinor) {
                 baseColorClasses =
                   'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300 border-indigo-500/30 dark:border-indigo-500/40';
+              } else if (isAugmented) {
+                baseColorClasses =
+                  'bg-fuchsia-500/10 hover:bg-fuchsia-500/20 text-fuchsia-800 dark:text-fuchsia-300 border-fuchsia-500/30 dark:border-fuchsia-500/40';
               } else if (isSus) {
                 baseColorClasses =
                   'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border-emerald-500/30 dark:border-emerald-500/40';

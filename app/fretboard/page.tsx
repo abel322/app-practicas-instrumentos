@@ -29,6 +29,9 @@ import {
   getCagedDiatonicChords,
   getCagedBoxFretRange,
   ChordExtensionFamily,
+  TonalityMode,
+  TONALITY_MODE_LABELS,
+  getFormulasForTonalityAndFamily,
   getIntervalLabel,
   HARMONIC_FAMILIES_CONFIG,
 } from '@/lib/music-theory/cagedHarmonics';
@@ -80,6 +83,7 @@ export default function FretboardPage() {
   const [fretboardViewMode, setFretboardViewMode] = useState<'scroll' | 'fit'>('scroll');
 
   // Estado Modo 1: Laboratorio de Armonía Diatónica CAGED (7 Acordes por Forma)
+  const [tonalityMode, setTonalityMode] = useState<TonalityMode>('major');
   const [activeCagedBoxId, setActiveCagedBoxId] = useState<number>(1);
   const [activeChordDegreeIndex, setActiveChordDegreeIndex] = useState<number>(0);
   const [activeExtensionFamily, setActiveExtensionFamily] = useState<ChordExtensionFamily>('triad');
@@ -119,11 +123,17 @@ export default function FretboardPage() {
 
   const config = INSTRUMENTS[instrument];
 
-  // Voicings de los 7 Acordes Diatónicos en CAGED con Selector de Extensiones
+  // Voicings de los 7 Acordes Diatónicos en CAGED con Selector de Modo y Extensiones
   const cagedChords: CagedChordVoicing[] = useMemo(() => {
     if (studyMode !== 'chords') return [];
-    return getCagedDiatonicChords(rootNote, activeCagedBoxId, instrument, activeExtensionFamily);
-  }, [studyMode, rootNote, activeCagedBoxId, instrument, activeExtensionFamily]);
+    return getCagedDiatonicChords(
+      rootNote,
+      activeCagedBoxId,
+      instrument,
+      activeExtensionFamily,
+      tonalityMode
+    );
+  }, [studyMode, rootNote, activeCagedBoxId, instrument, activeExtensionFamily, tonalityMode]);
 
   // Si cambia la caja o tonalidad, asegurar índice de grado seguro
   useEffect(() => {
@@ -132,12 +142,12 @@ export default function FretboardPage() {
     }
   }, [activeChordDegreeIndex]);
 
-  // Lista de Variaciones Armónicas Contextuales para el grado activo
+  // Lista de Variaciones Armónicas Contextuales para el grado y modo activos
   const degreeVariations = useMemo(() => {
-    return getVariationsForDegree(activeChordDegreeIndex, rootNote);
-  }, [activeChordDegreeIndex, rootNote]);
+    return getVariationsForDegree(activeChordDegreeIndex, rootNote, tonalityMode);
+  }, [activeChordDegreeIndex, rootNote, tonalityMode]);
 
-  // Sincronizar activeVariationId cuando cambia el grado
+  // Sincronizar activeVariationId cuando cambia el grado o modo
   useEffect(() => {
     if (!degreeVariations.some((v) => v.id === activeVariationId)) {
       setActiveVariationId(degreeVariations[0]?.id || 'std');
@@ -150,11 +160,12 @@ export default function FretboardPage() {
 
   // Clave de extensión efectiva para persistencia en PostgreSQL (CustomChordVoicing.extension)
   const effectiveChordExtensionKey = useMemo(() => {
-    if (!activeVariation || isStandardVariation(activeVariation.id)) {
-      return activeExtensionFamily;
-    }
-    return activeVariation.id;
-  }, [activeVariation, activeExtensionFamily]);
+    const baseKey =
+      !activeVariation || isStandardVariation(activeVariation.id)
+        ? activeExtensionFamily
+        : activeVariation.id;
+    return tonalityMode === 'major' ? baseKey : `${tonalityMode}_${baseKey}`;
+  }, [activeVariation, activeExtensionFamily, tonalityMode]);
 
   const activeCagedChord: CagedChordVoicing | undefined = useMemo(() => {
     const baseChord = cagedChords[activeChordDegreeIndex] || cagedChords[0];
@@ -605,7 +616,10 @@ export default function FretboardPage() {
           const str = config.strings[stringIndex];
           const fn = getFretNote(str?.midi ?? 40, fret);
           const chordRoot = activeCagedChord ? activeCagedChord.rootNote : rootNote;
-          const formulaDef = HARMONIC_FAMILIES_CONFIG[activeExtensionFamily]?.[activeChordDegreeIndex];
+          const formulaDef = getFormulasForTonalityAndFamily(
+            tonalityMode,
+            activeExtensionFamily
+          )?.[activeChordDegreeIndex];
           const interval = getIntervalLabel(fn.note, chordRoot, formulaDef?.intervals);
           const isRoot = interval === 'R';
           return [
@@ -621,7 +635,7 @@ export default function FretboardPage() {
         }
       });
     },
-    [isChordEditorActive, activeCagedChord, config.strings, rootNote, activeExtensionFamily, activeChordDegreeIndex]
+    [isChordEditorActive, activeCagedChord, config.strings, rootNote, tonalityMode, activeExtensionFamily, activeChordDegreeIndex]
   );
 
   // Clic secundario (derecho) en traste durante la edición de acordes: alternar Fundamental (Root)
@@ -652,7 +666,10 @@ export default function FretboardPage() {
         const str = config.strings[stringIndex];
         const fn = getFretNote(str?.midi ?? 40, fret);
         const chordRoot = activeCagedChord ? activeCagedChord.rootNote : rootNote;
-        const formulaDef = HARMONIC_FAMILIES_CONFIG[activeExtensionFamily]?.[activeChordDegreeIndex];
+        const formulaDef = getFormulasForTonalityAndFamily(
+          tonalityMode,
+          activeExtensionFamily
+        )?.[activeChordDegreeIndex];
         const interval = newIsRoot ? 'R' : getIntervalLabel(fn.note, chordRoot, formulaDef?.intervals);
 
         updated[idx] = {
@@ -663,7 +680,7 @@ export default function FretboardPage() {
         return updated;
       });
     },
-    [isChordEditorActive, activeCagedChord, config.strings, rootNote, activeExtensionFamily, activeChordDegreeIndex]
+    [isChordEditorActive, activeCagedChord, config.strings, rootNote, tonalityMode, activeExtensionFamily, activeChordDegreeIndex]
   );
 
   // Guardar acorde en PostgreSQL
@@ -789,8 +806,18 @@ export default function FretboardPage() {
         let role: NoteRole = 'other';
         if (isRoot) role = 'root';
         else if (cn.intervalLabel === '3' || cn.intervalLabel === 'b3') role = 'third';
-        else if (cn.intervalLabel === '5' || cn.intervalLabel === 'b5') role = 'fifth';
-        else if (cn.intervalLabel === '7' || cn.intervalLabel === 'b7') role = 'seventh';
+        else if (
+          cn.intervalLabel === '5' ||
+          cn.intervalLabel === 'b5' ||
+          cn.intervalLabel === '#5'
+        )
+          role = 'fifth';
+        else if (
+          cn.intervalLabel === '7' ||
+          cn.intervalLabel === 'b7' ||
+          cn.intervalLabel === 'bb7'
+        )
+          role = 'seventh';
 
         return {
           stringIndex: cn.stringIndex,
@@ -1191,6 +1218,11 @@ export default function FretboardPage() {
           <CagedHarmonicChordsView
             selectedKeyRoot={rootNote}
             onKeyRootChange={setRootNote}
+            tonalityMode={tonalityMode}
+            onTonalityModeChange={(mode) => {
+              setTonalityMode(mode);
+              setCustomChordNotes(null);
+            }}
             activeCagedBoxId={activeCagedBoxId}
             onSelectCagedBoxId={setActiveCagedBoxId}
             activeChordDegreeIndex={activeChordDegreeIndex}
@@ -1199,7 +1231,10 @@ export default function FretboardPage() {
               setCustomChordNotes(null);
             }}
             activeExtensionFamily={activeExtensionFamily}
-            onSelectExtensionFamily={setActiveExtensionFamily}
+            onSelectExtensionFamily={(fam) => {
+              setActiveExtensionFamily(fam);
+              setCustomChordNotes(null);
+            }}
             onPlayStrum={handlePlayCagedStrum}
             onPlayArpeggio={handlePlayCagedArpeggio}
             displayMode={displayMode}
@@ -1287,7 +1322,7 @@ export default function FretboardPage() {
           }
           title={
             studyMode === 'chords'
-              ? `${rootNote} Mayor • ${activeCagedChord?.fullName || ''} (${CAGED_BOX_DEFINITIONS.find((b) => b.id === activeCagedBoxId)?.shortLabel || ''})`
+              ? `${rootNote} ${TONALITY_MODE_LABELS[tonalityMode]} • ${activeCagedChord?.fullName || ''} (${CAGED_BOX_DEFINITIONS.find((b) => b.id === activeCagedBoxId)?.shortLabel || ''})`
               : studyMode === 'scales'
               ? `${scaleViewMode === 'full_neck_map' ? '🌐 [MÁSTIL COMPLETO] ' : ''}${isEditorActive ? '🛠️ [MODO EDITOR ACTIVO] ' : isCustomFromDb ? '☁️ [PERSONALIZADO EN NUBE] ' : ''}${rootNote} ${SCALES_CATALOG[scaleKey]?.name || ''} • ${scaleSystem === 'caged' ? 'CAGED' : '3NPS'} (${(scaleSystem === 'caged' ? CAGED_BOXES : THREE_NPS_PATTERNS).find((p) => p.id === activePatternId)?.shortLabel || ''})`
               : `${rootNote} ${PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId)?.name || ''}`

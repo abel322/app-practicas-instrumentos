@@ -12,7 +12,7 @@ import {
   PROGRESSIONS_CATALOG,
   resolveProgressionChords,
 } from '@/lib/music-theory/fretboard';
-import { CagedChordVoicing } from '@/lib/music-theory/cagedHarmonics';
+import { CagedChordVoicing, TONALITY_MODE_LABELS } from '@/lib/music-theory/cagedHarmonics';
 import { StudyMode } from './FretboardToolbar';
 import { Sparkles, BookOpen, Award, Zap, ChevronDown, ChevronUp } from 'lucide-react';
 
@@ -109,7 +109,9 @@ export const ChordTheoryAccordion: React.FC<ChordTheoryAccordionProps> = ({
                 </div>
                 <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
                   <span>Tonalidad: </span>
-                  <strong className="text-slate-800 dark:text-slate-200">{rootNote} Mayor</strong>
+                  <strong className="text-slate-800 dark:text-slate-200">
+                    {rootNote} {TONALITY_MODE_LABELS[cagedChord?.tonalityMode || 'major']}
+                  </strong>
                   <span> • Forma: </span>
                   <strong className="text-purple-600 dark:text-purple-400">{cagedBoxName || 'CAGED'}</strong>
                 </div>

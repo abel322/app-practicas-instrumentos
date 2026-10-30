@@ -1,5 +1,9 @@
 import { CHROMATIC_NOTES, ENHARMONIC_MAP, InstrumentType } from './fretboard';
-import { CagedChordVoicing } from './cagedHarmonics';
+import {
+  CagedChordVoicing,
+  TONALITY_DEGREES_CATALOG,
+  TonalityMode,
+} from './cagedHarmonics';
 
 export interface ChordTensionVariation {
   id: string;
@@ -21,10 +25,15 @@ export interface RawNote {
 function normalizeToChromaticIndex(root: string): number {
   const enharmonics: Record<string, string> = {
     Db: 'C#',
+    'D♭': 'C#',
     Eb: 'D#',
+    'E♭': 'D#',
     Gb: 'F#',
+    'G♭': 'F#',
     Ab: 'G#',
+    'A♭': 'G#',
     Bb: 'A#',
+    'B♭': 'A#',
   };
   const standard = enharmonics[root] || root;
   const idx = CHROMATIC_NOTES.indexOf(standard as any);
@@ -40,29 +49,164 @@ export function isStandardVariation(variationId: string): boolean {
   return (
     variationId === 'dom_std' ||
     variationId === 'maj_std' ||
-    variationId === 'dim_half' ||
-    variationId === 'min_std'
+    variationId === 'dim_half_std' ||
+    variationId === 'dim_full_std' ||
+    variationId === 'min_std' ||
+    variationId === 'min_maj_std' ||
+    variationId === 'aug_std'
   );
 }
 
 /**
- * Obtiene las variaciones de tensiones avanzadas filtradas contextualmente según el grado armónico
+ * Obtiene las variaciones de tensiones avanzadas filtradas contextualmente según el grado armónico y modo de tonalidad
  */
 export function getVariationsForDegree(
   degreeIndex: number, // 0 = I, 4 = V, 6 = vii°, etc.
-  keyRoot: string
+  keyRoot: string,
+  tonalityMode: TonalityMode = 'major'
 ): ChordTensionVariation[] {
-  // 1. GRADO V (Dominante con tensiones de jazz y slash chord)
-  if (degreeIndex === 4) {
+  const degrees = TONALITY_DEGREES_CATALOG[tonalityMode] || TONALITY_DEGREES_CATALOG.major;
+  const degConfig = degrees[degreeIndex] || degrees[0];
+
+  // 1. GRADOS MENOR-MAJ7 (Grado I en Menor Armónica y Menor Melódica: m(maj7) / m6)
+  if (degConfig.seventhSuffix === 'm(maj7)') {
+    return [
+      {
+        id: 'min_maj_std',
+        shortLabel: 'm(maj7)',
+        fullName: 'Menor (Maj7) Tónica Menor',
+        category: 'standard',
+        intervalFormula: [
+          { label: 'R', semitones: 0 },
+          { label: 'b3', semitones: 3 },
+          { label: '5', semitones: 7 },
+          { label: '7', semitones: 11 },
+        ],
+        description: 'Tónica de menor armónica / melódica con 7ª mayor sensible',
+      },
+      {
+        id: 'min_6',
+        shortLabel: 'm6',
+        fullName: 'Menor 6 (Tónica Jazz Menor)',
+        category: 'sixth',
+        intervalFormula: [
+          { label: 'R', semitones: 0 },
+          { label: 'b3', semitones: 3 },
+          { label: '5', semitones: 7 },
+          { label: '6', semitones: 9 },
+        ],
+        description: 'Voicing clásico de reposo en Menor Melódica (sin choque de 7ª)',
+      },
+      {
+        id: 'min_add9',
+        shortLabel: 'm(add9)',
+        fullName: 'Menor con 9ª añadida',
+        category: 'standard',
+        intervalFormula: [
+          { label: 'R', semitones: 0 },
+          { label: 'b3', semitones: 3 },
+          { label: '5', semitones: 7 },
+          { label: '9', semitones: 2 },
+        ],
+        description: 'Tríada menor moderna con 9ª agregada',
+      },
+    ];
+  }
+
+  // 2. GRADO DISMINUIDO COMPLETO °7 (Grado VII° en Menor Armónica)
+  if (degConfig.seventhSuffix === '°7') {
+    return [
+      {
+        id: 'dim_full_std',
+        shortLabel: '°7 (Disminuido Completo)',
+        fullName: 'Disminuido Completo (°7)',
+        category: 'standard',
+        intervalFormula: [
+          { label: 'R', semitones: 0 },
+          { label: 'b3', semitones: 3 },
+          { label: 'b5', semitones: 6 },
+          { label: 'bb7', semitones: 9 },
+        ],
+        description: 'Acorde disminuido simétrico de 7ª disminuida de la escala menor armónica',
+      },
+      {
+        id: 'dim_half',
+        shortLabel: 'm7(♭5) / ø7',
+        fullName: 'Semidisminuido',
+        category: 'diminished',
+        intervalFormula: [
+          { label: 'R', semitones: 0 },
+          { label: 'b3', semitones: 3 },
+          { label: 'b5', semitones: 6 },
+          { label: 'b7', semitones: 10 },
+        ],
+        description: 'Variación semidisminuida con 7ª menor',
+      },
+    ];
+  }
+
+  // 3. GRADOS SEMIDISMINUIDOS m7b5 (VII° en Mayor, II° en Menor Natural/Armónica, VI° y VII° en Menor Melódica)
+  if (degConfig.seventhSuffix === 'm7b5') {
+    return [
+      {
+        id: 'dim_half_std',
+        shortLabel: 'm7(♭5) / ø7',
+        fullName: 'Semidisminuido Diatónico',
+        category: 'standard',
+        intervalFormula: [
+          { label: 'R', semitones: 0 },
+          { label: 'b3', semitones: 3 },
+          { label: 'b5', semitones: 6 },
+          { label: 'b7', semitones: 10 },
+        ],
+        description: 'Séptima menor con quinta disminuida diatónica',
+      },
+      {
+        id: 'dim_full',
+        shortLabel: '°7 (Disminuido Completo)',
+        fullName: 'Disminuido Simétrico (°7)',
+        category: 'diminished',
+        intervalFormula: [
+          { label: 'R', semitones: 0 },
+          { label: 'b3', semitones: 3 },
+          { label: 'b5', semitones: 6 },
+          { label: 'bb7', semitones: 9 },
+        ],
+        description: 'Intercambio modal menor armónica; simetría de terceras menores',
+      },
+    ];
+  }
+
+  // 4. GRADO AUMENTADO ♭III+ (Menor Armónica y Menor Melódica)
+  if (degConfig.triadType === 'aug' || degConfig.seventhSuffix === 'maj7(#5)') {
+    return [
+      {
+        id: 'aug_std',
+        shortLabel: 'Maj7(♯5) / aug',
+        fullName: 'Mayor 7 con 5ª Aumentada',
+        category: 'standard',
+        intervalFormula: [
+          { label: 'R', semitones: 0 },
+          { label: '3', semitones: 4 },
+          { label: '#5', semitones: 8 },
+          { label: '7', semitones: 11 },
+        ],
+        description: 'Acorde aumentado diatónico de menor armónica y melódica',
+      },
+    ];
+  }
+
+  // 5. GRADOS DOMINANTES (V en Mayor/Armónica/Melódica, IV Lidio Dom en Melódica, ♭VII en Menor Natural)
+  if (degConfig.seventhType === 'dom7') {
     const ivRoot = getDegreeRoot(keyRoot, 5);
-    const vRoot = getDegreeRoot(keyRoot, 7);
-    const slashLabel = keyRoot === 'C' ? 'IV/V (F/G)' : `IV/V (${ivRoot}/${vRoot})`;
+    const vRoot = getDegreeRoot(keyRoot, degConfig.semitonesFromRoot);
+    const slashLabel = `IV/V (${ivRoot}/${vRoot})`;
 
     return [
       {
         id: 'dom_std',
-        shortLabel: '7 (Natural)',
-        fullName: 'Dominante 7',
+        shortLabel: degConfig.seventhFullName.includes('Lidio') ? '7 (Lidio Dom)' : '7 (Natural)',
+        fullName: degConfig.seventhFullName,
         category: 'standard',
         intervalFormula: [
           { label: 'R', semitones: 0 },
@@ -142,7 +286,7 @@ export function getVariationsForDegree(
       {
         id: 'dom_slash',
         shortLabel: slashLabel,
-        fullName: `Poliacorde IV/V (${vRoot}9sus4)`,
+        fullName: `Poliacorde (${vRoot}9sus4)`,
         category: 'slash',
         intervalFormula: [
           { label: 'R', semitones: 0 },
@@ -156,18 +300,11 @@ export function getVariationsForDegree(
     ];
   }
 
-  // 2. GRADOS I y IV (Mayores: Sextas, 6/9 y Lidio Poliacorde)
-  if (degreeIndex === 0 || degreeIndex === 3) {
-    const isDegree0 = degreeIndex === 0;
-    const iRoot = getDegreeRoot(keyRoot, isDegree0 ? 0 : 5);
-    const iiRoot = getDegreeRoot(keyRoot, isDegree0 ? 2 : 7);
-    const slashLabel = isDegree0
-      ? keyRoot === 'C'
-        ? 'II/I (D/C)'
-        : `II/I (${iiRoot}/${iRoot})`
-      : keyRoot === 'C'
-      ? 'V/IV (G/F)'
-      : `V/IV (${iiRoot}/${iRoot})`;
+  // 6. GRADOS MAYORES (I y IV en Mayor, ♭III y ♭VI en Menor Natural, ♭VI en Menor Armónica)
+  if (degConfig.seventhType === 'maj') {
+    const iRoot = getDegreeRoot(keyRoot, degConfig.semitonesFromRoot);
+    const iiRoot = getDegreeRoot(keyRoot, (degConfig.semitonesFromRoot + 2) % 12);
+    const slashLabel = `${iiRoot}/${iRoot}`;
 
     return [
       {
@@ -239,39 +376,7 @@ export function getVariationsForDegree(
     ];
   }
 
-  // 3. GRADO vii° (Semidisminuido vs Disminuido Completo)
-  if (degreeIndex === 6) {
-    return [
-      {
-        id: 'dim_half',
-        shortLabel: 'm7(♭5) / ø7',
-        fullName: 'Semidisminuido Diatónico',
-        category: 'standard',
-        intervalFormula: [
-          { label: 'R', semitones: 0 },
-          { label: 'b3', semitones: 3 },
-          { label: 'b5', semitones: 6 },
-          { label: 'b7', semitones: 10 },
-        ],
-        description: 'Séptima menor con quinta disminuida diatónica',
-      },
-      {
-        id: 'dim_full',
-        shortLabel: '°7 (Disminuido Completo)',
-        fullName: 'Disminuido Simétrico (°7)',
-        category: 'diminished',
-        intervalFormula: [
-          { label: 'R', semitones: 0 },
-          { label: 'b3', semitones: 3 },
-          { label: 'b5', semitones: 6 },
-          { label: 'bb7', semitones: 9 },
-        ],
-        description: 'Intercambio modal menor armónica; simetría de terceras menores',
-      },
-    ];
-  }
-
-  // 4. GRADOS ii, iii y vi (Menores)
+  // 7. GRADOS MENORES m7 (II, III, VI en Mayor; I, IV, V en Menor Natural; IV en Armónica; II en Melódica)
   return [
     {
       id: 'min_std',
@@ -762,29 +867,21 @@ export function applyChordTensionVariation(
   cagedBoxId: number,
   instrumentType: InstrumentType = 'guitar_6'
 ): CagedChordVoicing {
-  if (isStandardVariation(variation.id) && variation.id.endsWith('_std')) {
+  if (isStandardVariation(variation.id)) {
     return baseChord;
   }
 
   const safeRootIndex = normalizeToChromaticIndex(keyRoot);
   const transposeOffset = safeRootIndex;
   const isBass = instrumentType === 'bass_4' || instrumentType === 'bass_5';
+  const activeMode: TonalityMode = baseChord.tonalityMode || 'major';
+  const modeCatalog = TONALITY_DEGREES_CATALOG[activeMode] || TONALITY_DEGREES_CATALOG.major;
+  const foundDegIdx = modeCatalog.findIndex((d) => d.roman === baseChord.degreeRoman);
+  const degIdx = foundDegIdx >= 0 ? foundDegIdx : 0;
 
-  // Obtener el índice del grado (0 a 6)
-  const degMap: Record<string, number> = {
-    I: 0,
-    ii: 1,
-    iii: 2,
-    IV: 3,
-    V: 4,
-    vi: 5,
-    'vii°': 6,
-  };
-  const degIdx = degMap[baseChord.degreeRoman] ?? 0;
-
-  // 1. Verificar si existe en el catálogo maestro para guitarra
+  // 1. Verificar si existe en el catálogo maestro para guitarra (en modo mayor)
   let rawNotes: RawNote[] | null = null;
-  if (!isBass) {
+  if (!isBass && activeMode === 'major') {
     const boxDef = GUITAR_VARIATION_VOICINGS_C_MAJOR[cagedBoxId];
     if (boxDef && boxDef[degIdx] && boxDef[degIdx][variation.id]) {
       rawNotes = boxDef[degIdx][variation.id];
@@ -810,12 +907,22 @@ export function applyChordTensionVariation(
     rawNotes = baseUntransposed.map((n) => {
       // Sustituciones teóricas según la variación
       if (variation.id === 'dim_full') {
-        if (n.intervalLabel === 'b7' || n.intervalLabel === '7') {
+        if (n.intervalLabel === 'b7') {
           return { ...n, fret: Math.max(0, n.fret - 1), intervalLabel: 'bb7', isRoot: false };
+        }
+        if (n.intervalLabel === '7') {
+          return { ...n, fret: Math.max(0, n.fret - 2), intervalLabel: 'bb7', isRoot: false };
+        }
+      } else if (variation.id === 'dim_half') {
+        if (n.intervalLabel === 'bb7') {
+          return { ...n, fret: n.fret + 1, intervalLabel: 'b7', isRoot: false };
         }
       } else if (variation.id === 'maj_6') {
         if (n.intervalLabel === '7') {
           return { ...n, fret: Math.max(0, n.fret - 2), intervalLabel: '6', isRoot: false };
+        }
+        if (n.intervalLabel === '5' && n.stringIndex <= 2) {
+          return { ...n, fret: n.fret + 2, intervalLabel: '6', isRoot: false };
         }
       } else if (variation.id === 'maj_69') {
         if (n.intervalLabel === '7') {
@@ -848,15 +955,21 @@ export function applyChordTensionVariation(
           return { ...n, fret: n.fret + 1, intervalLabel: 'b13', isRoot: false };
         }
       } else if (variation.id === 'min_6') {
-        if (n.intervalLabel === 'b7' || n.intervalLabel === '7') {
+        if (n.intervalLabel === 'b7') {
           return { ...n, fret: Math.max(0, n.fret - 1), intervalLabel: '6', isRoot: false };
+        }
+        if (n.intervalLabel === '7') {
+          return { ...n, fret: Math.max(0, n.fret - 2), intervalLabel: '6', isRoot: false };
+        }
+        if (n.intervalLabel === '5' && n.stringIndex <= 2) {
+          return { ...n, fret: n.fret + 2, intervalLabel: '6', isRoot: false };
         }
       } else if (variation.id === 'min_11') {
         if (n.intervalLabel === '5' || (n.isRoot && n.stringIndex <= 2)) {
           return { ...n, fret: n.fret - 2, intervalLabel: '11', isRoot: false };
         }
       } else if (variation.id === 'min_add9') {
-        if (n.intervalLabel === 'b7' || (n.isRoot && n.stringIndex <= 2)) {
+        if (n.intervalLabel === 'b7' || n.intervalLabel === '7' || (n.isRoot && n.stringIndex <= 2)) {
           return { ...n, fret: n.fret + 2, intervalLabel: '9', isRoot: false };
         }
       }
