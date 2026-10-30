@@ -114,6 +114,9 @@ export interface InteractiveFretboardProps {
   title?: string;
   viewMode?: 'scroll' | 'fit';
   onViewModeChange?: (mode: 'scroll' | 'fit') => void;
+  isEditorActive?: boolean;
+  onFretClickInEditor?: (stringIndex: number, fret: number) => void;
+  onToggleRootInEditor?: (e: React.MouseEvent, stringIndex: number, fret: number) => void;
 }
 
 // Inlays estándar: simples en 3, 5, 7, 9, 15, 17, 19, 21; dobles en 12 y 24
@@ -129,6 +132,9 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   title,
   viewMode: controlledViewMode,
   onViewModeChange,
+  isEditorActive = false,
+  onFretClickInEditor,
+  onToggleRootInEditor,
 }) => {
   const { theme } = useTheme();
   const isLight = theme === 'light';
@@ -963,7 +969,17 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                     key={`empty_slot_${key}`}
                     data-fret={fIdx}
                     className="cursor-pointer group"
-                    onClick={() => handlePlayNote(sIdx, fIdx)}
+                    onClick={() => {
+                      if (isEditorActive && onFretClickInEditor) {
+                        onFretClickInEditor(sIdx, fIdx);
+                      }
+                      handlePlayNote(sIdx, fIdx);
+                    }}
+                    onContextMenu={(e) => {
+                      if (isEditorActive && onToggleRootInEditor) {
+                        onToggleRootInEditor(e, sIdx, fIdx);
+                      }
+                    }}
                   >
                     {/* Zona táctil invisible amplia */}
                     <rect
@@ -1044,6 +1060,11 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                   data-fret={item.fret}
                   onMouseEnter={() => setHoveredNote(item)}
                   onMouseLeave={() => setHoveredNote(null)}
+                  onContextMenu={(e) => {
+                    if (isEditorActive && onToggleRootInEditor) {
+                      onToggleRootInEditor(e, item.stringIndex, item.fret);
+                    }
+                  }}
                 >
                   {/* Halo brillante exterior para la Tónica (Root) */}
                   {isRoot && (
@@ -1101,7 +1122,17 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                         fingerAssignment={fingerAssign}
                         isRoot={isRoot}
                         displayMode={displayMode}
-                        onClick={() => handlePlayNote(item.stringIndex, item.fret)}
+                        onClick={() => {
+                          if (isEditorActive && onFretClickInEditor) {
+                            onFretClickInEditor(item.stringIndex, item.fret);
+                          }
+                          handlePlayNote(item.stringIndex, item.fret);
+                        }}
+                        onContextMenu={(e) => {
+                          if (isEditorActive && onToggleRootInEditor) {
+                            onToggleRootInEditor(e, item.stringIndex, item.fret);
+                          }
+                        }}
                       />
                     </div>
                   </foreignObject>

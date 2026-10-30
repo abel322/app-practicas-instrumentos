@@ -29,6 +29,14 @@ import {
   THREE_NPS_PATTERNS,
 } from '@/lib/music-theory/scaleSystems';
 import { ScaleSystemControls } from '@/components/fretboard/ScaleSystemControls';
+import { ScalePatternExportBar } from '@/components/fretboard/ScalePatternExportBar';
+
+export interface EditableNote {
+  fret: number;
+  finger: number;
+  isRoot?: boolean;
+  isStretch?: boolean;
+}
 
 export default function FretboardPage() {
   // Estado General
@@ -46,6 +54,11 @@ export default function FretboardPage() {
   const [scaleKey, setScaleKey] = useState<ScaleKey>('major');
   const [scaleSystem, setScaleSystem] = useState<ScaleSystemType>('caged');
   const [activePatternId, setActivePatternId] = useState<number>(1);
+
+  // Estado Modo Editor Visual de Escalas / Patrones
+  const [isEditorActive, setIsEditorActive] = useState<boolean>(false);
+  const [editingGrid, setEditingGrid] = useState<Record<number, EditableNote[]>>({});
+  const [editorTouchMode, setEditorTouchMode] = useState<'cycle' | 'root'>('cycle');
 
   // Estado Modo 3: Progresiones
   const [selectedProgressionId, setSelectedProgressionId] = useState<string>('ii_v_i');
@@ -81,8 +94,209 @@ export default function FretboardPage() {
     );
   }, [studyMode, instrument, rootNote, scaleKey, scaleSystem, activePatternId]);
 
+  // Si se cambia de modo (ej. a acordes o progresiones), desactivar el editor
+  useEffect(() => {
+    if (studyMode !== 'scales' && isEditorActive) {
+      setIsEditorActive(false);
+    }
+  }, [studyMode, isEditorActive]);
+
+  // Manejador para abrir/cerrar editor cargando las notas actuales de la caja
+  const handleToggleEditor = useCallback(() => {
+    setIsEditorActive((prev) => {
+      const next = !prev;
+      if (next) {
+        const initialGrid: Record<number, EditableNote[]> = {};
+        if (scaleResult && scaleResult.notes.length > 0) {
+          scaleResult.notes.forEach((n) => {
+            if (!initialGrid[n.stringIndex]) {
+              initialGrid[n.stringIndex] = [];
+            }
+            const fingerNum =
+              n.fingerAssignment?.finger || (n.finger ? parseInt(n.finger, 10) : 1) || 1;
+            initialGrid[n.stringIndex].push({
+              fret: n.fret,
+              finger: fingerNum > 0 ? fingerNum : 1,
+              isRoot: n.role === 'root',
+              isStretch: n.fingerAssignment?.isStretch || false,
+            });
+          });
+          Object.keys(initialGrid).forEach((str) => {
+            initialGrid[Number(str)].sort((a, b) => a.fret - b.fret);
+          });
+        }
+        setEditingGrid(initialGrid);
+      }
+      return next;
+    });
+  }, [scaleResult]);
+
+  // Restablecer la cuadrícula a las notas teóricas de la escala
+  const handleResetEditorGrid = useCallback(() => {
+    const initialGrid: Record<number, EditableNote[]> = {};
+    if (scaleResult && scaleResult.notes.length > 0) {
+      scaleResult.notes.forEach((n) => {
+        if (!initialGrid[n.stringIndex]) {
+          initialGrid[n.stringIndex] = [];
+        }
+        const fingerNum =
+          n.fingerAssignment?.finger || (n.finger ? parseInt(n.finger, 10) : 1) || 1;
+        initialGrid[n.stringIndex].push({
+          fret: n.fret,
+          finger: fingerNum > 0 ? fingerNum : 1,
+          isRoot: n.role === 'root',
+          isStretch: n.fingerAssignment?.isStretch || false,
+        });
+      });
+      Object.keys(initialGrid).forEach((str) => {
+        initialGrid[Number(str)].sort((a, b) => a.fret - b.fret);
+      });
+    }
+    setEditingGrid(initialGrid);
+  }, [scaleResult]);
+
+  // Limpiar toda la cuadrícula para construir un patrón desde cero
+  const handleClearEditorGrid = useCallback(() => {
+    setEditingGrid({});
+  }, []);
+
+  // Clic en traste durante el modo editor: añadir / ciclar dedo (1->2->3->4->eliminar)
+  const handleFretClickInEditor = useCallback(
+    (stringIndex: number, fret: number) => {
+      if (!isEditorActive) return;
+
+      setEditingGrid((prev) => {
+        const currentStringNotes = prev[stringIndex] || [];
+        const existingIndex = currentStringNotes.findIndex((n) => n.fret === fret);
+
+        // Si el modo táctil es 'root' (marcar tónica en móviles/pantallas táctiles):
+        if (editorTouchMode === 'root') {
+          if (existingIndex === -1) {
+            return {
+              ...prev,
+              [stringIndex]: [...currentStringNotes, { fret, finger: 1, isRoot: true }].sort(
+                (a, b) => a.fret - b.fret
+              ),
+            };
+          }
+          const existing = currentStringNotes[existingIndex];
+          const updated = [...currentStringNotes];
+          updated[existingIndex] = { ...existing, isRoot: !existing.isRoot };
+          return { ...prev, [stringIndex]: updated };
+        }
+
+        // 1. Si no existe la nota en ese traste -> Se añade con Dedo 1 por defecto
+        if (existingIndex === -1) {
+          return {
+            ...prev,
+            [stringIndex]: [...currentStringNotes, { fret, finger: 1, isRoot: false }].sort(
+              (a, b) => a.fret - b.fret
+            ),
+          };
+        }
+
+        // 2. Si ya existe -> Se cicla el dedo: 1 -> 2 -> 3 -> 4 -> Eliminar
+        const existing = currentStringNotes[existingIndex];
+        if (existing.finger < 4) {
+          const updated = [...currentStringNotes];
+          updated[existingIndex] = { ...existing, finger: existing.finger + 1 };
+          return { ...prev, [stringIndex]: updated };
+        } else {
+          // Elimina la nota al pasar del dedo 4
+          return {
+            ...prev,
+            [stringIndex]: currentStringNotes.filter((n) => n.fret !== fret),
+          };
+        }
+      });
+    },
+    [isEditorActive, editorTouchMode]
+  );
+
+  // Clic secundario (derecho) en traste: marcar / desmarcar Tónica (Root)
+  const handleToggleRootInEditor = useCallback(
+    (e: React.MouseEvent, stringIndex: number, fret: number) => {
+      e.preventDefault(); // Evita el menú contextual del navegador
+      if (!isEditorActive) return;
+
+      setEditingGrid((prev) => {
+        const currentStringNotes = prev[stringIndex] || [];
+        const existingIndex = currentStringNotes.findIndex((n) => n.fret === fret);
+
+        if (existingIndex === -1) {
+          return {
+            ...prev,
+            [stringIndex]: [...currentStringNotes, { fret, finger: 1, isRoot: true }].sort(
+              (a, b) => a.fret - b.fret
+            ),
+          };
+        }
+
+        const updated = currentStringNotes.map((n) =>
+          n.fret === fret ? { ...n, isRoot: !n.isRoot } : n
+        );
+        return { ...prev, [stringIndex]: updated };
+      });
+    },
+    [isEditorActive]
+  );
+
+  // Rango mínimo y máximo del patrón actualmente editado
+  const { editorMinFret, editorMaxFret } = useMemo(() => {
+    const frets: number[] = [];
+    Object.values(editingGrid).forEach((list) => {
+      list.forEach((n) => frets.push(n.fret));
+    });
+    if (frets.length > 0) {
+      return {
+        editorMinFret: Math.min(...frets),
+        editorMaxFret: Math.max(...frets),
+      };
+    }
+    return {
+      editorMinFret: scaleResult?.fretRange[0] ?? 0,
+      editorMaxFret: scaleResult?.fretRange[1] ?? 12,
+    };
+  }, [editingGrid, scaleResult]);
+
   // Cálculo de las notas activas que se mostrarán sobre el diapasón según el modo
   const activeNotes: ActiveFretNote[] = useMemo(() => {
+    // -------------------------------------------------------------
+    // MODO EDITOR DE PATRONES EN VIVO
+    // -------------------------------------------------------------
+    if (isEditorActive && studyMode === 'scales') {
+      const notes: ActiveFretNote[] = [];
+      Object.entries(editingGrid).forEach(([strIdxStr, noteList]) => {
+        const sIdx = Number(strIdxStr);
+        const str = config.strings[sIdx];
+        if (!str) return;
+
+        noteList.forEach((item) => {
+          const fn = getFretNote(str.midi, item.fret);
+          const isRoot = !!item.isRoot;
+          notes.push({
+            stringIndex: sIdx,
+            fret: item.fret,
+            note: fn.note,
+            interval: isRoot ? 'R' : '',
+            role: isRoot ? 'root' : 'other',
+            finger: item.finger > 0 ? String(item.finger) : undefined,
+            fingerAssignment: {
+              finger: item.finger,
+              isStretch: !!item.isStretch,
+              stretchType: item.isStretch
+                ? item.finger === 1
+                  ? 'backward'
+                  : 'forward'
+                : undefined,
+            },
+            midi: fn.midi,
+          });
+        });
+      });
+      return notes;
+    }
+
     // -------------------------------------------------------------
     // MODO 1: ACORDES Y POSICIONES
     // -------------------------------------------------------------
@@ -153,6 +367,8 @@ export default function FretboardPage() {
 
     return [];
   }, [
+    isEditorActive,
+    editingGrid,
     studyMode,
     activeVoicing,
     rootNote,
@@ -164,6 +380,16 @@ export default function FretboardPage() {
 
   // Rango de trastes enfocado
   const fretFocusRange: [number, number] | null = useMemo(() => {
+    if (isEditorActive && studyMode === 'scales') {
+      const frets: number[] = [];
+      Object.values(editingGrid).forEach((list) => {
+        list.forEach((n) => frets.push(n.fret));
+      });
+      if (frets.length > 0) {
+        return [Math.min(...frets), Math.max(...frets)];
+      }
+      return scaleResult ? scaleResult.fretRange : [0, 12];
+    }
     if (studyMode === 'chords' && activeVoicing) {
       return activeVoicing.fretRange;
     }
@@ -171,7 +397,7 @@ export default function FretboardPage() {
       return scaleResult.fretRange;
     }
     return null;
-  }, [studyMode, activeVoicing, scaleResult]);
+  }, [isEditorActive, editingGrid, studyMode, activeVoicing, scaleResult]);
 
   // Audio: Rasguear Acorde (de grave a agudo)
   const handleStrumVoicing = useCallback(() => {
@@ -374,6 +600,26 @@ export default function FretboardPage() {
           />
         )}
 
+        {/* 3.2 Barra del Editor Visual de Patrones y Generador de Código TS/JSON */}
+        {studyMode === 'scales' && (
+          <ScalePatternExportBar
+            isEditorActive={isEditorActive}
+            onToggleEditor={handleToggleEditor}
+            patternName={
+              scaleSystem === 'caged'
+                ? `${rootNote} ${SCALES_CATALOG[scaleKey]?.name || ''} - Caja ${activePatternId} (${CAGED_BOXES.find((p) => p.id === activePatternId)?.shortLabel || ''})`
+                : `${rootNote} ${SCALES_CATALOG[scaleKey]?.name || ''} - Patrón ${activePatternId} (${THREE_NPS_PATTERNS.find((p) => p.id === activePatternId)?.shortLabel || ''})`
+            }
+            minFret={editorMinFret}
+            maxFret={editorMaxFret}
+            stringsFrets={editingGrid}
+            onClearGrid={handleClearEditorGrid}
+            onResetGrid={handleResetEditorGrid}
+            touchMode={editorTouchMode}
+            onTouchModeChange={setEditorTouchMode}
+          />
+        )}
+
         {/* 4. El Diapasón como Protagonista Central (Visible Inmediatamente) */}
         <InteractiveFretboard
           instrument={instrument}
@@ -382,11 +628,14 @@ export default function FretboardPage() {
           fretFocusRange={fretFocusRange}
           viewMode={fretboardViewMode}
           onViewModeChange={setFretboardViewMode}
+          isEditorActive={isEditorActive && studyMode === 'scales'}
+          onFretClickInEditor={handleFretClickInEditor}
+          onToggleRootInEditor={handleToggleRootInEditor}
           title={
             studyMode === 'chords'
               ? `${rootNote} ${CHORDS_CATALOG[chordKey]?.name || ''}`
               : studyMode === 'scales'
-              ? `${rootNote} ${SCALES_CATALOG[scaleKey]?.name || ''} • ${scaleSystem === 'caged' ? 'CAGED' : '3NPS'} (${(scaleSystem === 'caged' ? CAGED_BOXES : THREE_NPS_PATTERNS).find((p) => p.id === activePatternId)?.shortLabel || ''})`
+              ? `${isEditorActive ? '🛠️ [MODO EDITOR ACTIVO] ' : ''}${rootNote} ${SCALES_CATALOG[scaleKey]?.name || ''} • ${scaleSystem === 'caged' ? 'CAGED' : '3NPS'} (${(scaleSystem === 'caged' ? CAGED_BOXES : THREE_NPS_PATTERNS).find((p) => p.id === activePatternId)?.shortLabel || ''})`
               : `${rootNote} ${PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId)?.name || ''}`
           }
         />

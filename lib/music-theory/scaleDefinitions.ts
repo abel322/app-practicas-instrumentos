@@ -79,3 +79,4 @@ export const ALL_SCALES_CATALOG: Record<string, ScaleFormula> = {
     degrees: ['R', '2', 'b3', '4', '5', '6', '7']
   }
 };
+

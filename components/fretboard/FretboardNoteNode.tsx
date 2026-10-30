@@ -10,6 +10,7 @@ export interface FretboardNoteNodeProps {
   isRoot: boolean;
   displayMode: NoteDisplayMode | 'intervals';
   onClick: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export function FretboardNoteNode({
@@ -18,13 +19,15 @@ export function FretboardNoteNode({
   fingerAssignment,
   isRoot,
   displayMode,
-  onClick
+  onClick,
+  onContextMenu
 }: FretboardNoteNodeProps) {
   const { finger, isStretch } = fingerAssignment;
 
   return (
     <div 
       onClick={onClick}
+      onContextMenu={onContextMenu}
       className="relative flex items-center justify-center cursor-pointer select-none group"
     >
       {/* Nodo Principal */}
@@ -44,7 +47,7 @@ export function FretboardNoteNode({
             {isStretch && <span className="text-[9px] -ml-0.5 text-amber-950 font-black">⚡</span>}
           </div>
         ) : displayMode === 'degrees' || displayMode === 'intervals' ? (
-          <span className="font-mono">{degreeLabel}</span>
+          <span className="font-mono">{degreeLabel || noteName}</span>
         ) : (
           <span>{noteName}</span>
         )}
@@ -67,4 +70,3 @@ export function FretboardNoteNode({
     </div>
   );
 }
-
