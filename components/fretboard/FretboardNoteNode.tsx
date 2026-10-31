@@ -28,7 +28,6 @@ export function FretboardNoteNode({
   isInActiveBox = true,
   isGhost = false,
   isHighlighted = false,
-  size = 'md',
   onClick,
   onContextMenu,
 }: FretboardNoteNodeProps) {
@@ -60,27 +59,19 @@ export function FretboardNoteNode({
       className="relative flex items-center justify-center cursor-pointer select-none group"
     >
       <div
-        className={`${
-          size === 'sm'
-            ? 'w-[22px] h-[22px] sm:w-[24px] sm:h-[24px]'
-            : 'w-[24px] h-[24px] sm:w-[26px] sm:h-[26px]'
-        } rounded-full flex items-center justify-center transition-all shadow-sm ${
+        className={`w-[27px] h-[27px] sm:w-[29px] sm:h-[29px] rounded-full flex items-center justify-center transition-all shadow-sm ${
           isHighlighted
             ? isRoot
               ? 'bg-[#FFCC00] text-slate-950 font-black ring-4 ring-cyan-400 shadow-[0_0_20px_rgba(34,211,238,1)] scale-115 z-40 animate-pulse'
               : 'bg-cyan-400 text-slate-950 font-black ring-4 ring-cyan-300 shadow-[0_0_18px_rgba(34,211,238,1)] scale-115 z-40 animate-pulse'
             : isRoot
-            ? 'bg-[#FFCC00] text-slate-950 font-black ring-2 ring-amber-300/60 scale-105 z-20 shadow-md'
+            ? 'bg-[#FFCC00] text-slate-950 font-black ring-2 ring-amber-300/70 scale-105 z-20 shadow-md'
             : isInActiveBox
-            ? 'bg-slate-700/95 text-white font-black border border-slate-500/60 hover:bg-slate-600 z-10'
-            : 'bg-slate-800/60 text-slate-400 border border-slate-700/40 text-[9px]'
+            ? 'bg-slate-700/90 text-white font-bold border border-slate-500/50 hover:bg-slate-600 z-10'
+            : 'bg-slate-800/60 text-slate-400 border border-slate-700/40 text-[10px]'
         }`}
       >
-        <span
-          className={`${
-            size === 'sm' ? 'text-[10px] sm:text-[11px] font-black' : 'text-[11px] sm:text-xs font-black'
-          } leading-none tracking-tight font-sans`}
-        >
+        <span className="text-xs sm:text-[13px] leading-none tracking-tight font-sans font-black">
           {displayText}
         </span>
       </div>

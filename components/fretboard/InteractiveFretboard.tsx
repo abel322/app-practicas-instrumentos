@@ -782,12 +782,12 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
         >
           {/* Punto marcador de traste (inlay) */}
           {(showSingleInlay || showDoubleInlay) && (
-            <div className="absolute w-2 h-2 rounded-full bg-slate-200/15 pointer-events-none z-0" />
+            <div className="absolute w-2.5 h-2.5 rounded-full bg-slate-200/15 pointer-events-none z-0" />
           )}
 
           {/* Onda al tocar */}
           {isPlayed && (
-            <div className="absolute w-7 h-7 rounded-full border-2 border-amber-400 animate-ping pointer-events-none z-30" />
+            <div className="absolute w-8 h-8 rounded-full border-2 border-amber-400 animate-ping pointer-events-none z-30" />
           )}
 
           {activeItem ? (
@@ -1058,28 +1058,28 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
       {/* Área principal: Centrado perfecto vertical y horizontal */}
       <main
         ref={containerRef}
-        className="w-full flex-1 flex flex-col justify-center items-center px-2 sm:px-4 py-2 overflow-x-auto overflow-y-hidden select-none"
+        className="w-full flex-1 flex flex-col justify-center items-center px-2 sm:px-4 py-1.5 overflow-x-auto overflow-y-hidden select-none"
       >
-        {/* Contenedor del mástil con altura fija realista y ancho reactivo a los trastes */}
+        {/* Contenedor del mástil con altura incrementada */}
         <div
           className={`w-full max-w-[1300px] ${
             !isFullscreen && viewMode === 'scroll' ? 'min-w-[720px]' : ''
-          } h-[205px] sm:h-[225px] flex flex-col justify-between bg-[#221c19] rounded-2xl border border-amber-950/50 p-2 sm:p-2.5 shadow-2xl shrink-0`}
+          } h-[255px] sm:h-[275px] flex flex-col justify-between bg-[#221c19] rounded-2xl border border-amber-950/50 p-2.5 sm:p-3 shadow-2xl shrink-0`}
         >
-          {/* Grid de las 6 cuerdas: cada cuerda mide entre 26px y 28px de alto */}
-          <div className="w-full flex-1 flex flex-col justify-between">
+          {/* Grid de las 6 cuerdas con mayor altura y separación */}
+          <div className="w-full flex-1 flex flex-col justify-between py-1">
             {strings.map((stringData, stringIdx) => (
               <div
                 key={stringIdx}
-                className="relative h-[26px] sm:h-[28px] flex items-center w-full"
+                className="relative h-[33px] sm:h-[35px] flex items-center w-full"
               >
-                {/* Cuerda física con calibre progresivo (más gruesa en graves) */}
+                {/* Cuerda física con calibre progresivo */}
                 <div
-                  style={{ height: `${1.2 + stringIdx * 0.35}px` }}
+                  style={{ height: `${1.3 + stringIdx * 0.4}px` }}
                   className="absolute left-0 right-0 bg-gradient-to-r from-slate-400 via-zinc-200 to-slate-400 shadow-sm pointer-events-none z-0"
                 />
 
-                {/* Grid de notas alineado con los trastes */}
+                {/* Grid de notas */}
                 <div
                   className="relative w-full h-full grid items-center z-10"
                   style={fretGridTemplate}
@@ -1090,14 +1090,12 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
             ))}
           </div>
 
-          {/* Fila de números de trastes inferior alineada con la misma cuadrícula */}
+          {/* Fila inferior de números de trastes */}
           <div
-            className="h-5 grid items-center w-full pt-1 border-t border-slate-700/50 text-[10px] sm:text-[11px] font-mono text-slate-400 select-none text-center"
+            className="h-6 grid items-center w-full pt-1.5 border-t border-slate-700/50 text-[11px] font-mono text-slate-400 select-none text-center"
             style={fretGridTemplate}
           >
-            {/* Celda traste 0 / Cejuela */}
             <span className="opacity-60">0</span>
-            {/* Celdas trastes 1 al visibleFrets */}
             {Array.from({ length: totalFrets }, (_, i) => i + 1).map((fret) => (
               <span
                 key={fret}
