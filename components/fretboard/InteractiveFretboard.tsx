@@ -614,20 +614,23 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   });
 
   const [containerWidth, setContainerWidth] = useState<number>(1000);
+  const [containerHeight, setContainerHeight] = useState<number>(300);
   const [lastPlayedKey, setLastPlayedKey] = useState<string | null>(null);
   const [hoveredNote, setHoveredNote] = useState<ActiveFretNote | null>(null);
 
-  // Observador de ancho del contenedor para el modo Fit
+  // Observador de ancho y alto del contenedor para el modo Fit y Pantalla Completa
   useEffect(() => {
     if (!containerRef.current) return;
-    const updateWidth = () => {
+    const updateDims = () => {
       if (containerRef.current) {
         const w = containerRef.current.clientWidth;
+        const h = containerRef.current.clientHeight;
         if (w > 0) setContainerWidth(w);
+        if (h > 0) setContainerHeight(h);
       }
     };
-    updateWidth();
-    const ro = new ResizeObserver(updateWidth);
+    updateDims();
+    const ro = new ResizeObserver(updateDims);
     ro.observe(containerRef.current);
     return () => ro.disconnect();
   }, []);
@@ -659,12 +662,28 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
     return map;
   }, [activeNotes, totalFrets]);
 
-  // Dimensiones del mástil SVG maximizadas para modo pantalla completa
+  // Dimensiones del mástil SVG proporcionales (garantizan que NUNCA se corten cuerdas en horizontal)
   const nutWidth = isFit ? (containerWidth < 480 ? 14 : containerWidth < 768 ? 20 : 26) : 30;
   const labelMargin = isFit ? (containerWidth < 480 ? 28 : containerWidth < 768 ? 38 : 46) : 52;
-  const stringSpacing = isFullscreen ? (numStrings <= 4 ? 52 : 44) : 36;
-  const topPadding = isFullscreen ? 36 : 32;
-  const bottomPadding = isFullscreen ? 36 : 32;
+  const topPadding = isFullscreen ? 20 : 32;
+  const bottomPadding = isFullscreen ? 20 : 32;
+
+  // Altura disponible real calculada para el diapasón en pantalla completa
+  const availHeight = isFullscreen
+    ? Math.max(150, containerHeight > 50 ? containerHeight - 6 : 260)
+    : 300;
+
+  // Espaciado proporcional entre cuerdas: reparte equitativamente las 6 cuerdas dentro del área útil
+  const stringSpacing = isFullscreen
+    ? Math.max(
+        22,
+        Math.min(
+          38,
+          Math.floor((availHeight - topPadding - bottomPadding) / Math.max(1, numStrings - 1))
+        )
+      )
+    : 36;
+
   const neckHeight = topPadding + bottomPadding + (numStrings - 1) * stringSpacing;
 
   // Ancho variable decreciente para los trastes 1..totalFrets
@@ -866,8 +885,8 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
       className={`transition-all duration-200 ${
         isFullscreen
           ? isForceLandscapeCSS
-            ? 'fixed z-50 bg-[#121217] flex flex-col justify-between p-2 sm:p-4 overflow-hidden'
-            : 'fixed inset-0 z-50 bg-[#121217] flex flex-col justify-between p-2 sm:p-4 overflow-hidden w-screen h-screen'
+            ? 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100vh] h-[100vw] rotate-90 z-50 bg-[#121217] flex flex-col justify-between overflow-hidden select-none'
+            : 'fixed inset-0 z-50 bg-[#121217] flex flex-col justify-between overflow-hidden w-screen h-screen select-none'
           : 'w-full max-w-full rounded-2xl overflow-hidden border border-slate-800 shadow-2xl bg-[#1e1e24] my-2 min-w-0 flex flex-col'
       }`}
       style={
@@ -885,107 +904,224 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
           : undefined
       }
     >
-      {/* 1. Barra Superior Minimalista de Control */}
-      <FretboardViewControls
-        viewMode={viewMode}
-        onToggleViewMode={handleToggleViewMode}
-        activeFretRange={activeFretRangeState}
-        onSelectFretRange={handleSelectFretRange}
-        onFocusActiveNotes={handleFocusActiveNotes}
-        displayMode={displayMode}
-        onDisplayModeChange={onDisplayModeChange}
-        visibleFrets={visibleFrets}
-        onVisibleFretsChange={setVisibleFrets}
-        isFullscreen={isFullscreen}
-        onToggleFullscreen={toggleFullscreen}
-        isLooping={isLooping}
-        onToggleLoop={togglePlayLoop}
-        bpm={bpm}
-        onBpmChange={handleBpmChange}
-        studyMode={studyMode}
-        chordLoopType={chordLoopType}
-        onChordLoopTypeChange={handleChordLoopTypeChange}
-        scaleLoopType={scaleLoopType}
-        onScaleLoopTypeChange={handleScaleLoopTypeChange}
-      />
-
-      {/* 2. Barra de Estado de Alto Contraste */}
-      <div
-        className={`flex items-center justify-between px-3.5 py-2 text-[11px] font-mono text-slate-400 backdrop-blur-md ${
-          isFullscreen ? 'bg-slate-900/60 border border-slate-800/80 rounded-xl mb-2' : 'border-b border-slate-800/80 bg-[#16161a]'
-        }`}
-      >
-        <div className="flex items-center gap-2 truncate">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#FFCC00] shadow-[0_0_8px_rgba(255,204,0,0.8)] shrink-0" />
-          <span className="font-bold text-slate-100 text-xs truncate">
-            {title || `Diapasón ${totalFrets}T • ${config.name}`}
-          </span>
-          {activeFretRangeState && (
-            <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-amber-300 font-mono shrink-0 border border-slate-700">
-              Tr. {activeFretRangeState[0]}–{activeFretRangeState[1]}
-            </span>
-          )}
-          {isFullscreen && (
-            <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-[#FFCC00] font-bold border border-amber-500/30">
-              MODO ZEN {isForceLandscapeCSS ? '(LANDSCAPE FORZADO)' : ''}
-            </span>
-          )}
-          {isLooping && (
-            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30 animate-pulse">
-              LOOP {studyMode === 'chords' ? (chordLoopType === 'strum' ? 'RASGUEO' : 'ARPEGIO') : (scaleLoopType === 'asc' ? 'ASC' : 'IDA Y VUELTA')} ({bpm} BPM)
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0 ml-2">
-          {hoveredNote && (
-            <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-[#FFCC00] font-bold bg-slate-900 px-2.5 py-0.5 rounded border border-slate-800">
-              <span>{hoveredNote.note}</span>
-              <span className="text-slate-600">•</span>
-              <span className="text-slate-300">{hoveredNote.interval}</span>
+      {/* 1. Cabecera Adaptativa: Ultra-compacta en Fullscreen (h-11) / Completa en Ventana */}
+      {isFullscreen ? (
+        <header className="w-full h-11 px-2 flex items-center justify-between gap-2 bg-slate-900/95 border-b border-slate-800 shrink-0 z-30 select-none backdrop-blur-md">
+          {/* Controles Izquierda/Centro con scroll horizontal interno suave */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 min-w-0">
+            {/* 1.1 Selector de Visualización Note | Degree | Finger */}
+            <div className="inline-flex p-0.5 bg-slate-950 rounded-lg border border-slate-800 shrink-0">
+              {(['notes', 'degrees', 'fingers'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => onDisplayModeChange?.(mode)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold capitalize transition-all ${
+                    displayMode === mode || (mode === 'degrees' && displayMode === 'intervals')
+                      ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {mode === 'notes' ? 'Nota' : mode === 'degrees' ? 'Grado' : 'Dedo'}
+                </button>
+              ))}
             </div>
-          )}
-          {viewMode === 'scroll' ? (
-            <span className="flex items-center gap-1 text-[10px] text-slate-400">
-              ↔ Desliza (0 - {totalFrets})
-            </span>
-          ) : (
-            <span className="flex items-center gap-1 text-[10px] text-slate-300 font-bold">
-              ✓ Todo el mástil visible
-            </span>
-          )}
-          {viewMode === 'scroll' && (
-            <div className="flex items-center gap-0.5">
+
+            {/* 1.2 Control de Loop y BPM */}
+            <div className="flex items-center gap-1 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-800 shrink-0">
               <button
                 type="button"
-                onClick={handlePrevZone}
-                className="p-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors border border-slate-800"
-                title="Retroceder"
-                aria-label="Retroceder a la izquierda"
+                onClick={togglePlayLoop}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                  isLooping
+                    ? 'bg-amber-400 text-slate-950 font-black animate-pulse'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                }`}
               >
-                <ChevronLeft className="w-3.5 h-3.5" />
+                {isLooping ? '⏹ Stop' : '▶ Loop'}
               </button>
-              <button
-                type="button"
-                onClick={handleNextZone}
-                className="p-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors border border-slate-800"
-                title="Avanzar"
-                aria-label="Avanzar a la derecha"
-              >
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
+
+              {studyMode === 'chords' ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleChordLoopTypeChange(chordLoopType === 'arpeggio' ? 'strum' : 'arpeggio')
+                  }
+                  className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-slate-900 text-cyan-300 border border-slate-800 hover:bg-slate-800"
+                  title="Alternar entre Arpegio y Rasgueo"
+                >
+                  {chordLoopType === 'arpeggio' ? 'Arpegio 🎶' : 'Rasgueo 🔊'}
+                </button>
+              ) : studyMode === 'scales' ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleScaleLoopTypeChange(scaleLoopType === 'asc' ? 'pendulum' : 'asc')
+                  }
+                  className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-slate-900 text-amber-300 border border-slate-800 hover:bg-slate-800"
+                  title="Alternar entre Ascendente e Ida y Vuelta"
+                >
+                  {scaleLoopType === 'asc' ? 'Asc ↗' : '⇄ Péndulo'}
+                </button>
+              ) : null}
+
+              <span className="text-[10px] font-mono text-amber-300 font-bold ml-1">{bpm}</span>
+              <input
+                type="range"
+                min={40}
+                max={240}
+                step={5}
+                value={bpm}
+                onChange={(e) => handleBpmChange(Number(e.target.value))}
+                className="w-14 sm:w-16 h-1 bg-slate-800 accent-amber-400 rounded cursor-pointer"
+                title="Ajustar tempo del metrónomo"
+              />
             </div>
-          )}
-        </div>
-      </div>
+
+            {/* 1.3 Selector de Trastes Visibles */}
+            <div className="inline-flex p-0.5 bg-slate-950 rounded-lg border border-slate-800 shrink-0">
+              {[12, 15, 21, 24].map((fretCount) => (
+                <button
+                  key={fretCount}
+                  type="button"
+                  onClick={() => setVisibleFrets(fretCount)}
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
+                    visibleFrets === fretCount
+                      ? 'bg-cyan-500 text-slate-950 font-black'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {fretCount}
+                </button>
+              ))}
+            </div>
+
+            {/* 1.4 Switch Ajustado / Scroll */}
+            <button
+              type="button"
+              onClick={handleToggleViewMode}
+              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all border shrink-0 ${
+                viewMode === 'fit'
+                  ? 'bg-slate-700 text-white border-slate-600'
+                  : 'bg-slate-950 text-slate-400 border-slate-800'
+              }`}
+              title="Ajustar mástil a pantalla o permitir scroll"
+            >
+              {viewMode === 'fit' ? '↔ Ajustado' : '🔍 Scroll'}
+            </button>
+
+            {/* 1.5 Etiqueta informativa compacta */}
+            <span className="text-[10px] font-bold text-cyan-300 whitespace-nowrap px-1 truncate max-w-[180px] sm:max-w-xs">
+              {title || config.name}
+            </span>
+          </div>
+
+          {/* Botón Salir Fijo a la Derecha */}
+          <button
+            type="button"
+            onClick={exitFullscreenLandscape}
+            className="px-2.5 py-1 bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/70 text-[11px] font-bold rounded-lg flex items-center gap-1 shrink-0 ml-1 shadow-sm"
+            title="Salir de pantalla completa"
+          >
+            <span>✕ Salir</span>
+          </button>
+        </header>
+      ) : (
+        <>
+          {/* Barra Superior Completa en Modo Ventana */}
+          <FretboardViewControls
+            viewMode={viewMode}
+            onToggleViewMode={handleToggleViewMode}
+            activeFretRange={activeFretRangeState}
+            onSelectFretRange={handleSelectFretRange}
+            onFocusActiveNotes={handleFocusActiveNotes}
+            displayMode={displayMode}
+            onDisplayModeChange={onDisplayModeChange}
+            visibleFrets={visibleFrets}
+            onVisibleFretsChange={setVisibleFrets}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={toggleFullscreen}
+            isLooping={isLooping}
+            onToggleLoop={togglePlayLoop}
+            bpm={bpm}
+            onBpmChange={handleBpmChange}
+            studyMode={studyMode}
+            chordLoopType={chordLoopType}
+            onChordLoopTypeChange={handleChordLoopTypeChange}
+            scaleLoopType={scaleLoopType}
+            onScaleLoopTypeChange={handleScaleLoopTypeChange}
+          />
+
+          {/* Barra de Estado de Alto Contraste en Modo Ventana */}
+          <div className="flex items-center justify-between px-3.5 py-2 text-[11px] font-mono text-slate-400 backdrop-blur-md border-b border-slate-800/80 bg-[#16161a]">
+            <div className="flex items-center gap-2 truncate">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#FFCC00] shadow-[0_0_8px_rgba(255,204,0,0.8)] shrink-0" />
+              <span className="font-bold text-slate-100 text-xs truncate">
+                {title || `Diapasón ${totalFrets}T • ${config.name}`}
+              </span>
+              {activeFretRangeState && (
+                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-amber-300 font-mono shrink-0 border border-slate-700">
+                  Tr. {activeFretRangeState[0]}–{activeFretRangeState[1]}
+                </span>
+              )}
+              {isLooping && (
+                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30 animate-pulse">
+                  LOOP {studyMode === 'chords' ? (chordLoopType === 'strum' ? 'RASGUEO' : 'ARPEGIO') : (scaleLoopType === 'asc' ? 'ASC' : 'IDA Y VUELTA')} ({bpm} BPM)
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 ml-2">
+              {hoveredNote && (
+                <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-[#FFCC00] font-bold bg-slate-900 px-2.5 py-0.5 rounded border border-slate-800">
+                  <span>{hoveredNote.note}</span>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-slate-300">{hoveredNote.interval}</span>
+                </div>
+              )}
+              {viewMode === 'scroll' ? (
+                <span className="flex items-center gap-1 text-[10px] text-slate-400">
+                  ↔ Desliza (0 - {totalFrets})
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 text-[10px] text-slate-300 font-bold">
+                  ✓ Todo el mástil visible
+                </span>
+              )}
+              {viewMode === 'scroll' && (
+                <div className="flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={handlePrevZone}
+                    className="p-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors border border-slate-800"
+                    title="Retroceder"
+                    aria-label="Retroceder a la izquierda"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNextZone}
+                    className="p-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors border border-slate-800"
+                    title="Avanzar"
+                    aria-label="Avanzar a la derecha"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Top Banner (si se proporciona) */}
-      {topBanner}
+      {!isFullscreen && topBanner}
 
-      {/* 3. Contenedor del Diapasón SVG Maximizado */}
-      <div
-        className={`relative w-full max-w-full flex-1 flex flex-col justify-center min-h-0 ${
-          isFullscreen ? 'overflow-hidden my-auto' : ''
+      {/* 2. Área del Diapasón Flexible */}
+      <main
+        className={`w-full flex-1 min-h-0 flex flex-col justify-center ${
+          isFullscreen ? 'px-1 py-0.5 overflow-hidden' : 'relative'
         }`}
       >
         {viewMode === 'scroll' && (
@@ -1015,22 +1151,24 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
           ref={containerRef}
           className={`w-full max-w-full ${
             isFit ? 'overflow-x-hidden' : 'overflow-x-auto scroll-smooth touch-pan-x'
-          } overflow-y-hidden py-3 px-1 custom-scrollbar min-w-0 select-none ${
-            isFullscreen ? 'rounded-xl border border-slate-800 shadow-inner' : ''
-          }`}
+          } overflow-y-hidden ${
+            isFullscreen
+              ? 'py-0.5 px-0.5 rounded-lg border border-slate-800/70 shadow-inner'
+              : 'py-3 px-1 custom-scrollbar rounded-2xl'
+          } min-w-0 select-none flex flex-col justify-center`}
           style={{
             WebkitOverflowScrolling: 'touch',
             background: '#1e1e24',
           }}
         >
           <div
-            className={isFit ? 'w-full block' : 'inline-block'}
+            className={isFit ? 'w-full block my-auto' : 'inline-block my-auto'}
             style={isFit ? { width: '100%' } : { width: fretPositions.totalWidth }}
           >
             <svg
               width={fretPositions.totalWidth}
               height={neckHeight}
-              className="block"
+              className="block mx-auto"
               style={isFit ? { width: '100%', minWidth: '100%' } : { minWidth: fretPositions.totalWidth }}
             >
               <defs>
@@ -1240,6 +1378,9 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
               <g id="stringBadges">
                 {config.strings.map((str, sIdx) => {
                   const y = getStringY(sIdx);
+                  const badgeH = isFullscreen ? Math.min(18, stringSpacing - 4) : (isCompact ? 20 : 24);
+                  const badgeW = isFullscreen ? (isCompact ? 20 : 26) : (isCompact ? 24 : 36);
+
                   return (
                     <g
                       key={`str_badge_${sIdx}`}
@@ -1248,21 +1389,21 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                     >
                       <rect
                         x={isCompact ? 2 : 6}
-                        y={y - (isCompact ? 10 : 12)}
-                        width={isCompact ? 24 : 36}
-                        height={isCompact ? 20 : 24}
-                        rx={4}
+                        y={y - badgeH / 2}
+                        width={badgeW}
+                        height={badgeH}
+                        rx={3}
                         fill="#16161a"
                         stroke="#334155"
                         strokeWidth={1}
                         className="group-hover:stroke-amber-400 group-hover:fill-slate-900 transition-colors"
                       />
                       <text
-                        x={isCompact ? 14 : 24}
-                        y={y + (isCompact ? 3.5 : 4)}
+                        x={(isCompact ? 2 : 6) + badgeW / 2}
+                        y={y + (badgeH <= 18 ? 3 : 4)}
                         textAnchor="middle"
                         fill="#f8fafc"
-                        fontSize={isCompact ? 9 : 11}
+                        fontSize={badgeH <= 18 ? 8.5 : (isCompact ? 9 : 11)}
                         fontWeight="black"
                         fontFamily="monospace"
                         className="group-hover:fill-[#FFCC00]"
@@ -1409,7 +1550,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                       isStretch: false,
                     };
 
-                    const nodeSize = isCompact ? 28 : (isFullscreen ? 36 : 32);
+                    const nodeSize = isFullscreen ? (isCompact ? 22 : 26) : (isCompact ? 28 : 32);
                     const halfSize = nodeSize / 2;
 
                     return (
@@ -1443,10 +1584,10 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                           <circle
                             cx={pos.centerX}
                             cy={y}
-                            r={isCompact ? 16 : (isFullscreen ? 24 : 20)}
+                            r={isCompact ? 14 : (isFullscreen ? 18 : 20)}
                             fill="none"
                             stroke="#22d3ee"
-                            strokeWidth={3}
+                            strokeWidth={2.5}
                             className="animate-ping pointer-events-none"
                           />
                         )}
@@ -1469,6 +1610,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                               displayMode={displayMode}
                               isInActiveBox={!item.isDimmed}
                               isHighlighted={isStepActive}
+                              size={isFullscreen ? 'sm' : 'md'}
                               onClick={() => {
                                 if (isEditorActive && onFretClickInEditor) {
                                   onFretClickInEditor(item.stringIndex, item.fret);
@@ -1490,34 +1632,49 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
             </svg>
           </div>
         </div>
-      </div>
+      </main>
 
-      {/* 4. Leyenda Limpia de Alto Contraste */}
-      <div
-        className={`flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 text-[11px] backdrop-blur-md ${
-          isFullscreen ? 'bg-slate-900/60 border border-slate-800/80 rounded-xl mt-2 shrink-0' : 'border-t border-slate-800/80 bg-[#16161a]'
-        }`}
-      >
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-[#FFCC00] ring-1 ring-amber-300/80" />
-            <span className="text-amber-300 font-bold text-[10px] sm:text-[11px]">Tónica ($R$)</span>
+      {/* 4. Pie de Página */}
+      {isFullscreen ? (
+        <footer className="w-full h-5 px-3 flex items-center justify-between text-[9px] text-slate-400 bg-slate-950/90 border-t border-slate-900 shrink-0 select-none">
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-[#FFCC00] inline-block" /> Tónica
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-slate-600 inline-block" /> Notas Escala
+            </span>
+            {isLooping && (
+              <span className="text-[9px] text-emerald-400 font-bold ml-2 animate-pulse">
+                ● Loop Activo ({bpm} BPM)
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-slate-700 border border-slate-500/60" />
-            <span className="text-slate-300 font-medium text-[10px] sm:text-[11px]">Notas de Escala / Acorde</span>
+          <span className="hidden xs:inline text-slate-500">Toca cualquier traste para escuchar</span>
+        </footer>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 text-[11px] backdrop-blur-md border-t border-slate-800/80 bg-[#16161a]">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-[#FFCC00] ring-1 ring-amber-300/80" />
+              <span className="text-amber-300 font-bold text-[10px] sm:text-[11px]">Tónica ($R$)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-slate-700 border border-slate-500/60" />
+              <span className="text-slate-300 font-medium text-[10px] sm:text-[11px]">Notas de Escala / Acorde</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-slate-800/60 border border-slate-700/50" />
+              <span className="text-slate-500 font-medium text-[10px] sm:text-[11px]">Fuera de Caja Activa</span>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-slate-800/60 border border-slate-700/50" />
-            <span className="text-slate-500 font-medium text-[10px] sm:text-[11px]">Fuera de Caja Activa</span>
+
+          <div className="flex items-center gap-1 text-slate-400 text-[10px]">
+            <Volume2 className="w-3.5 h-3.5 text-[#FFCC00]" />
+            <span>Toca cualquier traste para escuchar</span>
           </div>
         </div>
-
-        <div className="flex items-center gap-1 text-slate-400 text-[10px]">
-          <Volume2 className="w-3.5 h-3.5 text-[#FFCC00]" />
-          <span>Toca cualquier traste para escuchar</span>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
