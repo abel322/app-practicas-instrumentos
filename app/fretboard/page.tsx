@@ -1301,6 +1301,7 @@ export default function FretboardPage() {
           instrument={instrument}
           activeNotes={activeNotes}
           displayMode={displayMode}
+          onDisplayModeChange={setDisplayMode}
           fretFocusRange={fretFocusRange}
           viewMode={fretboardViewMode}
           onViewModeChange={setFretboardViewMode}
