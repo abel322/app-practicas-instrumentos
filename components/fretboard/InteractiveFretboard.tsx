@@ -359,7 +359,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   studyMode = 'chords',
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [internalViewMode, setInternalViewMode] = useState<'scroll' | 'fit'>('scroll');
+  const [internalViewMode, setInternalViewMode] = useState<'scroll' | 'fit'>('fit');
   const viewMode = controlledViewMode !== undefined ? controlledViewMode : internalViewMode;
 
   // Estado y manejador de Pantalla Completa Forzada Horizontal & Fallback CSS
@@ -373,11 +373,20 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   const [scaleLoopType, setScaleLoopType] = useState<ScaleLoopPattern>('pendulum');
   const [highlightedNoteKey, setHighlightedNoteKey] = useState<string | null>(null);
 
-  const [visibleFrets, setVisibleFrets] = useState<number>(24);
+  // Número de trastes visibles seleccionados (default: 21)
+  const [visibleFrets, setVisibleFrets] = useState<number>(21);
   const config = INSTRUMENTS[instrument];
   const strings = config.strings;
   const numStrings = strings.length;
   const totalFrets = Math.min(config.totalFrets, visibleFrets);
+
+  // Ancho de la cejuela (traste 0) fijo, y las columnas restantes repartidas proporcionalmente en 1fr
+  const fretGridTemplate = useMemo(
+    () => ({
+      gridTemplateColumns: `minmax(34px, 42px) repeat(${totalFrets}, minmax(0, 1fr))`,
+    }),
+    [totalFrets]
+  );
 
   // Detener bucle de audio
   const stopAudioLoop = useCallback(() => {
@@ -627,8 +636,6 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
     if (onViewModeChange) onViewModeChange(nextMode);
   }, [viewMode, onViewModeChange]);
 
-  const isFit = viewMode === 'fit';
-
   // Mapa rápido de notas activas por clave `${stringIndex}_${fret}`
   const activeNoteMap = useMemo(() => {
     const map = new Map<string, ActiveFretNote>();
@@ -639,18 +646,6 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
     });
     return map;
   }, [activeNotes, totalFrets]);
-
-  // Pesos y anchos progresivos de cada traste (0..totalFrets)
-  const fretDims = useMemo(() => {
-    const list: { fret: number; weight: number; pxWidth: number }[] = [];
-    list.push({ fret: 0, weight: 0.72, pxWidth: 42 });
-    for (let f = 1; f <= totalFrets; f++) {
-      const weight = Math.pow(0.982, f - 1);
-      const pxWidth = Math.max(44, Math.round(68 * Math.pow(0.976, f - 1)));
-      list.push({ fret: f, weight, pxWidth });
-    }
-    return list;
-  }, [totalFrets]);
 
   // Reproducir nota
   const handlePlayNote = (stringIndex: number, fret: number) => {
@@ -694,21 +689,15 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
     scrollByFrets(5);
   }, [scrollByFrets]);
 
-  const scrollToFretZone = useCallback(
-    (fretNumber: number) => {
-      if (viewMode === 'fit') {
-        handleToggleViewMode();
+  const scrollToFretZone = useCallback((fretNumber: number) => {
+    requestAnimationFrame(() => {
+      if (!containerRef.current) return;
+      const fretElement = containerRef.current.querySelector(`[data-fret="${fretNumber}"]`);
+      if (fretElement && typeof fretElement.scrollIntoView === 'function') {
+        fretElement.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
       }
-      requestAnimationFrame(() => {
-        if (!containerRef.current) return;
-        const fretElement = containerRef.current.querySelector(`[data-fret="${fretNumber}"]`);
-        if (fretElement && typeof fretElement.scrollIntoView === 'function') {
-          fretElement.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
-        }
-      });
-    },
-    [viewMode, handleToggleViewMode]
-  );
+    });
+  }, []);
 
   const handleSelectFretRange = useCallback(
     (start: number, end: number) => {
@@ -734,10 +723,6 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
 
     setActiveFretRangeState([minFret, maxFret]);
 
-    if (viewMode === 'fit') {
-      handleToggleViewMode();
-    }
-
     requestAnimationFrame(() => {
       if (!containerRef.current) return;
       const fretElement = containerRef.current.querySelector(`[data-fret="${avgFret}"]`);
@@ -745,161 +730,95 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
         fretElement.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
       }
     });
-  }, [activeNotes, totalFrets, viewMode, handleToggleViewMode, scrollToFretZone]);
+  }, [activeNotes, totalFrets, scrollToFretZone]);
 
-  useEffect(() => {
-    if (fretFocusRange && containerRef.current && viewMode === 'scroll') {
-      const minFret = fretFocusRange[0];
-      const fretTargetElement = containerRef.current.querySelector(`[data-fret="${minFret}"]`);
-      if (fretTargetElement && typeof fretTargetElement.scrollIntoView === 'function') {
-        fretTargetElement.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-      }
-    }
-  }, [fretFocusRange, viewMode]);
-
-  // Renderizado de los nodos de notas por cuerda
-  const renderFretNodesForString = (stringIdx: number) => {
+  // Renderizado de los nodos de notas por cuerda (columnas: 0 .. maxFrets)
+  const renderFretNodesForString = (stringIdx: number, maxFrets: number) => {
     const stringConfig = strings[stringIdx];
     if (!stringConfig) return null;
 
     const midStringIdx = Math.floor((numStrings - 1) / 2);
 
-    return (
-      <div className="flex items-center w-full h-full">
-        {/* Badge de afinación de la cuerda a la izquierda */}
-        <button
-          type="button"
-          onClick={() => handlePlayNote(stringIdx, 0)}
-          className="w-8 sm:w-9 h-7 sm:h-8 mr-1 rounded-lg bg-slate-950/90 hover:bg-slate-900 border border-slate-700/80 hover:border-amber-400 text-slate-100 hover:text-amber-300 font-mono text-xs font-black flex items-center justify-center shrink-0 z-20 shadow-sm transition-colors"
-          title={`Cuerda ${stringIdx + 1} al aire (${stringConfig.note})`}
+    return Array.from({ length: maxFrets + 1 }, (_, fIdx) => {
+      const key = `${stringIdx}_${fIdx}`;
+      const activeItem = activeNoteMap.get(key);
+      const noteInfo = getFretNote(stringConfig.midi, fIdx);
+      const isPlayed = lastPlayedKey === key;
+      const isStepActive = highlightedNoteKey === 'ALL' || highlightedNoteKey === key;
+      const isInFocusedBox =
+        fretFocusRange && fIdx >= fretFocusRange[0] && fIdx <= fretFocusRange[1];
+
+      // Inlays de referencia sutiles en el centro del mástil
+      const showSingleInlay = stringIdx === midStringIdx && SINGLE_INLAYS.includes(fIdx);
+      const showDoubleInlay =
+        (stringIdx === 1 || stringIdx === numStrings - 2) && DOUBLE_INLAYS.includes(fIdx);
+
+      return (
+        <div
+          key={key}
+          data-fret={fIdx}
+          onClick={() => {
+            if (isEditorActive && onFretClickInEditor) {
+              onFretClickInEditor(stringIdx, fIdx);
+            }
+            handlePlayNote(stringIdx, fIdx);
+          }}
+          onContextMenu={(e) => {
+            if (isEditorActive && onToggleRootInEditor) {
+              onToggleRootInEditor(e, stringIdx, fIdx);
+            }
+          }}
+          onMouseEnter={() => {
+            if (activeItem) setHoveredNote(activeItem);
+          }}
+          onMouseLeave={() => {
+            if (activeItem) setHoveredNote(null);
+          }}
+          className={`relative h-full flex items-center justify-center cursor-pointer group select-none ${
+            fIdx === 0
+              ? 'bg-slate-950/60 border-r-[4px] border-r-slate-400/90'
+              : 'border-r border-r-slate-400/40'
+          } ${isInFocusedBox ? 'bg-amber-400/[0.07]' : ''}`}
         >
-          {stringConfig.note}
-        </button>
+          {/* Punto marcador de traste (inlay) */}
+          {(showSingleInlay || showDoubleInlay) && (
+            <div className="absolute w-2 h-2 rounded-full bg-slate-200/15 pointer-events-none z-0" />
+          )}
 
-        {/* Celdas de trastes 0..totalFrets */}
-        {fretDims.map(({ fret: fIdx, weight, pxWidth }) => {
-          const key = `${stringIdx}_${fIdx}`;
-          const activeItem = activeNoteMap.get(key);
-          const noteInfo = getFretNote(stringConfig.midi, fIdx);
-          const isPlayed = lastPlayedKey === key;
-          const isStepActive = highlightedNoteKey === 'ALL' || highlightedNoteKey === key;
-          const isInFocusedBox =
-            fretFocusRange && fIdx >= fretFocusRange[0] && fIdx <= fretFocusRange[1];
+          {/* Onda al tocar */}
+          {isPlayed && (
+            <div className="absolute w-7 h-7 rounded-full border-2 border-amber-400 animate-ping pointer-events-none z-30" />
+          )}
 
-          // Inlays de referencia sutiles en el centro del mástil
-          const showSingleInlay =
-            stringIdx === midStringIdx && SINGLE_INLAYS.includes(fIdx);
-          const showDoubleInlay =
-            (stringIdx === 1 || stringIdx === numStrings - 2) && DOUBLE_INLAYS.includes(fIdx);
-
-          return (
-            <div
-              key={key}
-              data-fret={fIdx}
-              style={
-                isFit
-                  ? { flex: `${weight} 1 0%` }
-                  : { width: `${pxWidth}px`, minWidth: `${pxWidth}px` }
-              }
-              onClick={() => {
-                if (isEditorActive && onFretClickInEditor) {
-                  onFretClickInEditor(stringIdx, fIdx);
+          {activeItem ? (
+            <div className={activeItem.isDimmed ? 'opacity-40 z-20' : 'z-20'}>
+              <FretboardNoteNode
+                noteName={activeItem.note}
+                degreeLabel={activeItem.interval}
+                fingerNumber={
+                  activeItem.fingerAssignment?.finger ??
+                  (activeItem.finger ? parseInt(activeItem.finger, 10) || 0 : 0)
                 }
-                handlePlayNote(stringIdx, fIdx);
-              }}
-              onContextMenu={(e) => {
-                if (isEditorActive && onToggleRootInEditor) {
-                  onToggleRootInEditor(e, stringIdx, fIdx);
-                }
-              }}
-              onMouseEnter={() => {
-                if (activeItem) setHoveredNote(activeItem);
-              }}
-              onMouseLeave={() => {
-                if (activeItem) setHoveredNote(null);
-              }}
-              className={`relative h-full flex items-center justify-center cursor-pointer group select-none ${
-                fIdx === 0
-                  ? 'bg-slate-950/45 border-r-[4px] border-r-slate-400/90'
-                  : 'border-r border-r-slate-400/40'
-              } ${isInFocusedBox ? 'bg-amber-400/[0.07]' : ''}`}
-            >
-              {/* Punto marcador de traste (inlay) */}
-              {(showSingleInlay || showDoubleInlay) && (
-                <div className="absolute w-2.5 h-2.5 rounded-full bg-slate-200/15 pointer-events-none z-0" />
-              )}
-
-              {/* Onda al tocar */}
-              {isPlayed && (
-                <div className="absolute w-8 h-8 rounded-full border-2 border-amber-400 animate-ping pointer-events-none z-30" />
-              )}
-
-              {activeItem ? (
-                <div className={activeItem.isDimmed ? 'opacity-40 z-20' : 'z-20'}>
-                  <FretboardNoteNode
-                    noteName={activeItem.note}
-                    degreeLabel={activeItem.interval}
-                    fingerNumber={
-                      activeItem.fingerAssignment?.finger ??
-                      (activeItem.finger ? parseInt(activeItem.finger, 10) || 0 : 0)
-                    }
-                    fingerAssignment={activeItem.fingerAssignment}
-                    isRoot={activeItem.role === 'root' || activeItem.interval === 'R'}
-                    displayMode={displayMode}
-                    isInActiveBox={!activeItem.isDimmed}
-                    isHighlighted={isStepActive}
-                    size="md"
-                  />
-                </div>
-              ) : (
-                <div className="w-6 h-6 rounded-full bg-slate-800/85 border border-slate-500/60 text-[10px] font-mono font-bold text-slate-200 flex items-center justify-center opacity-0 group-hover:opacity-90 transition-opacity pointer-events-none z-10">
-                  {noteInfo.note}
-                </div>
-              )}
+                fingerAssignment={activeItem.fingerAssignment}
+                isRoot={activeItem.role === 'root' || activeItem.interval === 'R'}
+                displayMode={displayMode}
+                isInActiveBox={!activeItem.isDimmed}
+                isHighlighted={isStepActive}
+                size="md"
+              />
             </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  // Renderizado de la fila inferior de números de trastes
-  const renderFretNumbersRow = () => {
-    return (
-      <div className="flex items-center w-full h-full">
-        <div className="w-8 sm:w-9 mr-1 shrink-0 text-center font-mono text-[10px] font-bold text-slate-500">
-          Tr.
+          ) : fIdx === 0 ? (
+            <span className="px-1.5 py-0.5 rounded bg-slate-900/90 border border-slate-700/70 text-[10px] font-mono font-black text-slate-300 group-hover:text-amber-300 group-hover:border-amber-400/60 transition-colors z-10">
+              {stringConfig.note}
+            </span>
+          ) : (
+            <div className="w-5 h-5 rounded-full bg-slate-800/85 border border-slate-500/60 text-[9px] font-mono font-bold text-slate-200 flex items-center justify-center opacity-0 group-hover:opacity-90 transition-opacity pointer-events-none z-10">
+              {noteInfo.note}
+            </div>
+          )}
         </div>
-        {fretDims.map(({ fret: fIdx, weight, pxWidth }) => {
-          const isOctave = fIdx === 12 || fIdx === 24;
-          const isLandmark = SINGLE_INLAYS.includes(fIdx) || isOctave || fIdx === 0;
-
-          return (
-            <div
-              key={`fret_num_${fIdx}`}
-              style={
-                isFit
-                  ? { flex: `${weight} 1 0%` }
-                  : { width: `${pxWidth}px`, minWidth: `${pxWidth}px` }
-              }
-              className="flex items-center justify-center font-mono select-none"
-            >
-              <span
-                className={`text-[10px] sm:text-xs leading-none ${
-                  isOctave
-                    ? 'text-amber-400 font-black'
-                    : isLandmark
-                    ? 'text-slate-200 font-extrabold'
-                    : 'text-slate-400 font-semibold'
-                }`}
-              >
-                {fIdx}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    );
+      );
+    });
   };
 
   return (
@@ -1021,20 +940,6 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
               ))}
             </div>
 
-            {/* Switch Ajustado / Scroll */}
-            <button
-              type="button"
-              onClick={handleToggleViewMode}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shrink-0 ${
-                viewMode === 'fit'
-                  ? 'bg-slate-700 text-white border-slate-600'
-                  : 'bg-slate-950 text-slate-300 border-slate-800 hover:text-white'
-              }`}
-              title="Ajustar mástil a pantalla o permitir scroll"
-            >
-              {viewMode === 'fit' ? '↔ Ajustado' : '🔍 Scroll'}
-            </button>
-
             {/* 4. Título informativo claro */}
             <span className="text-xs font-black text-cyan-300 whitespace-nowrap px-2">
               {title || config.name}
@@ -1117,7 +1022,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                 </span>
               ) : (
                 <span className="flex items-center gap-1 text-[10px] text-slate-300 font-bold">
-                  ✓ Todo el mástil visible
+                  ✓ Todo el mástil visible ({totalFrets} trastes)
                 </span>
               )}
               {viewMode === 'scroll' && (
@@ -1150,42 +1055,61 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
       {/* Top Banner (si se proporciona en modo ventana) */}
       {!isFullscreen && topBanner}
 
-      {/* Área principal del mástil: flex-1 asegurado para eliminar espacios negros verticales */}
+      {/* Área principal: Centrado perfecto vertical y horizontal */}
       <main
         ref={containerRef}
-        className={`w-full flex-1 min-h-0 flex flex-col justify-stretch p-2 ${
-          isFit ? 'overflow-x-hidden' : 'overflow-x-auto scroll-smooth touch-pan-x'
-        } overflow-y-hidden`}
+        className="w-full flex-1 flex flex-col justify-center items-center px-2 sm:px-4 py-2 overflow-x-auto overflow-y-hidden select-none"
       >
+        {/* Contenedor del mástil con altura fija realista y ancho reactivo a los trastes */}
         <div
-          className={`${
-            isFit ? 'w-full' : 'w-max min-w-full'
-          } h-full flex-1 min-h-0 flex flex-col justify-between bg-[#241f1c] rounded-2xl border border-amber-950/40 p-2 shadow-inner`}
+          className={`w-full max-w-[1300px] ${
+            !isFullscreen && viewMode === 'scroll' ? 'min-w-[720px]' : ''
+          } h-[205px] sm:h-[225px] flex flex-col justify-between bg-[#221c19] rounded-2xl border border-amber-950/50 p-2 sm:p-2.5 shadow-2xl shrink-0`}
         >
-          {/* Grid de las cuerdas: cada cuerda toma su flex-1 completo */}
-          <div className="w-full h-full flex-1 min-h-0 flex flex-col justify-between">
+          {/* Grid de las 6 cuerdas: cada cuerda mide entre 26px y 28px de alto */}
+          <div className="w-full flex-1 flex flex-col justify-between">
             {strings.map((stringData, stringIdx) => (
               <div
                 key={stringIdx}
-                className="relative flex-1 min-h-[36px] sm:min-h-[44px] flex items-center w-full"
+                className="relative h-[26px] sm:h-[28px] flex items-center w-full"
               >
-                {/* Cuerda física con grosor escalonado */}
+                {/* Cuerda física con calibre progresivo (más gruesa en graves) */}
                 <div
-                  style={{ height: `${1.2 + stringIdx * 0.45}px` }}
-                  className="absolute left-8 right-0 bg-gradient-to-r from-slate-400 via-zinc-200 to-slate-400 shadow-sm pointer-events-none z-0"
+                  style={{ height: `${1.2 + stringIdx * 0.35}px` }}
+                  className="absolute left-0 right-0 bg-gradient-to-r from-slate-400 via-zinc-200 to-slate-400 shadow-sm pointer-events-none z-0"
                 />
 
-                {/* Nodos de notas centrados con escala ergonómica */}
-                <div className="relative w-full h-full flex items-center z-10">
-                  {renderFretNodesForString(stringIdx)}
+                {/* Grid de notas alineado con los trastes */}
+                <div
+                  className="relative w-full h-full grid items-center z-10"
+                  style={fretGridTemplate}
+                >
+                  {renderFretNodesForString(stringIdx, totalFrets)}
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Números de trastes inferiores bien espaciados */}
-          <div className="h-6 flex items-center w-full pt-1 border-t border-slate-700/40 shrink-0">
-            {renderFretNumbersRow()}
+          {/* Fila de números de trastes inferior alineada con la misma cuadrícula */}
+          <div
+            className="h-5 grid items-center w-full pt-1 border-t border-slate-700/50 text-[10px] sm:text-[11px] font-mono text-slate-400 select-none text-center"
+            style={fretGridTemplate}
+          >
+            {/* Celda traste 0 / Cejuela */}
+            <span className="opacity-60">0</span>
+            {/* Celdas trastes 1 al visibleFrets */}
+            {Array.from({ length: totalFrets }, (_, i) => i + 1).map((fret) => (
+              <span
+                key={fret}
+                className={`${
+                  [3, 5, 7, 9, 12, 15, 17, 19, 21, 24].includes(fret)
+                    ? 'text-cyan-400 font-extrabold'
+                    : 'opacity-40'
+                }`}
+              >
+                {fret}
+              </span>
+            ))}
           </div>
         </div>
       </main>
