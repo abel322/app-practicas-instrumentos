@@ -61,7 +61,7 @@ export function FretboardNoteNode({
     >
       <div
         className={`${
-          size === 'sm' ? 'w-5 h-5 sm:w-6 sm:h-6' : 'w-6 h-6 sm:w-7 sm:h-7'
+          size === 'sm' ? 'w-6 h-6 sm:w-7 sm:h-7' : 'w-7 h-7 sm:w-8 sm:h-8'
         } rounded-full flex items-center justify-center transition-all shadow-sm ${
           isHighlighted
             ? isRoot
@@ -70,13 +70,13 @@ export function FretboardNoteNode({
             : isRoot
             ? 'bg-[#FFCC00] text-slate-950 font-black ring-2 ring-amber-300/60 scale-105 z-20 shadow-md'
             : isInActiveBox
-            ? 'bg-slate-700/90 text-white font-bold border border-slate-500/50 hover:bg-slate-600 z-10'
-            : 'bg-slate-800/60 text-slate-400 border border-slate-700/40 text-[9px]'
+            ? 'bg-slate-700/90 text-white font-black border border-slate-500/50 hover:bg-slate-600 z-10'
+            : 'bg-slate-800/60 text-slate-400 border border-slate-700/40 text-[10px]'
         }`}
       >
         <span
           className={`${
-            size === 'sm' ? 'text-[9px] sm:text-[10px]' : 'text-[11px] sm:text-xs'
+            size === 'sm' ? 'text-[11px] sm:text-xs font-black' : 'text-xs sm:text-[13px] font-black'
           } leading-none tracking-tight font-sans`}
         >
           {displayText}
