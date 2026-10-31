@@ -83,7 +83,7 @@ export default function FretboardPage() {
   const [fretboardViewMode, setFretboardViewMode] = useState<'scroll' | 'fit'>('scroll');
 
   // Estado Modo 1: Laboratorio de Armonía Diatónica CAGED (7 Acordes por Forma)
-  const [tonalityMode, setTonalityMode] = useState<TonalityMode>('major');
+  const [tonalityMode, setTonalityMode] = useState<TonalityMode>('ionian');
   const [activeCagedBoxId, setActiveCagedBoxId] = useState<number>(1);
   const [activeChordDegreeIndex, setActiveChordDegreeIndex] = useState<number>(0);
   const [activeExtensionFamily, setActiveExtensionFamily] = useState<ChordExtensionFamily>('triad');
@@ -164,7 +164,7 @@ export default function FretboardPage() {
       !activeVariation || isStandardVariation(activeVariation.id)
         ? activeExtensionFamily
         : activeVariation.id;
-    return tonalityMode === 'major' ? baseKey : `${tonalityMode}_${baseKey}`;
+    return tonalityMode === 'ionian' ? baseKey : `${tonalityMode}_${baseKey}`;
   }, [activeVariation, activeExtensionFamily, tonalityMode]);
 
   const activeCagedChord: CagedChordVoicing | undefined = useMemo(() => {

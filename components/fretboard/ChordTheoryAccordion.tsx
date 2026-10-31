@@ -110,7 +110,7 @@ export const ChordTheoryAccordion: React.FC<ChordTheoryAccordionProps> = ({
                 <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
                   <span>Tonalidad: </span>
                   <strong className="text-slate-800 dark:text-slate-200">
-                    {rootNote} {TONALITY_MODE_LABELS[cagedChord?.tonalityMode || 'major']}
+                    {rootNote} {TONALITY_MODE_LABELS[cagedChord?.tonalityMode || 'ionian']}
                   </strong>
                   <span> • Forma: </span>
                   <strong className="text-purple-600 dark:text-purple-400">{cagedBoxName || 'CAGED'}</strong>

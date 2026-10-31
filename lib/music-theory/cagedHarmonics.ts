@@ -9,11 +9,25 @@ export type ChordExtensionFamily =
   | 'added' 
   | 'suspended';
 
-export type TonalityMode = 'major' | 'minor_natural' | 'minor_harmonic' | 'minor_melodic';
+export type TonalityMode = 
+  | 'ionian' 
+  | 'dorian' 
+  | 'phrygian' 
+  | 'lydian' 
+  | 'mixolydian' 
+  | 'aeolian' 
+  | 'locrian' 
+  | 'minor_harmonic' 
+  | 'minor_melodic';
 
 export const TONALITY_MODE_LABELS: Record<TonalityMode, string> = {
-  major: 'Mayor (Jónica)',
-  minor_natural: 'Menor Natural (Eólica)',
+  ionian: 'Jónico (Mayor)',
+  dorian: 'Dórico',
+  phrygian: 'Frigio',
+  lydian: 'Lidio',
+  mixolydian: 'Mixolidio',
+  aeolian: 'Eólico (Menor Natural)',
+  locrian: 'Locrio',
   minor_harmonic: 'Menor Armónica',
   minor_melodic: 'Menor Melódica',
 };
@@ -33,8 +47,8 @@ export interface TonalityDegreeConfig {
 }
 
 export const TONALITY_DEGREES_CATALOG: Record<TonalityMode, TonalityDegreeConfig[]> = {
-  // 1. TONALIDAD MAYOR DIATÓNICA (I, ii, iii, IV, V, vi, vii°)
-  major: [
+  // 1. JÓNICO
+  ionian: [
     { degreeIndex: 0, roman: 'I', semitonesFromRoot: 0, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: 'maj7', seventhFullName: 'Maj7', seventhType: 'maj', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'7', semitones:11}] },
     { degreeIndex: 1, roman: 'II', semitonesFromRoot: 2, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
     { degreeIndex: 2, roman: 'III', semitonesFromRoot: 4, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
@@ -44,8 +58,52 @@ export const TONALITY_DEGREES_CATALOG: Record<TonalityMode, TonalityDegreeConfig
     { degreeIndex: 6, roman: 'VII°', semitonesFromRoot: 11, triadSuffix: 'dim', triadFullName: 'disminuido', triadType: 'dim', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}], seventhSuffix: 'm7b5', seventhFullName: 'Semidisminuido', seventhType: 'dim', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}, {label:'b7', semitones:10}] },
   ],
 
-  // 2. TONALIDAD MENOR NATURAL / EÓLICA (i, ii°, III, iv, v, VI, VII)
-  minor_natural: [
+  // 2. DÓRICO
+  dorian: [
+    { degreeIndex: 0, roman: 'I', semitonesFromRoot: 0, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+    { degreeIndex: 1, roman: 'II', semitonesFromRoot: 2, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+    { degreeIndex: 2, roman: '♭III', semitonesFromRoot: 3, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: 'maj7', seventhFullName: 'Maj7', seventhType: 'maj', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'7', semitones:11}] },
+    { degreeIndex: 3, roman: 'IV', semitonesFromRoot: 5, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: '7', seventhFullName: 'Dominante 7', seventhType: 'dom7', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+    { degreeIndex: 4, roman: 'V', semitonesFromRoot: 7, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+    { degreeIndex: 5, roman: 'VI°', semitonesFromRoot: 9, triadSuffix: 'dim', triadFullName: 'disminuido', triadType: 'dim', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}], seventhSuffix: 'm7b5', seventhFullName: 'Semidisminuido', seventhType: 'dim', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}, {label:'b7', semitones:10}] },
+    { degreeIndex: 6, roman: '♭VII', semitonesFromRoot: 10, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: 'maj7', seventhFullName: 'Maj7', seventhType: 'maj', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'7', semitones:11}] },
+  ],
+
+  // 3. FRIGIO
+  phrygian: [
+    { degreeIndex: 0, roman: 'I', semitonesFromRoot: 0, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+    { degreeIndex: 1, roman: '♭II', semitonesFromRoot: 1, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: 'maj7', seventhFullName: 'Maj7', seventhType: 'maj', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'7', semitones:11}] },
+    { degreeIndex: 2, roman: '♭III', semitonesFromRoot: 3, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: '7', seventhFullName: 'Dominante 7', seventhType: 'dom7', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+    { degreeIndex: 3, roman: 'IV', semitonesFromRoot: 5, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+    { degreeIndex: 4, roman: 'V°', semitonesFromRoot: 7, triadSuffix: 'dim', triadFullName: 'disminuido', triadType: 'dim', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}], seventhSuffix: 'm7b5', seventhFullName: 'Semidisminuido', seventhType: 'dim', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}, {label:'b7', semitones:10}] },
+    { degreeIndex: 5, roman: '♭VI', semitonesFromRoot: 8, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: 'maj7', seventhFullName: 'Maj7', seventhType: 'maj', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'7', semitones:11}] },
+    { degreeIndex: 6, roman: '♭VII', semitonesFromRoot: 10, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+  ],
+
+  // 4. LIDIO
+  lydian: [
+    { degreeIndex: 0, roman: 'I', semitonesFromRoot: 0, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: 'maj7', seventhFullName: 'Maj7', seventhType: 'maj', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'7', semitones:11}] },
+    { degreeIndex: 1, roman: 'II', semitonesFromRoot: 2, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: '7', seventhFullName: 'Dominante 7', seventhType: 'dom7', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+    { degreeIndex: 2, roman: 'III', semitonesFromRoot: 4, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+    { degreeIndex: 3, roman: 'IV°', semitonesFromRoot: 6, triadSuffix: 'dim', triadFullName: 'disminuido', triadType: 'dim', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}], seventhSuffix: 'm7b5', seventhFullName: 'Semidisminuido', seventhType: 'dim', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}, {label:'b7', semitones:10}] },
+    { degreeIndex: 4, roman: 'V', semitonesFromRoot: 7, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: 'maj7', seventhFullName: 'Maj7', seventhType: 'maj', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'7', semitones:11}] },
+    { degreeIndex: 5, roman: 'VI', semitonesFromRoot: 9, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+    { degreeIndex: 6, roman: 'VII', semitonesFromRoot: 11, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+  ],
+
+  // 5. MIXOLIDIO
+  mixolydian: [
+    { degreeIndex: 0, roman: 'I', semitonesFromRoot: 0, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: '7', seventhFullName: 'Dominante 7', seventhType: 'dom7', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+    { degreeIndex: 1, roman: 'II', semitonesFromRoot: 2, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+    { degreeIndex: 2, roman: 'III°', semitonesFromRoot: 4, triadSuffix: 'dim', triadFullName: 'disminuido', triadType: 'dim', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}], seventhSuffix: 'm7b5', seventhFullName: 'Semidisminuido', seventhType: 'dim', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}, {label:'b7', semitones:10}] },
+    { degreeIndex: 3, roman: 'IV', semitonesFromRoot: 5, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: 'maj7', seventhFullName: 'Maj7', seventhType: 'maj', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'7', semitones:11}] },
+    { degreeIndex: 4, roman: 'V', semitonesFromRoot: 7, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+    { degreeIndex: 5, roman: 'VI', semitonesFromRoot: 9, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+    { degreeIndex: 6, roman: '♭VII', semitonesFromRoot: 10, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: 'maj7', seventhFullName: 'Maj7', seventhType: 'maj', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'7', semitones:11}] },
+  ],
+
+  // 6. EÓLICO (Menor Natural)
+  aeolian: [
     { degreeIndex: 0, roman: 'I', semitonesFromRoot: 0, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
     { degreeIndex: 1, roman: 'II°', semitonesFromRoot: 2, triadSuffix: 'dim', triadFullName: 'disminuido', triadType: 'dim', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}], seventhSuffix: 'm7b5', seventhFullName: 'Semidisminuido', seventhType: 'dim', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}, {label:'b7', semitones:10}] },
     { degreeIndex: 2, roman: '♭III', semitonesFromRoot: 3, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: 'maj7', seventhFullName: 'Maj7', seventhType: 'maj', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'7', semitones:11}] },
@@ -55,7 +113,18 @@ export const TONALITY_DEGREES_CATALOG: Record<TonalityMode, TonalityDegreeConfig
     { degreeIndex: 6, roman: '♭VII', semitonesFromRoot: 10, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: '7', seventhFullName: 'Dominante 7', seventhType: 'dom7', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
   ],
 
-  // 3. TONALIDAD MENOR ARMÓNICA (Sensible 7ma mayor y V dominante)
+  // 7. LOCRIO
+  locrian: [
+    { degreeIndex: 0, roman: 'I°', semitonesFromRoot: 0, triadSuffix: 'dim', triadFullName: 'disminuido', triadType: 'dim', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}], seventhSuffix: 'm7b5', seventhFullName: 'Semidisminuido', seventhType: 'dim', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}, {label:'b7', semitones:10}] },
+    { degreeIndex: 1, roman: '♭II', semitonesFromRoot: 1, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: 'maj7', seventhFullName: 'Maj7', seventhType: 'maj', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'7', semitones:11}] },
+    { degreeIndex: 2, roman: '♭III', semitonesFromRoot: 3, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+    { degreeIndex: 3, roman: 'IV', semitonesFromRoot: 5, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+    { degreeIndex: 4, roman: '♭V', semitonesFromRoot: 6, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: 'maj7', seventhFullName: 'Maj7', seventhType: 'maj', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'7', semitones:11}] },
+    { degreeIndex: 5, roman: '♭VI', semitonesFromRoot: 8, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: '7', seventhFullName: 'Dominante 7', seventhType: 'dom7', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+    { degreeIndex: 6, roman: '♭VII', semitonesFromRoot: 10, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
+  ],
+
+  // 8. MENOR ARMÓNICA
   minor_harmonic: [
     { degreeIndex: 0, roman: 'I', semitonesFromRoot: 0, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm(maj7)', seventhFullName: 'menor (Maj7)', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'7', semitones:11}] },
     { degreeIndex: 1, roman: 'II°', semitonesFromRoot: 2, triadSuffix: 'dim', triadFullName: 'disminuido', triadType: 'dim', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}], seventhSuffix: 'm7b5', seventhFullName: 'Semidisminuido', seventhType: 'dim', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}, {label:'b7', semitones:10}] },
@@ -66,7 +135,7 @@ export const TONALITY_DEGREES_CATALOG: Record<TonalityMode, TonalityDegreeConfig
     { degreeIndex: 6, roman: 'VII°', semitonesFromRoot: 11, triadSuffix: 'dim', triadFullName: 'Disminuido', triadType: 'dim', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}], seventhSuffix: '°7', seventhFullName: 'Disminuido Completo', seventhType: 'dim', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}, {label:'bb7', semitones:9}] },
   ],
 
-  // 4. TONALIDAD MENOR MELÓDICA (Jazz Minor)
+  // 9. MENOR MELÓDICA
   minor_melodic: [
     { degreeIndex: 0, roman: 'I', semitonesFromRoot: 0, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm(maj7)', seventhFullName: 'menor (Maj7)', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'7', semitones:11}] },
     { degreeIndex: 1, roman: 'II', semitonesFromRoot: 2, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
@@ -2319,18 +2388,48 @@ function normalizeToChromaticIndex(root: string): number {
   return idx === -1 ? 0 : idx;
 }
 
-const SHARP_TO_FLAT_SYMBOL: Record<string, string> = {
-  'C#': 'D♭',
-  'D#': 'E♭',
-  'F#': 'G♭',
-  'G#': 'A♭',
-  'A#': 'B♭',
-};
+const NATURAL_LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+const LETTER_SEMITONES: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
 /**
- * Formatea el nombre de la nota fundamental del grado respetando la ortografía de bemoles (♭)
- * cuando el grado romano es bemol (ej. ♭III -> E♭, ♭VI -> A♭, ♭VII -> B♭)
+ * Obtiene el nombre ortográficamente correcto de la fundamental diatónica (ej. Eb, Bb, F#)
+ * según la tónica de la escala, el índice del grado y la distancia en semitonos.
  */
+export function getDiatonicRootName(keyRoot: string, semitonesFromRoot: number, degreeIndex: number): string {
+  const rootLetter = keyRoot.charAt(0).toUpperCase();
+  const rootLetterIdx = NATURAL_LETTERS.indexOf(rootLetter);
+  if (rootLetterIdx === -1) {
+    const safeIdx = normalizeToChromaticIndex(keyRoot);
+    return CHROMATIC_NOTES[(safeIdx + semitonesFromRoot) % 12];
+  }
+
+  const targetLetterIdx = (rootLetterIdx + degreeIndex) % 7;
+  const targetLetter = NATURAL_LETTERS[targetLetterIdx];
+  const naturalSemitone = LETTER_SEMITONES[targetLetter];
+
+  const rootChromaticIdx = normalizeToChromaticIndex(keyRoot);
+  const targetChromaticIdx = (rootChromaticIdx + semitonesFromRoot) % 12;
+
+  let diff = (targetChromaticIdx - naturalSemitone + 12) % 12;
+  if (diff > 6) diff -= 12;
+
+  if (diff === 0) return targetLetter;
+  if (diff === 1) return `${targetLetter}#`;
+  if (diff === 2) return `${targetLetter}##`;
+  if (diff === -1) return `${targetLetter}b`;
+  if (diff === -2) return `${targetLetter}bb`;
+
+  return CHROMATIC_NOTES[targetChromaticIdx];
+}
+
+const SHARP_TO_FLAT_SYMBOL: Record<string, string> = {
+  'C#': 'Db',
+  'D#': 'Eb',
+  'F#': 'Gb',
+  'G#': 'Ab',
+  'A#': 'Bb',
+};
+
 function formatDegreeRootNote(chromaticNote: string, roman: string): string {
   if (roman.includes('♭') && SHARP_TO_FLAT_SYMBOL[chromaticNote]) {
     return SHARP_TO_FLAT_SYMBOL[chromaticNote];
@@ -2342,10 +2441,10 @@ function formatDegreeRootNote(chromaticNote: string, roman: string): string {
  * Calcula dinámicamente las fórmulas de los 7 grados para cualquier Modo de Tonalidad y Familia Armónica
  */
 export function getFormulasForTonalityAndFamily(
-  tonalityMode: TonalityMode = 'major',
+  tonalityMode: TonalityMode = 'ionian',
   extension: ChordExtensionFamily = 'triad'
 ): ChordFormulaDefinition[] {
-  const degrees = TONALITY_DEGREES_CATALOG[tonalityMode] || TONALITY_DEGREES_CATALOG.major;
+  const degrees = TONALITY_DEGREES_CATALOG[tonalityMode] || TONALITY_DEGREES_CATALOG.ionian;
   const scaleSemitones = degrees.map((d) => d.semitonesFromRoot);
 
   if (extension === 'triad') {
@@ -2370,7 +2469,7 @@ export function getFormulasForTonalityAndFamily(
     }));
   }
 
-  if (tonalityMode === 'major') {
+  if (tonalityMode === 'ionian') {
     return (HARMONIC_FAMILIES_CONFIG[extension] || HARMONIC_FAMILIES_CONFIG.triad).map(
       (item, idx) => ({
         ...item,
@@ -2591,11 +2690,13 @@ export function getFormulasForTonalityAndFamily(
  * Voicings curados en Caja 1 (Forma C, trastes 0-4 en C) para modos menores donde la cuerda al aire
  * de Do Mayor requeriría bajar por debajo del traste 0.
  */
-const BOX1_MINOR_CURATED_VOICINGS_C: Record<
-  Exclude<TonalityMode, 'major'>,
-  Record<'triad' | 'seventh', Partial<Record<number, RawNote[]>>>
+const BOX1_CURATED_MODAL_VOICINGS_C: Partial<
+  Record<
+    TonalityMode,
+    Record<'triad' | 'seventh', Partial<Record<number, RawNote[]>>>
+  >
 > = {
-  minor_natural: {
+  aeolian: {
     triad: {
       0: [
         { stringIndex: 4, fret: 3, finger: 3, intervalLabel: 'R', isRoot: true },
@@ -2656,6 +2757,103 @@ const BOX1_MINOR_CURATED_VOICINGS_C: Record<
         { stringIndex: 2, fret: 1, finger: 1, intervalLabel: 'R', isRoot: true },
         { stringIndex: 1, fret: 1, finger: 1, intervalLabel: '3', isRoot: false },
         { stringIndex: 0, fret: 3, finger: 3, intervalLabel: '7', isRoot: false },
+      ],
+      6: [
+        { stringIndex: 4, fret: 1, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 3, intervalLabel: '5', isRoot: false },
+        { stringIndex: 2, fret: 1, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 4, intervalLabel: '3', isRoot: false },
+        { stringIndex: 0, fret: 1, finger: 1, intervalLabel: '5', isRoot: false },
+      ],
+    },
+  },
+  dorian: {
+    triad: {
+      0: [
+        { stringIndex: 4, fret: 3, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 1, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 2, fret: 0, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 1, fret: 1, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 0, fret: 3, finger: 4, intervalLabel: '5', isRoot: false },
+      ],
+      2: [
+        { stringIndex: 3, fret: 1, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 3, finger: 3, intervalLabel: '5', isRoot: false },
+        { stringIndex: 1, fret: 4, finger: 4, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 0, fret: 3, finger: 2, intervalLabel: '3', isRoot: false },
+      ],
+      4: [
+        { stringIndex: 5, fret: 3, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 0, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 2, fret: 3, finger: 3, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 4, intervalLabel: '5', isRoot: false },
+        { stringIndex: 0, fret: 3, finger: 4, intervalLabel: 'R', isRoot: true },
+      ],
+      6: [
+        { stringIndex: 4, fret: 1, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 3, intervalLabel: '5', isRoot: false },
+        { stringIndex: 2, fret: 3, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 1, fret: 3, finger: 3, intervalLabel: '3', isRoot: false },
+        { stringIndex: 0, fret: 1, finger: 1, intervalLabel: '5', isRoot: false },
+      ],
+    },
+    seventh: {
+      0: [
+        { stringIndex: 4, fret: 3, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 1, finger: 1, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 2, fret: 3, finger: 4, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 1, fret: 1, finger: 1, intervalLabel: 'R', isRoot: true },
+      ],
+      2: [
+        { stringIndex: 3, fret: 1, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 2, fret: 3, finger: 3, intervalLabel: '5', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 3, intervalLabel: '7', isRoot: false },
+        { stringIndex: 0, fret: 3, finger: 3, intervalLabel: '3', isRoot: false },
+      ],
+      3: [
+        { stringIndex: 3, fret: 1, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 2, fret: 2, finger: 2, intervalLabel: '3', isRoot: false },
+        { stringIndex: 1, fret: 1, finger: 1, intervalLabel: '5', isRoot: false },
+        { stringIndex: 0, fret: 1, finger: 1, intervalLabel: 'R', isRoot: true },
+      ],
+      4: [
+        { stringIndex: 5, fret: 3, finger: 2, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 3, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 2, fret: 3, finger: 3, intervalLabel: 'b3', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 3, intervalLabel: '5', isRoot: false },
+      ],
+      5: [
+        { stringIndex: 4, fret: 0, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 1, finger: 2, intervalLabel: 'b5', isRoot: false },
+        { stringIndex: 2, fret: 0, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 1, fret: 1, finger: 1, intervalLabel: 'b3', isRoot: false },
+      ],
+      6: [
+        { stringIndex: 4, fret: 1, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 3, intervalLabel: '5', isRoot: false },
+        { stringIndex: 2, fret: 1, finger: 1, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 1, fret: 3, finger: 4, intervalLabel: '3', isRoot: false },
+        { stringIndex: 0, fret: 1, finger: 1, intervalLabel: '5', isRoot: false },
+      ],
+    },
+  },
+  mixolydian: {
+    triad: {
+      6: [
+        { stringIndex: 4, fret: 1, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 3, finger: 3, intervalLabel: '5', isRoot: false },
+        { stringIndex: 2, fret: 3, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 1, fret: 3, finger: 3, intervalLabel: '3', isRoot: false },
+        { stringIndex: 0, fret: 1, finger: 1, intervalLabel: '5', isRoot: false },
+      ],
+    },
+    seventh: {
+      0: [
+        { stringIndex: 4, fret: 3, finger: 3, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 3, fret: 2, finger: 2, intervalLabel: '3', isRoot: false },
+        { stringIndex: 2, fret: 3, finger: 4, intervalLabel: 'b7', isRoot: false },
+        { stringIndex: 1, fret: 1, finger: 1, intervalLabel: 'R', isRoot: true },
+        { stringIndex: 0, fret: 0, finger: 1, intervalLabel: '3', isRoot: false },
       ],
       6: [
         { stringIndex: 4, fret: 1, finger: 1, intervalLabel: 'R', isRoot: true },
@@ -2804,20 +3002,20 @@ function adaptVoicingToTonalityMode(
   targetFormula: ChordFormulaDefinition,
   isBass: boolean
 ): RawNote[] {
-  if (tonalityMode === 'major') return baseNotes;
+  if (tonalityMode === 'ionian') return baseNotes;
 
   if (
     !isBass &&
     boxId === 1 &&
     (extension === 'triad' || extension === 'seventh')
   ) {
-    const curated = BOX1_MINOR_CURATED_VOICINGS_C[tonalityMode]?.[extension]?.[degIdx];
+    const curated = BOX1_CURATED_MODAL_VOICINGS_C[tonalityMode]?.[extension]?.[degIdx];
     if (curated && curated.length > 0) {
       return curated;
     }
   }
 
-  const majorDeg = TONALITY_DEGREES_CATALOG.major[degIdx];
+  const majorDeg = TONALITY_DEGREES_CATALOG.ionian[degIdx];
   const targetDeg = TONALITY_DEGREES_CATALOG[tonalityMode][degIdx];
   if (!majorDeg || !targetDeg) return baseNotes;
 
@@ -2927,20 +3125,20 @@ export function getCagedDiatonicChords(
   boxId: number, // 1 a 5 (C, A, G, E, D)
   instrument: InstrumentType = 'guitar_6',
   extension: ChordExtensionFamily = 'triad',
-  tonalityMode: TonalityMode = 'major'
+  tonalityMode: TonalityMode = 'ionian'
 ): CagedChordVoicing[] {
   const safeRootIndex = normalizeToChromaticIndex(keyRoot);
   const transposeOffset = safeRootIndex; // C = 0, C# = 1, D = 2...
 
   const isBass = instrument === 'bass_4' || instrument === 'bass_5';
-  const degreeCatalog = TONALITY_DEGREES_CATALOG[tonalityMode] || TONALITY_DEGREES_CATALOG.major;
+  const degreeCatalog = TONALITY_DEGREES_CATALOG[tonalityMode] || TONALITY_DEGREES_CATALOG.ionian;
   const familyConfigs = getFormulasForTonalityAndFamily(tonalityMode, extension);
 
   return familyConfigs.map((formulaDef, degIdx) => {
     const degConfig = degreeCatalog[degIdx] || degreeCatalog[0];
     const chordRootMidi = (safeRootIndex + degConfig.semitonesFromRoot) % 12;
     const rawRootName = CHROMATIC_NOTES[chordRootMidi];
-    const chordRootName = formatDegreeRootNote(rawRootName, formulaDef.roman);
+    const chordRootName = getDiatonicRootName(keyRoot, degConfig.semitonesFromRoot, degIdx);
     const chordName = `${chordRootName}${formulaDef.labelSuffix}`;
     const fullName = `${formulaDef.roman} - ${chordName}`;
 
@@ -2982,7 +3180,7 @@ export function getCagedDiatonicChords(
       }
     }
 
-    if (tonalityMode !== 'major') {
+    if (tonalityMode !== 'ionian') {
       rawNotes = adaptVoicingToTonalityMode(
         rawNotes,
         degIdx,

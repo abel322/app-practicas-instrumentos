@@ -75,7 +75,7 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
   onSelectVariation,
   activeChordOverride,
 }) => {
-  const [internalTonalityMode, setInternalTonalityMode] = useState<TonalityMode>('major');
+  const [internalTonalityMode, setInternalTonalityMode] = useState<TonalityMode>('ionian');
   const tonalityMode = controlledTonalityMode ?? internalTonalityMode;
   const setTonalityMode = (mode: TonalityMode) => {
     if (onTonalityModeChange) {
@@ -129,12 +129,21 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
             <select
               value={tonalityMode}
               onChange={(e) => setTonalityMode(e.target.value as TonalityMode)}
-              className="bg-slate-900 border border-slate-700/80 text-cyan-300 font-bold text-xs rounded-xl px-3 py-1.5 focus:ring-2 focus:ring-cyan-400 focus:outline-none cursor-pointer"
+              className="bg-slate-900 border border-slate-700/80 text-cyan-300 font-bold text-xs rounded-xl px-3 py-1.5 focus:ring-2 focus:ring-cyan-400 focus:outline-none cursor-pointer shadow-sm"
             >
-              <option value="major">Escala Mayor (Jónica)</option>
-              <option value="minor_natural">Escala Menor Natural (Eólica)</option>
-              <option value="minor_harmonic">Escala Menor Armónica</option>
-              <option value="minor_melodic">Escala Menor Melódica</option>
+              <optgroup label="─── MODOS GRIEGOS ───" className="text-slate-400 bg-slate-950 font-bold">
+                <option value="ionian" className="text-cyan-300 bg-slate-900">Jónico (Mayor)</option>
+                <option value="dorian" className="text-cyan-300 bg-slate-900">Dórico</option>
+                <option value="phrygian" className="text-cyan-300 bg-slate-900">Frigio</option>
+                <option value="lydian" className="text-cyan-300 bg-slate-900">Lidio</option>
+                <option value="mixolydian" className="text-cyan-300 bg-slate-900">Mixolidio</option>
+                <option value="aeolian" className="text-cyan-300 bg-slate-900">Eólico (Menor Natural)</option>
+                <option value="locrian" className="text-cyan-300 bg-slate-900">Locrio</option>
+              </optgroup>
+              <optgroup label="─── SISTEMAS MENORES ───" className="text-slate-400 bg-slate-950 font-bold">
+                <option value="minor_harmonic" className="text-amber-300 bg-slate-900">Menor Armónica</option>
+                <option value="minor_melodic" className="text-amber-300 bg-slate-900">Menor Melódica</option>
+              </optgroup>
             </select>
           </div>
         </div>

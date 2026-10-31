@@ -63,9 +63,9 @@ export function isStandardVariation(variationId: string): boolean {
 export function getVariationsForDegree(
   degreeIndex: number, // 0 = I, 4 = V, 6 = vii°, etc.
   keyRoot: string,
-  tonalityMode: TonalityMode = 'major'
+  tonalityMode: TonalityMode = 'ionian'
 ): ChordTensionVariation[] {
-  const degrees = TONALITY_DEGREES_CATALOG[tonalityMode] || TONALITY_DEGREES_CATALOG.major;
+  const degrees = TONALITY_DEGREES_CATALOG[tonalityMode] || TONALITY_DEGREES_CATALOG.ionian;
   const degConfig = degrees[degreeIndex] || degrees[0];
 
   // 1. GRADOS MENOR-MAJ7 (Grado I en Menor Armónica y Menor Melódica: m(maj7) / m6)
@@ -874,14 +874,14 @@ export function applyChordTensionVariation(
   const safeRootIndex = normalizeToChromaticIndex(keyRoot);
   const transposeOffset = safeRootIndex;
   const isBass = instrumentType === 'bass_4' || instrumentType === 'bass_5';
-  const activeMode: TonalityMode = baseChord.tonalityMode || 'major';
-  const modeCatalog = TONALITY_DEGREES_CATALOG[activeMode] || TONALITY_DEGREES_CATALOG.major;
+  const activeMode: TonalityMode = baseChord.tonalityMode || 'ionian';
+  const modeCatalog = TONALITY_DEGREES_CATALOG[activeMode] || TONALITY_DEGREES_CATALOG.ionian;
   const foundDegIdx = modeCatalog.findIndex((d) => d.roman === baseChord.degreeRoman);
   const degIdx = foundDegIdx >= 0 ? foundDegIdx : 0;
 
   // 1. Verificar si existe en el catálogo maestro para guitarra (en modo mayor)
   let rawNotes: RawNote[] | null = null;
-  if (!isBass && activeMode === 'major') {
+  if (!isBass && activeMode === 'ionian') {
     const boxDef = GUITAR_VARIATION_VOICINGS_C_MAJOR[cagedBoxId];
     if (boxDef && boxDef[degIdx] && boxDef[degIdx][variation.id]) {
       rawNotes = boxDef[degIdx][variation.id];
