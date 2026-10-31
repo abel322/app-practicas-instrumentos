@@ -894,6 +894,7 @@ export interface ProgressionStep {
   semitoneOffset: number;
   chordKey: ChordKey;
   bars: number;
+  assignedImprovResourceId?: string;
 }
 
 export interface ProgressionDef {
@@ -962,6 +963,71 @@ export const PROGRESSIONS_CATALOG: ProgressionDef[] = [
   },
 ];
 
+const DEGREE_MAPPING: Record<string, { semitoneOffset: number; chordKey: ChordKey; name: string }> = {
+  'I': { semitoneOffset: 0, chordKey: 'major', name: 'Tónica Mayor' },
+  'ii': { semitoneOffset: 2, chordKey: 'minor', name: 'Segundo Menor' },
+  'iii': { semitoneOffset: 4, chordKey: 'minor', name: 'Tercer Menor' },
+  'IV': { semitoneOffset: 5, chordKey: 'major', name: 'Subdominante Mayor' },
+  'V': { semitoneOffset: 7, chordKey: 'major', name: 'Dominante Mayor' },
+  'vi': { semitoneOffset: 9, chordKey: 'minor', name: 'Relativo Menor' },
+  'vii°': { semitoneOffset: 11, chordKey: 'm7b5', name: 'Séptimo Disminuido' },
+  'Imaj7': { semitoneOffset: 0, chordKey: 'maj7', name: 'Tónica Maj7' },
+  'ii7': { semitoneOffset: 2, chordKey: 'm7', name: 'Segundo Menor 7' },
+  'iii7': { semitoneOffset: 4, chordKey: 'm7', name: 'Tercer Menor 7' },
+  'IVmaj7': { semitoneOffset: 5, chordKey: 'maj7', name: 'Subdominante Maj7' },
+  'V7': { semitoneOffset: 7, chordKey: 'dom7', name: 'Dominante 7' },
+  'vi7': { semitoneOffset: 9, chordKey: 'm7', name: 'Relativo Menor 7' },
+  'viiø7': { semitoneOffset: 11, chordKey: 'm7b5', name: 'Séptimo Semidisminuido' },
+  'iv': { semitoneOffset: 5, chordKey: 'minor', name: 'Subdominante Menor (Intercambio)' },
+  'iv7': { semitoneOffset: 5, chordKey: 'm7', name: 'Subdominante Menor 7 (Intercambio)' },
+  '♭VI': { semitoneOffset: 8, chordKey: 'major', name: 'Sexto Bemol Mayor (Intercambio)' },
+  '♭VImaj7': { semitoneOffset: 8, chordKey: 'maj7', name: 'Sexto Bemol Maj7 (Intercambio)' },
+  '♭VII': { semitoneOffset: 10, chordKey: 'major', name: 'Séptimo Bemol Mayor (Intercambio)' },
+  '♭VII7': { semitoneOffset: 10, chordKey: 'dom7', name: 'Séptimo Bemol Dominante (Backdoor)' },
+  '♭III': { semitoneOffset: 3, chordKey: 'major', name: 'Tercer Bemol Mayor (Intercambio)' },
+  '♭II': { semitoneOffset: 1, chordKey: 'major', name: 'Napolitano / Sustituto Tritonal' },
+};
+
+export function parseDegreeLabelToStep(
+  degreeLabel: string,
+  bars: number = 2,
+  assignedImprovResourceId?: string
+): ProgressionStep {
+  const mapped = DEGREE_MAPPING[degreeLabel] || {
+    semitoneOffset: 0,
+    chordKey: 'major' as ChordKey,
+    name: `Grado ${degreeLabel}`,
+  };
+  return {
+    roman: degreeLabel,
+    name: mapped.name,
+    semitoneOffset: mapped.semitoneOffset,
+    chordKey: mapped.chordKey,
+    bars: bars || 2,
+    assignedImprovResourceId: assignedImprovResourceId || 'default',
+  };
+}
+
+export function convertCustomProgressionToDef(record: {
+  id: string;
+  name: string;
+  category?: string;
+  chordsJson: any;
+}): ProgressionDef {
+  const rawChords = Array.isArray(record.chordsJson) ? record.chordsJson : [];
+  const steps: ProgressionStep[] = rawChords.map((c: any) =>
+    parseDegreeLabelToStep(c.degreeLabel || 'I', Number(c.bars) || 2, c.assignedImprovResourceId)
+  );
+  return {
+    id: record.id,
+    name: `★ ${record.name}`,
+    genre: record.category || 'Personalizada',
+    description: `Progresión personalizada (${steps.map((s) => s.roman).join(' - ')})`,
+    bpmDefault: 85,
+    steps: steps.length > 0 ? steps : [parseDegreeLabelToStep('Imaj7', 2)],
+  };
+}
+
 // Resolver los acordes reales de una progresión según la tonalidad elegida
 export function resolveProgressionChords(
   progression: ProgressionDef,
@@ -974,6 +1040,7 @@ export function resolveProgressionChords(
   chordName: string;
   fullChordLabel: string;
   bars: number;
+  assignedImprovResourceId?: string;
 }[] {
   const rootIdx = CHROMATIC_NOTES.indexOf(keyRoot as ChromaticNote);
   if (rootIdx === -1) return [];
@@ -1000,6 +1067,7 @@ export function resolveProgressionChords(
       chordName: chordDef.name,
       fullChordLabel,
       bars: step.bars,
+      assignedImprovResourceId: step.assignedImprovResourceId,
     };
   });
 }

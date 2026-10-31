@@ -8,9 +8,11 @@ import {
   SCALES_CATALOG,
   ScaleKey,
   PROGRESSIONS_CATALOG,
+  ProgressionDef,
   ChordVoicing,
   resolveProgressionChords,
 } from '@/lib/music-theory/fretboard';
+import { getImprovOptionsForChord } from '@/lib/music-theory/chordImprovOptions';
 import { NoteDisplayMode } from '@/lib/music-theory/scaleSystems';
 import {
   Play,
@@ -20,6 +22,7 @@ import {
   Layers,
   Music,
   ListMusic,
+  Plus,
 } from 'lucide-react';
 
 export type StudyMode = 'chords' | 'scales' | 'progressions';
@@ -52,6 +55,7 @@ interface FretboardToolbarProps {
   onDisplayModeChange: (mode: NoteDisplayMode) => void;
 
   // Modo 3: Progresiones
+  progressionsList?: ProgressionDef[];
   selectedProgressionId: string;
   onProgressionIdChange: (id: string) => void;
   progressionPlaying: boolean;
@@ -62,6 +66,9 @@ interface FretboardToolbarProps {
   currentProgressionStepIndex: number;
   bpm: number;
   onBpmChange: (bpm: number) => void;
+  onOpenCreateModal?: () => void;
+  activeStepImprovResourceId?: string;
+  onStepImprovResourceChange?: (stepIndex: number, resourceId: string) => void;
 }
 
 export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
@@ -73,6 +80,7 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
   onRootNoteChange,
   scaleKey,
   onScaleKeyChange,
+  progressionsList = PROGRESSIONS_CATALOG,
   selectedProgressionId,
   onProgressionIdChange,
   progressionPlaying,
@@ -83,10 +91,14 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
   currentProgressionStepIndex,
   bpm,
   onBpmChange,
+  onOpenCreateModal,
+  activeStepImprovResourceId = 'default',
+  onStepImprovResourceChange,
 }) => {
   const currentProgression =
-    PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId) || PROGRESSIONS_CATALOG[0];
+    progressionsList.find((p) => p.id === selectedProgressionId) || progressionsList[0];
   const resolvedSteps = resolveProgressionChords(currentProgression, rootNote);
+  const currentResolvedStep = resolvedSteps[currentProgressionStepIndex] || resolvedSteps[0];
 
   return (
     <div className="w-full max-w-full flex flex-col gap-2 min-w-0">
@@ -229,8 +241,8 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
           {/* ======================= MODO 3: PROGRESIONES ======================= */}
           {studyMode === 'progressions' && (
             <div className="flex flex-col gap-2 min-w-0">
-              {/* Cuadrícula de 2 Columnas para Tonalidad y Progresión */}
-              <div className="grid grid-cols-2 gap-2 w-full">
+              {/* Cuadrícula de 2 Columnas para Tonalidad y Biblioteca + Botón Nueva */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
                 <div className="flex flex-col gap-1">
                   <label className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase font-bold">
                     Tonalidad (Key)
@@ -250,24 +262,38 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
 
                 <div className="flex flex-col gap-1">
                   <label className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase font-bold">
-                    Biblioteca
+                    Biblioteca de Progresiones
                   </label>
-                  <select
-                    value={selectedProgressionId}
-                    onChange={(e) => onProgressionIdChange(e.target.value)}
-                    className="w-full h-9 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700/80 text-slate-900 dark:text-white text-xs font-mono font-bold rounded-xl px-2.5 focus:outline-none focus:border-[#0891b2] dark:focus:border-cyan-400 cursor-pointer"
-                  >
-                    {PROGRESSIONS_CATALOG.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      value={selectedProgressionId}
+                      onChange={(e) => onProgressionIdChange(e.target.value)}
+                      className="flex-1 min-w-0 h-9 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700/80 text-slate-900 dark:text-white text-xs font-mono font-bold rounded-xl px-2.5 focus:outline-none focus:border-[#0891b2] dark:focus:border-cyan-400 cursor-pointer"
+                    >
+                      {progressionsList.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    {onOpenCreateModal && (
+                      <button
+                        type="button"
+                        onClick={onOpenCreateModal}
+                        className="h-9 px-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-black flex items-center gap-1 shrink-0 shadow-sm active:scale-95 transition-all"
+                        title="Crear nueva progresión personalizada"
+                      >
+                        <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                        <span>➕ Nueva</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Fila de Transporte y BPM */}
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200 dark:border-slate-800/60">
+              {/* Fila de Transporte, Selector de Improvisación en Caliente y BPM */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-slate-200 dark:border-slate-800/60">
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={onPrevProgressionStep}
@@ -308,6 +334,36 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
                     <SkipForward className="w-3.5 h-3.5" />
                   </button>
                 </div>
+
+                {/* Selector en caliente para cambiar la escala/arpegio del acorde activo */}
+                {currentResolvedStep && onStepImprovResourceChange && (
+                  <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-300 dark:border-cyan-900/60">
+                    <span className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                      Improvisar ({currentResolvedStep.fullChordLabel}):
+                    </span>
+                    <select
+                      value={activeStepImprovResourceId || 'default'}
+                      onChange={(e) =>
+                        onStepImprovResourceChange(currentProgressionStepIndex, e.target.value)
+                      }
+                      className="bg-transparent text-xs font-bold text-[#0891b2] dark:text-cyan-300 focus:outline-none cursor-pointer"
+                    >
+                      <option value="default" className="bg-slate-950 text-cyan-300">
+                        💡 Auto (Modo Diatónico)
+                      </option>
+                      {getImprovOptionsForChord(currentResolvedStep.roman).map((res) => (
+                        <option key={res.id} value={res.id} className="bg-slate-950 text-white">
+                          {res.type === 'arpeggio'
+                            ? '🎯'
+                            : res.type === 'pentatonic'
+                            ? '🎸'
+                            : '🎼'}{' '}
+                          {res.name} ({res.tag})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div className="flex items-center gap-2 text-xs font-mono">
                   <span className="text-slate-500 dark:text-slate-400 text-[10px]">TEMPO:</span>

@@ -68,4 +68,11 @@ model CustomChordVoicing {
   @@index([instrumentType, keyRoot, cagedBoxId])
 }
 
-
+model CustomProgression {
+  id          String   @id @default(cuid())
+  name        String
+  category    String   @default("Personalizada")
+  chordsJson  Json     // Array de objetos: [{ degreeLabel: "ii7", bars: 2, assignedImprovResourceId: "minor_pentatonic" }, ...]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

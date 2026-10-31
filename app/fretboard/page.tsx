@@ -17,7 +17,9 @@ import {
   ChordVoicing,
   NoteRole,
   PROGRESSIONS_CATALOG,
+  ProgressionDef,
   resolveProgressionChords,
+  convertCustomProgressionToDef,
 } from '@/lib/music-theory/fretboard';
 import { getFretboardAudioEngine } from '@/lib/music-theory/fretboardAudio';
 import { InteractiveFretboard, ActiveFretNote } from '@/components/fretboard/InteractiveFretboard';
@@ -56,6 +58,8 @@ import { ScaleSystemControls } from '@/components/fretboard/ScaleSystemControls'
 import { ScalePatternExportBar } from '@/components/fretboard/ScalePatternExportBar';
 import { getImprovisationGuide } from '@/lib/music-theory/progressionImprovisationCatalog';
 import { ProgressionImprovPanel, ImprovDisplayMode } from '@/components/fretboard/ProgressionImprovPanel';
+import { findImprovResourceById } from '@/lib/music-theory/chordImprovOptions';
+import { CreateProgressionModal } from '@/components/fretboard/CreateProgressionModal';
 import {
   getCustomScalePatternAction,
   saveScalePatternAction,
@@ -123,15 +127,82 @@ export default function FretboardPage() {
   const [currentProgressionStepIndex, setCurrentProgressionStepIndex] = useState<number>(0);
   const [bpm, setBpm] = useState<number>(85);
   const [improvMode, setImprovMode] = useState<ImprovDisplayMode>('both');
+  const [customProgressions, setCustomProgressions] = useState<ProgressionDef[]>([]);
+  const [isCreateProgModalOpen, setIsCreateProgModalOpen] = useState<boolean>(false);
+  const [stepResourceOverrides, setStepResourceOverrides] = useState<Record<string, string>>({});
+
+  // Cargar progresiones personalizadas de PostgreSQL al iniciar
+  useEffect(() => {
+    let isCancelled = false;
+    fetch('/api/progressions')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((list) => {
+        if (isCancelled || !Array.isArray(list)) return;
+        const converted = list
+          .filter((item) => item && item.name && Array.isArray(item.chordsJson) && item.chordsJson.length > 0)
+          .map((item) => convertCustomProgressionToDef(item));
+        setCustomProgressions(converted);
+      })
+      .catch(() => {
+        // Silencioso si no hay conexión a BD
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  const allProgressions = useMemo(() => {
+    return [...customProgressions, ...PROGRESSIONS_CATALOG];
+  }, [customProgressions]);
+
+  const activeProgression = useMemo(() => {
+    return allProgressions.find((p) => p.id === selectedProgressionId) || allProgressions[0] || PROGRESSIONS_CATALOG[0];
+  }, [allProgressions, selectedProgressionId]);
+
+  const activeStepResourceId = useMemo(() => {
+    const resolved = resolveProgressionChords(activeProgression, rootNote);
+    const currentStep = resolved[currentProgressionStepIndex] || resolved[0];
+    const overrideKey = `${selectedProgressionId}_${currentProgressionStepIndex}`;
+    return stepResourceOverrides[overrideKey] || currentStep?.assignedImprovResourceId || 'default';
+  }, [activeProgression, rootNote, currentProgressionStepIndex, selectedProgressionId, stepResourceOverrides]);
+
+  const handleStepImprovResourceChange = useCallback(
+    (resourceId: string) => {
+      const overrideKey = `${selectedProgressionId}_${currentProgressionStepIndex}`;
+      setStepResourceOverrides((prev) => ({
+        ...prev,
+        [overrideKey]: resourceId,
+      }));
+    },
+    [selectedProgressionId, currentProgressionStepIndex]
+  );
 
   const currentImprovGuide = useMemo(() => {
-    const prog =
-      PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId) || PROGRESSIONS_CATALOG[0];
-    const resolved = resolveProgressionChords(prog, rootNote);
+    const resolved = resolveProgressionChords(activeProgression, rootNote);
     const currentStep = resolved[currentProgressionStepIndex] || resolved[0];
     if (!currentStep) return null;
-    return getImprovisationGuide(rootNote, currentStep.fullChordLabel, currentStep.roman);
-  }, [selectedProgressionId, rootNote, currentProgressionStepIndex]);
+    const baseGuide = getImprovisationGuide(rootNote, currentStep.fullChordLabel, currentStep.roman);
+    const customResource = findImprovResourceById(activeStepResourceId, currentStep.roman);
+    if (!customResource) return baseGuide;
+
+    const rootIdx = CHROMATIC_NOTES.indexOf(currentStep.rootNote);
+    const customNotes = customResource.intervals.map(
+      (semi) => CHROMATIC_NOTES[(rootIdx + semi + 12) % 12]
+    );
+
+    return {
+      ...baseGuide,
+      primaryMode: {
+        ...baseGuide.primaryMode,
+        name: `${currentStep.rootNote} ${customResource.label}`,
+        scaleNotes: customNotes,
+        character:
+          customResource.type === 'arpeggio'
+            ? `Arpegio asignado (${customResource.label}) sobre ${currentStep.fullChordLabel}`
+            : `Escala/Modo asignado (${customResource.label}) sobre ${currentStep.fullChordLabel}`,
+      },
+    };
+  }, [activeProgression, rootNote, currentProgressionStepIndex, activeStepResourceId]);
 
   const config = INSTRUMENTS[instrument];
 
@@ -934,29 +1005,68 @@ export default function FretboardPage() {
     // MODO 3: PROGRESIONES ARMÓNICAS + GUÍA DE IMPROVISACIÓN
     // -------------------------------------------------------------
     if (studyMode === 'progressions') {
-      const prog =
-        PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId) || PROGRESSIONS_CATALOG[0];
-      const resolved = resolveProgressionChords(prog, rootNote);
+      const resolved = resolveProgressionChords(activeProgression, rootNote);
       const currentStep = resolved[currentProgressionStepIndex] || resolved[0];
       const guide = getImprovisationGuide(rootNote, currentStep.fullChordLabel, currentStep.roman);
+      const customResource = findImprovResourceById(activeStepResourceId, currentStep.roman);
+
+      const SEMITONE_INTERVAL_LABELS: Record<number, { label: string; role: NoteRole }> = {
+        0: { label: 'R', role: 'root' },
+        1: { label: 'b2', role: 'other' },
+        2: { label: '2', role: 'other' },
+        3: { label: 'b3', role: 'third' },
+        4: { label: '3', role: 'third' },
+        5: { label: '4', role: 'other' },
+        6: { label: 'b5', role: 'fifth' },
+        7: { label: '5', role: 'fifth' },
+        8: { label: 'b6', role: 'fifth' },
+        9: { label: '6', role: 'seventh' },
+        10: { label: 'b7', role: 'seventh' },
+        11: { label: '7', role: 'seventh' },
+      };
 
       const chordNotes = getChordNoteList(currentStep.rootNote, currentStep.chordKey);
       const chordNoteMap = new Map<string, { interval: string; role: NoteRole }>();
-      chordNotes.forEach((cn) => {
-        chordNoteMap.set(cn.note, {
-          interval: cn.interval.label,
-          role: cn.interval.role,
-        });
-      });
 
-      const scaleNotes = getScaleNoteList(currentStep.rootNote, guide.primaryMode.scaleKey);
-      const scaleNoteMap = new Map<string, { interval: string; role: NoteRole }>();
-      scaleNotes.forEach((sn) => {
-        scaleNoteMap.set(sn.note, {
-          interval: sn.interval.label,
-          role: sn.interval.role,
+      if (customResource && customResource.type === 'arpeggio') {
+        const rootIdx = CHROMATIC_NOTES.indexOf(currentStep.rootNote);
+        customResource.intervals.forEach((semi) => {
+          const noteName = CHROMATIC_NOTES[(rootIdx + semi + 12) % 12];
+          const meta = SEMITONE_INTERVAL_LABELS[((semi % 12) + 12) % 12] || { label: '', role: 'other' };
+          chordNoteMap.set(noteName, {
+            interval: meta.label,
+            role: meta.role,
+          });
         });
-      });
+      } else {
+        chordNotes.forEach((cn) => {
+          chordNoteMap.set(cn.note, {
+            interval: cn.interval.label,
+            role: cn.interval.role,
+          });
+        });
+      }
+
+      const scaleNoteMap = new Map<string, { interval: string; role: NoteRole }>();
+      if (customResource && customResource.type === 'scale') {
+        const rootIdx = CHROMATIC_NOTES.indexOf(currentStep.rootNote);
+        customResource.intervals.forEach((semi) => {
+          const noteName = CHROMATIC_NOTES[(rootIdx + semi + 12) % 12];
+          const meta = SEMITONE_INTERVAL_LABELS[((semi % 12) + 12) % 12] || { label: '', role: 'other' };
+          scaleNoteMap.set(noteName, {
+            interval: meta.label,
+            role: meta.role,
+          });
+        });
+      } else {
+        const scaleNotes = getScaleNoteList(currentStep.rootNote, guide.primaryMode.scaleKey);
+        scaleNotes.forEach((sn) => {
+          scaleNoteMap.set(sn.note, {
+            interval: sn.interval.label,
+            role: sn.interval.role,
+          });
+        });
+      }
 
       const notes: ActiveFretNote[] = [];
 
@@ -966,7 +1076,7 @@ export default function FretboardPage() {
           const chordMatch = chordNoteMap.get(fn.note);
           const scaleMatch = scaleNoteMap.get(fn.note);
 
-          if (improvMode === 'chord_tones') {
+          if (improvMode === 'chord_tones' || (customResource && customResource.type === 'arpeggio' && improvMode !== 'both')) {
             if (chordMatch) {
               notes.push({
                 stringIndex: sIdx,
@@ -1037,9 +1147,10 @@ export default function FretboardPage() {
     rootNote,
     scaleResult,
     config,
-    selectedProgressionId,
+    activeProgression,
     currentProgressionStepIndex,
     improvMode,
+    activeStepResourceId,
   ]);
 
   // Rango de trastes enfocado
@@ -1118,8 +1229,7 @@ export default function FretboardPage() {
   const progTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const advanceProgressionStep = useCallback(() => {
-    const prog =
-      PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId) || PROGRESSIONS_CATALOG[0];
+    const prog = activeProgression;
 
     setCurrentProgressionStepIndex((prev) => {
       const nextIdx = (prev + 1) % prog.steps.length;
@@ -1135,13 +1245,12 @@ export default function FretboardPage() {
 
       return nextIdx;
     });
-  }, [selectedProgressionId, rootNote]);
+  }, [activeProgression, rootNote]);
 
   const prevProgressionStep = useCallback(() => {
-    const prog =
-      PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId) || PROGRESSIONS_CATALOG[0];
+    const prog = activeProgression;
     setCurrentProgressionStepIndex((prev) => (prev - 1 + prog.steps.length) % prog.steps.length);
-  }, [selectedProgressionId]);
+  }, [activeProgression]);
 
   useEffect(() => {
     if (progressionPlaying && studyMode === 'progressions') {
@@ -1279,6 +1388,10 @@ export default function FretboardPage() {
           currentProgressionStepIndex={currentProgressionStepIndex}
           bpm={bpm}
           onBpmChange={setBpm}
+          progressionsList={allProgressions}
+          onOpenCreateModal={() => setIsCreateProgModalOpen(true)}
+          activeStepImprovResourceId={activeStepResourceId}
+          onStepImprovResourceChange={handleStepImprovResourceChange}
         />
 
         {/* 3.0.1 Panel de Guía de Improvisación en Tiempo Real (Pestaña Progresiones) */}
@@ -1287,6 +1400,8 @@ export default function FretboardPage() {
             currentChord={currentImprovGuide}
             improvMode={improvMode}
             onImprovModeChange={setImprovMode}
+            selectedResourceId={activeStepResourceId}
+            onResourceIdChange={handleStepImprovResourceChange}
           />
         )}
 
@@ -1418,6 +1533,18 @@ export default function FretboardPage() {
           currentProgressionStepIndex={currentProgressionStepIndex}
           cagedChord={activeCagedChord}
           cagedBoxName={CAGED_BOX_DEFINITIONS.find((b) => b.id === activeCagedBoxId)?.name}
+        />
+
+        {/* Modal Creador de Progresiones con Grados Táctiles */}
+        <CreateProgressionModal
+          isOpen={isCreateProgModalOpen}
+          onClose={() => setIsCreateProgModalOpen(false)}
+          onCreated={(created) => {
+            const def = convertCustomProgressionToDef(created);
+            setCustomProgressions((prev) => [def, ...prev]);
+            setSelectedProgressionId(def.id);
+            setCurrentProgressionStepIndex(0);
+          }}
         />
       </main>
     </div>
