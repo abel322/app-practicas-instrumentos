@@ -28,6 +28,7 @@ export interface ActiveFretNote {
   fingerAssignment?: FingerAssignment;
   midi: number;
   isDimmed?: boolean;
+  isTargetTone?: boolean;
 }
 
 export interface FretboardViewControlsProps {
@@ -791,7 +792,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
           )}
 
           {activeItem ? (
-            <div className={activeItem.isDimmed ? 'opacity-40 z-20' : 'z-20'}>
+            <div className={activeItem.isDimmed ? 'opacity-50 z-10' : 'z-20'}>
               <FretboardNoteNode
                 noteName={activeItem.note}
                 degreeLabel={activeItem.interval}
@@ -800,7 +801,11 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                   (activeItem.finger ? parseInt(activeItem.finger, 10) || 0 : 0)
                 }
                 fingerAssignment={activeItem.fingerAssignment}
-                isRoot={activeItem.role === 'root' || activeItem.interval === 'R'}
+                isRoot={
+                  activeItem.role === 'root' ||
+                  activeItem.interval === 'R' ||
+                  !!activeItem.isTargetTone
+                }
                 displayMode={displayMode}
                 isInActiveBox={!activeItem.isDimmed}
                 isHighlighted={isStepActive}

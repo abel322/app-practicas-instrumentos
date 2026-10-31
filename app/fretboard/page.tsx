@@ -54,6 +54,8 @@ import {
 } from '@/lib/music-theory/scaleSystems';
 import { ScaleSystemControls } from '@/components/fretboard/ScaleSystemControls';
 import { ScalePatternExportBar } from '@/components/fretboard/ScalePatternExportBar';
+import { getImprovisationGuide } from '@/lib/music-theory/progressionImprovisationCatalog';
+import { ProgressionImprovPanel, ImprovDisplayMode } from '@/components/fretboard/ProgressionImprovPanel';
 import {
   getCustomScalePatternAction,
   saveScalePatternAction,
@@ -115,11 +117,21 @@ export default function FretboardPage() {
   const [editingGrid, setEditingGrid] = useState<Record<number, EditableNote[]>>({});
   const [editorTouchMode, setEditorTouchMode] = useState<'cycle' | 'root'>('cycle');
 
-  // Estado Modo 3: Progresiones
+  // Estado Modo 3: Progresiones e Improvisación en Tiempo Real
   const [selectedProgressionId, setSelectedProgressionId] = useState<string>('ii_v_i');
   const [progressionPlaying, setProgressionPlaying] = useState<boolean>(false);
   const [currentProgressionStepIndex, setCurrentProgressionStepIndex] = useState<number>(0);
   const [bpm, setBpm] = useState<number>(85);
+  const [improvMode, setImprovMode] = useState<ImprovDisplayMode>('both');
+
+  const currentImprovGuide = useMemo(() => {
+    const prog =
+      PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId) || PROGRESSIONS_CATALOG[0];
+    const resolved = resolveProgressionChords(prog, rootNote);
+    const currentStep = resolved[currentProgressionStepIndex] || resolved[0];
+    if (!currentStep) return null;
+    return getImprovisationGuide(rootNote, currentStep.fullChordLabel, currentStep.roman);
+  }, [selectedProgressionId, rootNote, currentProgressionStepIndex]);
 
   const config = INSTRUMENTS[instrument];
 
@@ -919,20 +931,30 @@ export default function FretboardPage() {
     }
 
     // -------------------------------------------------------------
-    // MODO 3: PROGRESIONES ARMÓNICAS
+    // MODO 3: PROGRESIONES ARMÓNICAS + GUÍA DE IMPROVISACIÓN
     // -------------------------------------------------------------
     if (studyMode === 'progressions') {
       const prog =
         PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId) || PROGRESSIONS_CATALOG[0];
       const resolved = resolveProgressionChords(prog, rootNote);
       const currentStep = resolved[currentProgressionStepIndex] || resolved[0];
+      const guide = getImprovisationGuide(rootNote, currentStep.fullChordLabel, currentStep.roman);
 
       const chordNotes = getChordNoteList(currentStep.rootNote, currentStep.chordKey);
-      const chordNoteMap = new Map<string, { interval: string; role: any }>();
+      const chordNoteMap = new Map<string, { interval: string; role: NoteRole }>();
       chordNotes.forEach((cn) => {
         chordNoteMap.set(cn.note, {
           interval: cn.interval.label,
           role: cn.interval.role,
+        });
+      });
+
+      const scaleNotes = getScaleNoteList(currentStep.rootNote, guide.primaryMode.scaleKey);
+      const scaleNoteMap = new Map<string, { interval: string; role: NoteRole }>();
+      scaleNotes.forEach((sn) => {
+        scaleNoteMap.set(sn.note, {
+          interval: sn.interval.label,
+          role: sn.interval.role,
         });
       });
 
@@ -941,14 +963,58 @@ export default function FretboardPage() {
       config.strings.forEach((str, sIdx) => {
         for (let fret = 0; fret <= config.totalFrets; fret++) {
           const fn = getFretNote(str.midi, fret);
-          const found = chordNoteMap.get(fn.note);
-          if (found) {
+          const chordMatch = chordNoteMap.get(fn.note);
+          const scaleMatch = scaleNoteMap.get(fn.note);
+
+          if (improvMode === 'chord_tones') {
+            if (chordMatch) {
+              notes.push({
+                stringIndex: sIdx,
+                fret,
+                note: fn.note,
+                interval: chordMatch.interval,
+                role: chordMatch.role,
+                isTargetTone: true,
+                isDimmed: false,
+                fingerAssignment: { finger: 0, isStretch: false },
+                midi: fn.midi,
+              });
+            }
+          } else if (improvMode === 'both') {
+            if (chordMatch) {
+              notes.push({
+                stringIndex: sIdx,
+                fret,
+                note: fn.note,
+                interval: chordMatch.interval,
+                role: chordMatch.role,
+                isTargetTone: true,
+                isDimmed: false,
+                fingerAssignment: { finger: 0, isStretch: false },
+                midi: fn.midi,
+              });
+            } else if (scaleMatch) {
+              notes.push({
+                stringIndex: sIdx,
+                fret,
+                note: fn.note,
+                interval: scaleMatch.interval,
+                role: 'other',
+                isTargetTone: false,
+                isDimmed: true,
+                fingerAssignment: { finger: 0, isStretch: false },
+                midi: fn.midi,
+              });
+            }
+          } else if (scaleMatch) {
             notes.push({
               stringIndex: sIdx,
               fret,
               note: fn.note,
-              interval: found.interval,
-              role: found.role,
+              interval: scaleMatch.interval,
+              role: scaleMatch.role,
+              isTargetTone: scaleMatch.role === 'root',
+              isDimmed: false,
               fingerAssignment: { finger: 0, isStretch: false },
               midi: fn.midi,
             });
@@ -973,6 +1039,7 @@ export default function FretboardPage() {
     config,
     selectedProgressionId,
     currentProgressionStepIndex,
+    improvMode,
   ]);
 
   // Rango de trastes enfocado
@@ -1208,10 +1275,20 @@ export default function FretboardPage() {
           onToggleProgressionPlay={() => setProgressionPlaying((prev) => !prev)}
           onNextProgressionStep={advanceProgressionStep}
           onPrevProgressionStep={prevProgressionStep}
+          onSelectProgressionStep={setCurrentProgressionStepIndex}
           currentProgressionStepIndex={currentProgressionStepIndex}
           bpm={bpm}
           onBpmChange={setBpm}
         />
+
+        {/* 3.0.1 Panel de Guía de Improvisación en Tiempo Real (Pestaña Progresiones) */}
+        {studyMode === 'progressions' && (
+          <ProgressionImprovPanel
+            currentChord={currentImprovGuide}
+            improvMode={improvMode}
+            onImprovModeChange={setImprovMode}
+          />
+        )}
 
         {/* 3.0 Laboratorio de Armonía Diatónica CAGED (Pestaña Acordes) */}
         {studyMode === 'chords' && (
@@ -1327,7 +1404,7 @@ export default function FretboardPage() {
               ? `${rootNote} ${TONALITY_MODE_LABELS[tonalityMode]} • ${activeCagedChord?.fullName || ''} (${CAGED_BOX_DEFINITIONS.find((b) => b.id === activeCagedBoxId)?.shortLabel || ''})`
               : studyMode === 'scales'
               ? `${scaleViewMode === 'full_neck_map' ? '🌐 [MÁSTIL COMPLETO] ' : ''}${isEditorActive ? '🛠️ [MODO EDITOR ACTIVO] ' : isCustomFromDb ? '☁️ [PERSONALIZADO EN NUBE] ' : ''}${rootNote} ${SCALES_CATALOG[scaleKey]?.name || ''} • ${scaleSystem === 'caged' ? 'CAGED' : '3NPS'} (${(scaleSystem === 'caged' ? CAGED_BOXES : THREE_NPS_PATTERNS).find((p) => p.id === activePatternId)?.shortLabel || ''})`
-              : `${rootNote} ${PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId)?.name || ''}`
+              : currentImprovGuide ? `${currentImprovGuide.chordName} (${currentImprovGuide.degreeRoman}) • ${currentImprovGuide.primaryMode.name}` : `${rootNote} ${PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId)?.name || ''}`
           }
         />
 
