@@ -1305,6 +1305,7 @@ export default function FretboardPage() {
           fretFocusRange={fretFocusRange}
           viewMode={fretboardViewMode}
           onViewModeChange={setFretboardViewMode}
+          studyMode={studyMode}
           isEditorActive={
             (isEditorActive && studyMode === 'scales' && scaleViewMode === 'single_box') ||
             (isChordEditorActive && studyMode === 'chords')

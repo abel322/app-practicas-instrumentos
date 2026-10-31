@@ -10,8 +10,14 @@ import {
 import { getFretboardAudioEngine } from '@/lib/music-theory/fretboardAudio';
 import { FingerAssignment, NoteDisplayMode } from '@/lib/music-theory/scaleSystems';
 import { FretboardNoteNode } from './FretboardNoteNode';
-import { Volume2, ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
+import { Volume2, ChevronLeft, ChevronRight, Maximize2, Minimize2, Play, Square } from 'lucide-react';
 import { useTheme } from '@/components/theme/ThemeProvider';
+import {
+  practiceLoopEngine,
+  LoopNoteItem,
+  ScaleLoopPattern,
+  ChordLoopPattern,
+} from '@/lib/audio/practiceLoopEngine';
 
 export interface ActiveFretNote {
   stringIndex: number; // 0 = más aguda (superior), N-1 = más grave (inferior)
@@ -37,6 +43,16 @@ export interface FretboardViewControlsProps {
   onVisibleFretsChange: (frets: number) => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
+  // Práctica en Bucle & Metrónomo
+  isLooping: boolean;
+  onToggleLoop: () => void;
+  bpm: number;
+  onBpmChange: (bpm: number) => void;
+  studyMode?: 'chords' | 'scales' | 'progressions';
+  chordLoopType: ChordLoopPattern;
+  onChordLoopTypeChange: (type: ChordLoopPattern) => void;
+  scaleLoopType: ScaleLoopPattern;
+  onScaleLoopTypeChange: (type: ScaleLoopPattern) => void;
 }
 
 export function FretboardViewControls({
@@ -51,6 +67,15 @@ export function FretboardViewControls({
   onVisibleFretsChange,
   isFullscreen,
   onToggleFullscreen,
+  isLooping,
+  onToggleLoop,
+  bpm,
+  onBpmChange,
+  studyMode = 'chords',
+  chordLoopType,
+  onChordLoopTypeChange,
+  scaleLoopType,
+  onScaleLoopTypeChange,
 }: FretboardViewControlsProps) {
   const isRange012 = activeFretRange[0] === 0 && activeFretRange[1] === 12;
   const isRange1224 = activeFretRange[0] === 12 && activeFretRange[1] === 24;
@@ -59,7 +84,7 @@ export function FretboardViewControls({
     <div
       className={`flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs backdrop-blur-md transition-all ${
         isFullscreen
-          ? 'bg-slate-900/90 border border-slate-800 rounded-xl mb-2 shrink-0'
+          ? 'bg-slate-900/95 border border-slate-800 rounded-xl mb-2 shrink-0 shadow-lg'
           : 'bg-[#16161a] border-b border-slate-800'
       }`}
     >
@@ -103,9 +128,106 @@ export function FretboardViewControls({
         </button>
       </div>
 
-      {/* 2. Selector de Cantidad de Trastes Visibles (12, 15, 21, 24) */}
+      {/* 2. Barra de Motor de Bucle Interactivo & Metrónomo */}
+      <div className="flex flex-wrap items-center gap-1.5 bg-slate-950/90 px-2 py-1 rounded-xl border border-slate-800 text-xs shrink-0 shadow-inner">
+        {/* Botón Play / Stop Loop */}
+        <button
+          type="button"
+          onClick={onToggleLoop}
+          className={`px-3 py-1 rounded-lg font-bold flex items-center gap-1.5 transition-all shadow-sm ${
+            isLooping
+              ? 'bg-amber-400 text-slate-950 ring-2 ring-amber-300 font-black animate-pulse'
+              : 'bg-emerald-600 hover:bg-emerald-500 text-white font-bold'
+          }`}
+          title={isLooping ? 'Detener práctica en bucle' : 'Iniciar bucle con metrónomo'}
+        >
+          {isLooping ? (
+            <Square className="w-3.5 h-3.5 fill-current" />
+          ) : (
+            <Play className="w-3.5 h-3.5 fill-current" />
+          )}
+          <span>{isLooping ? 'Detener' : '▶ Loop'}</span>
+        </button>
+
+        {/* Selector de Patrón en Acordes */}
+        {studyMode === 'chords' && (
+          <div className="inline-flex p-0.5 bg-slate-900 rounded-lg border border-slate-800">
+            <button
+              type="button"
+              onClick={() => onChordLoopTypeChange('arpeggio')}
+              className={`px-2 py-0.5 rounded text-[10.5px] font-bold transition-colors ${
+                chordLoopType === 'arpeggio'
+                  ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Arpegiar cuerda por cuerda"
+            >
+              Arpegio 🎶
+            </button>
+            <button
+              type="button"
+              onClick={() => onChordLoopTypeChange('strum')}
+              className={`px-2 py-0.5 rounded text-[10.5px] font-bold transition-colors ${
+                chordLoopType === 'strum'
+                  ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Rasgueo de acorde completo en cada compás"
+            >
+              Rasgueo 🔊
+            </button>
+          </div>
+        )}
+
+        {/* Selector de Patrón en Escalas */}
+        {studyMode === 'scales' && (
+          <div className="inline-flex p-0.5 bg-slate-900 rounded-lg border border-slate-800">
+            <button
+              type="button"
+              onClick={() => onScaleLoopTypeChange('asc')}
+              className={`px-2 py-0.5 rounded text-[10.5px] font-bold transition-colors ${
+                scaleLoopType === 'asc'
+                  ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Escala ascendente continua"
+            >
+              Ascendente ↗
+            </button>
+            <button
+              type="button"
+              onClick={() => onScaleLoopTypeChange('pendulum')}
+              className={`px-2 py-0.5 rounded text-[10.5px] font-bold transition-colors ${
+                scaleLoopType === 'pendulum'
+                  ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Ida y vuelta (ascendente y descendente)"
+            >
+              Ida y Vuelta ⇄
+            </button>
+          </div>
+        )}
+
+        {/* Control Deslizante de Tempo Metrónomo (BPM: 40 - 240) */}
+        <div className="flex items-center gap-1.5 pl-1 font-mono text-[11px] text-slate-300">
+          <span className="text-amber-400 font-bold min-w-[50px]">{bpm} BPM</span>
+          <input
+            type="range"
+            min={40}
+            max={240}
+            step={5}
+            value={bpm}
+            onChange={(e) => onBpmChange(Number(e.target.value))}
+            className="w-16 sm:w-20 h-1.5 bg-slate-800 accent-amber-400 rounded-lg cursor-pointer"
+            title="Ajustar tempo del metrónomo"
+          />
+        </div>
+      </div>
+
+      {/* 3. Selector de Cantidad de Trastes Visibles (12, 15, 21, 24) */}
       <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800">
-        <span className="text-[10px] text-slate-400 font-bold px-1 hidden sm:inline">Trastes:</span>
+        <span className="text-[10px] text-slate-400 font-bold px-1 hidden md:inline">Trastes:</span>
         {[12, 15, 21, 24].map((f) => (
           <button
             key={f}
@@ -122,7 +244,7 @@ export function FretboardViewControls({
         ))}
       </div>
 
-      {/* 3. Saltos Rápidos de Zona & Foco */}
+      {/* 4. Saltos Rápidos de Zona & Foco */}
       <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
         <button
           type="button"
@@ -152,13 +274,13 @@ export function FretboardViewControls({
           type="button"
           onClick={onFocusActiveNotes}
           className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-mono text-[11px] font-bold border border-slate-700 transition-colors shadow-sm"
-          title="Centrar en donde están las notas del acorde"
+          title="Centrar en donde están las notas activas"
         >
           🎯 Ver Notas
         </button>
       </div>
 
-      {/* 4. Switch Ajustado/Scroll y Botón Fullscreen (Modo Estudio Zen) */}
+      {/* 5. Switch Ajustado/Scroll y Botón Fullscreen Landscape */}
       <div className="flex items-center gap-1.5 ml-auto shrink-0">
         <button
           type="button"
@@ -177,16 +299,16 @@ export function FretboardViewControls({
           onClick={onToggleFullscreen}
           className={`p-1.5 rounded-lg border transition-all flex items-center gap-1.5 text-xs font-bold shadow-sm ${
             isFullscreen
-              ? 'bg-rose-950/70 hover:bg-rose-900 text-rose-300 border-rose-800/80'
+              ? 'bg-rose-950/80 hover:bg-rose-900 text-rose-300 border-rose-800/80 ring-1 ring-rose-500/50'
               : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-800 hover:border-slate-700'
           }`}
-          title={isFullscreen ? 'Salir de pantalla completa (Esc)' : 'Modo Estudio Zen (Pantalla Completa)'}
+          title={isFullscreen ? 'Salir de pantalla completa (Esc)' : 'Modo Estudio Zen (Pantalla Completa Horizontal)'}
           aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla Completa'}
         >
           {isFullscreen ? (
             <>
               <Minimize2 className="w-4 h-4 text-rose-400" />
-              <span className="hidden sm:inline text-[11px]">Salir</span>
+              <span className="text-[11px] font-black">✕ Salir</span>
             </>
           ) : (
             <>
@@ -214,6 +336,7 @@ export interface InteractiveFretboardProps {
   onFretClickInEditor?: (stringIndex: number, fret: number) => void;
   onToggleRootInEditor?: (e: React.MouseEvent, stringIndex: number, fret: number) => void;
   topBanner?: React.ReactNode;
+  studyMode?: 'chords' | 'scales' | 'progressions';
 }
 
 // Inlays estándar: simples en 3, 5, 7, 9, 15, 17, 19, 21; dobles en 12 y 24
@@ -234,6 +357,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   onFretClickInEditor,
   onToggleRootInEditor,
   topBanner,
+  studyMode = 'chords',
 }) => {
   const { theme } = useTheme();
   const isLight = theme === 'light';
@@ -241,56 +365,249 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   const [internalViewMode, setInternalViewMode] = useState<'scroll' | 'fit'>('scroll');
   const viewMode = controlledViewMode !== undefined ? controlledViewMode : internalViewMode;
 
-  // Estado y manejador de Pantalla Completa / Estudio Zen
+  // Estado y manejador de Pantalla Completa Forzada Horizontal & Fallback CSS
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [isForceLandscapeCSS, setIsForceLandscapeCSS] = useState<boolean>(false);
 
-  const toggleFullscreen = useCallback(async () => {
-    if (!isFullscreen) {
-      if (document.documentElement.requestFullscreen) {
-        try {
-          await document.documentElement.requestFullscreen();
-        } catch (err) {
-          console.warn('Fullscreen no permitido directamente por el navegador:', err);
-        }
-      }
-      setIsFullscreen(true);
-    } else {
-      if (document.exitFullscreen && document.fullscreenElement) {
-        try {
-          await document.exitFullscreen();
-        } catch (err) {
-          console.warn('Error al salir de fullscreen nativo:', err);
-        }
-      }
-      setIsFullscreen(false);
-    }
-  }, [isFullscreen]);
-
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isFullscreen) {
-        if (document.fullscreenElement && document.exitFullscreen) {
-          document.exitFullscreen().catch(() => {});
-        }
-        setIsFullscreen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullscreen]);
+  // Estado Modo Bucle Interactivo & Metrónomo
+  const [isLooping, setIsLooping] = useState<boolean>(false);
+  const [bpm, setBpm] = useState<number>(85);
+  const [chordLoopType, setChordLoopType] = useState<ChordLoopPattern>('arpeggio');
+  const [scaleLoopType, setScaleLoopType] = useState<ScaleLoopPattern>('pendulum');
+  const [highlightedNoteKey, setHighlightedNoteKey] = useState<string | null>(null);
 
   const [visibleFrets, setVisibleFrets] = useState<number>(24);
   const config = INSTRUMENTS[instrument];
   const numStrings = config.strings.length;
   const totalFrets = Math.min(config.totalFrets, visibleFrets);
+
+  // Detener bucle de audio
+  const stopAudioLoop = useCallback(() => {
+    practiceLoopEngine.stop();
+    setIsLooping(false);
+    setHighlightedNoteKey(null);
+  }, []);
+
+  // Iniciar bucle de audio con notas activas actuales
+  const startAudioLoop = useCallback(() => {
+    const filteredNotes = activeNotes.filter((n) => !n.isDimmed && n.fret <= totalFrets);
+    const targetNotes = filteredNotes.length > 0 ? filteredNotes : activeNotes;
+
+    const loopNotes: LoopNoteItem[] = targetNotes.map((n) => ({
+      midi: n.midi,
+      stringIndex: n.stringIndex,
+      fret: n.fret,
+      noteName: n.note,
+      isRoot: n.role === 'root' || n.interval === 'R',
+    }));
+
+    if (loopNotes.length === 0) return;
+
+    const mode =
+      studyMode === 'chords'
+        ? chordLoopType === 'strum'
+          ? 'chord_strum'
+          : 'chord_arpeggio'
+        : 'scale';
+
+    practiceLoopEngine.start({
+      bpm,
+      mode,
+      notes: loopNotes,
+      scalePattern: scaleLoopType,
+      onStepNote: (idx, currentNote) => {
+        if (idx === -1 || !currentNote) {
+          if (mode === 'chord_strum') {
+            setHighlightedNoteKey('ALL');
+            setTimeout(() => setHighlightedNoteKey(null), 350);
+          } else {
+            setHighlightedNoteKey(null);
+          }
+        } else {
+          setHighlightedNoteKey(`${currentNote.stringIndex}_${currentNote.fret}`);
+        }
+      },
+    });
+
+    setIsLooping(true);
+  }, [activeNotes, totalFrets, studyMode, chordLoopType, scaleLoopType, bpm]);
+
+  const togglePlayLoop = useCallback(() => {
+    if (isLooping) {
+      stopAudioLoop();
+    } else {
+      startAudioLoop();
+    }
+  }, [isLooping, stopAudioLoop, startAudioLoop]);
+
+  // Actualizar BPM en vivo sin interrumpir reproducción
+  const handleBpmChange = useCallback((newBpm: number) => {
+    setBpm(newBpm);
+    practiceLoopEngine.setBpm(newBpm);
+  }, []);
+
+  // Actualizar modo de bucle en acordes
+  const handleChordLoopTypeChange = useCallback(
+    (type: ChordLoopPattern) => {
+      setChordLoopType(type);
+      if (isLooping) {
+        practiceLoopEngine.updateConfig({
+          mode: type === 'strum' ? 'chord_strum' : 'chord_arpeggio',
+        });
+      }
+    },
+    [isLooping]
+  );
+
+  // Actualizar modo de bucle en escalas
+  const handleScaleLoopTypeChange = useCallback(
+    (type: ScaleLoopPattern) => {
+      setScaleLoopType(type);
+      if (isLooping) {
+        practiceLoopEngine.updateConfig({
+          scalePattern: type,
+        });
+      }
+    },
+    [isLooping]
+  );
+
+  // Si cambian las notas seleccionadas mientras el bucle está corriendo, actualizar secuencia
+  useEffect(() => {
+    if (isLooping) {
+      const filteredNotes = activeNotes.filter((n) => !n.isDimmed && n.fret <= totalFrets);
+      const targetNotes = filteredNotes.length > 0 ? filteredNotes : activeNotes;
+      const loopNotes: LoopNoteItem[] = targetNotes.map((n) => ({
+        midi: n.midi,
+        stringIndex: n.stringIndex,
+        fret: n.fret,
+        noteName: n.note,
+        isRoot: n.role === 'root' || n.interval === 'R',
+      }));
+      practiceLoopEngine.updateConfig({ notes: loopNotes });
+    }
+  }, [activeNotes, totalFrets, isLooping]);
+
+  // Detener audio al desmontar
+  useEffect(() => {
+    return () => {
+      practiceLoopEngine.stop();
+    };
+  }, []);
+
+  // 1. Entrada a Pantalla Completa Forzada en Horizontal
+  const enterFullscreenLandscape = useCallback(async () => {
+    const elem = (document.documentElement || document.body) as any;
+
+    try {
+      if (elem.requestFullscreen) {
+        await elem.requestFullscreen();
+      } else if (elem.webkitRequestFullscreen) {
+        await elem.webkitRequestFullscreen();
+      }
+    } catch (err) {
+      console.warn('Fullscreen nativo no disponible o bloqueado:', err);
+    }
+
+    let orientationLocked = false;
+    try {
+      const orientation =
+        (screen.orientation || (screen as any).mozOrientation || (screen as any).msOrientation) as any;
+      if (orientation && orientation.lock) {
+        await orientation.lock('landscape');
+        orientationLocked = true;
+      }
+    } catch (err) {
+      console.warn('screen.orientation.lock bloqueado o no soportado:', err);
+    }
+
+    const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : false;
+    setIsForceLandscapeCSS(!orientationLocked && isPortrait);
+    setIsFullscreen(true);
+  }, []);
+
+  // Salida de Pantalla Completa
+  const exitFullscreenLandscape = useCallback(async () => {
+    stopAudioLoop();
+
+    try {
+      const orientation = screen.orientation as any;
+      if (orientation && orientation.unlock) {
+        orientation.unlock();
+      }
+    } catch (err) {
+      console.warn('Error al desbloquear orientación:', err);
+    }
+
+    try {
+      if (document.exitFullscreen && document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else if ((document as any).webkitExitFullscreen) {
+        await (document as any).webkitExitFullscreen();
+      }
+    } catch (err) {
+      console.warn('Error al salir de fullscreen nativo:', err);
+    }
+
+    setIsForceLandscapeCSS(false);
+    setIsFullscreen(false);
+  }, [stopAudioLoop]);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!isFullscreen) {
+      enterFullscreenLandscape();
+    } else {
+      exitFullscreenLandscape();
+    }
+  }, [isFullscreen, enterFullscreenLandscape, exitFullscreenLandscape]);
+
+  useEffect(() => {
+    const handleResizeOrOrientation = () => {
+      if (isFullscreen) {
+        const isPortrait = window.innerHeight > window.innerWidth;
+        setIsForceLandscapeCSS(isPortrait);
+      }
+    };
+
+    const handleFullscreenChange = () => {
+      const isStillFullscreen = !!(
+        document.fullscreenElement || (document as any).webkitFullscreenElement
+      );
+      if (!isStillFullscreen) {
+        setIsFullscreen(false);
+        setIsForceLandscapeCSS(false);
+        stopAudioLoop();
+        const orientation = screen.orientation as any;
+        if (orientation && orientation.unlock) {
+          try {
+            orientation.unlock();
+          } catch (e) {}
+        }
+      }
+    };
+
+    window.addEventListener('resize', handleResizeOrOrientation);
+    window.addEventListener('orientationchange', handleResizeOrOrientation);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+
+    return () => {
+      window.removeEventListener('resize', handleResizeOrOrientation);
+      window.removeEventListener('orientationchange', handleResizeOrOrientation);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, [isFullscreen, stopAudioLoop]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        exitFullscreenLandscape();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen, exitFullscreenLandscape]);
 
   const [activeFretRangeState, setActiveFretRangeState] = useState<[number, number]>(() => {
     return fretFocusRange || [0, totalFrets];
@@ -342,12 +659,12 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
     return map;
   }, [activeNotes, totalFrets]);
 
-  // Dimensiones del mástil SVG
+  // Dimensiones del mástil SVG maximizadas para modo pantalla completa
   const nutWidth = isFit ? (containerWidth < 480 ? 14 : containerWidth < 768 ? 20 : 26) : 30;
   const labelMargin = isFit ? (containerWidth < 480 ? 28 : containerWidth < 768 ? 38 : 46) : 52;
-  const stringSpacing = 36;
-  const topPadding = 32;
-  const bottomPadding = 32;
+  const stringSpacing = isFullscreen ? (numStrings <= 4 ? 52 : 44) : 36;
+  const topPadding = isFullscreen ? 36 : 32;
+  const bottomPadding = isFullscreen ? 36 : 32;
   const neckHeight = topPadding + bottomPadding + (numStrings - 1) * stringSpacing;
 
   // Ancho variable decreciente para los trastes 1..totalFrets
@@ -403,17 +720,19 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
 
   // Calibre visual nítido y realista de cuerdas (desde 1px en 1ª cuerda hasta 2.6px en 6ª)
   const getStringGauge = (stringIndex: number) => {
+    let base = 1.8;
     if (instrument === 'guitar_6') {
       const gauges = [1.0, 1.3, 1.6, 2.0, 2.3, 2.6];
-      return gauges[stringIndex] || 1.8;
-    }
-    if (instrument === 'bass_4') {
+      base = gauges[stringIndex] || 1.8;
+    } else if (instrument === 'bass_4') {
       const gauges = [1.8, 2.4, 3.2, 4.0];
-      return gauges[stringIndex] || 2.5;
+      base = gauges[stringIndex] || 2.5;
+    } else {
+      // bass_5
+      const gauges = [1.8, 2.4, 3.2, 4.0, 4.8];
+      base = gauges[stringIndex] || 2.5;
     }
-    // bass_5
-    const gauges = [1.8, 2.4, 3.2, 4.0, 4.8];
-    return gauges[stringIndex] || 2.5;
+    return isFullscreen ? base * 1.35 : base;
   };
 
   // Reproducir nota
@@ -546,9 +865,25 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
     <div
       className={`transition-all duration-200 ${
         isFullscreen
-          ? 'fixed inset-0 z-50 bg-[#121217] flex flex-col justify-between p-2 sm:p-4 overflow-hidden w-screen h-screen'
+          ? isForceLandscapeCSS
+            ? 'fixed z-50 bg-[#121217] flex flex-col justify-between p-2 sm:p-4 overflow-hidden'
+            : 'fixed inset-0 z-50 bg-[#121217] flex flex-col justify-between p-2 sm:p-4 overflow-hidden w-screen h-screen'
           : 'w-full max-w-full rounded-2xl overflow-hidden border border-slate-800 shadow-2xl bg-[#1e1e24] my-2 min-w-0 flex flex-col'
       }`}
+      style={
+        isFullscreen && isForceLandscapeCSS
+          ? {
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              width: '100vh',
+              height: '100vw',
+              transform: 'translate(-50%, -50%) rotate(90deg)',
+              transformOrigin: 'center center',
+              zIndex: 9999,
+            }
+          : undefined
+      }
     >
       {/* 1. Barra Superior Minimalista de Control */}
       <FretboardViewControls
@@ -563,6 +898,15 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
         onVisibleFretsChange={setVisibleFrets}
         isFullscreen={isFullscreen}
         onToggleFullscreen={toggleFullscreen}
+        isLooping={isLooping}
+        onToggleLoop={togglePlayLoop}
+        bpm={bpm}
+        onBpmChange={handleBpmChange}
+        studyMode={studyMode}
+        chordLoopType={chordLoopType}
+        onChordLoopTypeChange={handleChordLoopTypeChange}
+        scaleLoopType={scaleLoopType}
+        onScaleLoopTypeChange={handleScaleLoopTypeChange}
       />
 
       {/* 2. Barra de Estado de Alto Contraste */}
@@ -583,7 +927,12 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
           )}
           {isFullscreen && (
             <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-[#FFCC00] font-bold border border-amber-500/30">
-              MODO ZEN
+              MODO ZEN {isForceLandscapeCSS ? '(LANDSCAPE FORZADO)' : ''}
+            </span>
+          )}
+          {isLooping && (
+            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30 animate-pulse">
+              LOOP {studyMode === 'chords' ? (chordLoopType === 'strum' ? 'RASGUEO' : 'ARPEGIO') : (scaleLoopType === 'asc' ? 'ASC' : 'IDA Y VUELTA')} ({bpm} BPM)
             </span>
           )}
         </div>
@@ -760,42 +1109,44 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                 );
               })()}
 
-              {/* 2. Puntos marcadores de posición (Inlays): Pequeños y discretos */}
-              <g id="fretInlays">
-                {SINGLE_INLAYS.filter((f) => f <= totalFrets).map((fret) => {
-                  const pos = fretPositions.positions[fret];
-                  if (!pos) return null;
-                  const centerY = topPadding + ((numStrings - 1) * stringSpacing) / 2;
-                  const rInlay = isCompact ? 3 : 4.5;
+              {/* 2. Puntos marcadores de posición (Inlays): Se ocultan en modo pantalla completa para maximizar el espacio entre cuerdas */}
+              {!isFullscreen && (
+                <g id="fretInlays">
+                  {SINGLE_INLAYS.filter((f) => f <= totalFrets).map((fret) => {
+                    const pos = fretPositions.positions[fret];
+                    if (!pos) return null;
+                    const centerY = topPadding + ((numStrings - 1) * stringSpacing) / 2;
+                    const rInlay = isCompact ? 3 : 4.5;
 
-                  return (
-                    <circle
-                      key={`inlay_${fret}`}
-                      cx={pos.centerX}
-                      cy={centerY}
-                      r={rInlay}
-                      fill="#e2e8f0"
-                      opacity={0.75}
-                    />
-                  );
-                })}
+                    return (
+                      <circle
+                        key={`inlay_${fret}`}
+                        cx={pos.centerX}
+                        cy={centerY}
+                        r={rInlay}
+                        fill="#e2e8f0"
+                        opacity={0.75}
+                      />
+                    );
+                  })}
 
-                {/* Traste doble en 12 (y 24) */}
-                {DOUBLE_INLAYS.filter((f) => f <= totalFrets).map((fret) => {
-                  const pos = fretPositions.positions[fret];
-                  if (!pos) return null;
-                  const centerY = topPadding + ((numStrings - 1) * stringSpacing) / 2;
-                  const offset = stringSpacing * 0.75;
-                  const rInlay = isCompact ? 2.5 : 3.5;
+                  {/* Traste doble en 12 (y 24) */}
+                  {DOUBLE_INLAYS.filter((f) => f <= totalFrets).map((fret) => {
+                    const pos = fretPositions.positions[fret];
+                    if (!pos) return null;
+                    const centerY = topPadding + ((numStrings - 1) * stringSpacing) / 2;
+                    const offset = stringSpacing * 0.75;
+                    const rInlay = isCompact ? 2.5 : 3.5;
 
-                  return (
-                    <g key={`double_inlay_${fret}`}>
-                      <circle cx={pos.centerX} cy={centerY - offset} r={rInlay} fill="#e2e8f0" opacity={0.8} />
-                      <circle cx={pos.centerX} cy={centerY + offset} r={rInlay} fill="#e2e8f0" opacity={0.8} />
-                    </g>
-                  );
-                })}
-              </g>
+                    return (
+                      <g key={`double_inlay_${fret}`}>
+                        <circle cx={pos.centerX} cy={centerY - offset} r={rInlay} fill="#e2e8f0" opacity={0.8} />
+                        <circle cx={pos.centerX} cy={centerY + offset} r={rInlay} fill="#e2e8f0" opacity={0.8} />
+                      </g>
+                    );
+                  })}
+                </g>
+              )}
 
               {/* 3. Cejuela (Nut / Traste 0) */}
               {(() => {
@@ -1050,6 +1401,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                     const y = getStringY(item.stringIndex);
                     const key = `${item.stringIndex}_${item.fret}`;
                     const isPlayed = lastPlayedKey === key;
+                    const isStepActive = highlightedNoteKey === 'ALL' || highlightedNoteKey === key;
                     const isRoot = item.role === 'root' || item.interval === 'R';
 
                     const fingerAssign: FingerAssignment = item.fingerAssignment || {
@@ -1057,7 +1409,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                       isStretch: false,
                     };
 
-                    const nodeSize = isCompact ? 28 : 32;
+                    const nodeSize = isCompact ? 28 : (isFullscreen ? 36 : 32);
                     const halfSize = nodeSize / 2;
 
                     return (
@@ -1086,6 +1438,19 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                           />
                         )}
 
+                        {/* Halo Neón de Seguimiento Visual en Tiempo Real para el Loop */}
+                        {isStepActive && (
+                          <circle
+                            cx={pos.centerX}
+                            cy={y}
+                            r={isCompact ? 16 : (isFullscreen ? 24 : 20)}
+                            fill="none"
+                            stroke="#22d3ee"
+                            strokeWidth={3}
+                            className="animate-ping pointer-events-none"
+                          />
+                        )}
+
                         {/* Nodo visual interactivo contenido */}
                         <foreignObject
                           x={pos.centerX - halfSize}
@@ -1103,6 +1468,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                               isRoot={isRoot}
                               displayMode={displayMode}
                               isInActiveBox={!item.isDimmed}
+                              isHighlighted={isStepActive}
                               onClick={() => {
                                 if (isEditorActive && onFretClickInEditor) {
                                   onFretClickInEditor(item.stringIndex, item.fret);

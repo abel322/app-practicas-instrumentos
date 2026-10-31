@@ -12,6 +12,7 @@ export interface FretboardNoteNodeProps {
   displayMode: NoteDisplayMode | 'intervals' | 'note' | 'degree' | 'finger';
   isInActiveBox?: boolean;
   isGhost?: boolean;
+  isHighlighted?: boolean;
   onClick?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }
@@ -25,6 +26,7 @@ export function FretboardNoteNode({
   displayMode,
   isInActiveBox = true,
   isGhost = false,
+  isHighlighted = false,
   onClick,
   onContextMenu,
 }: FretboardNoteNodeProps) {
@@ -57,7 +59,11 @@ export function FretboardNoteNode({
     >
       <div
         className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${
-          isRoot
+          isHighlighted
+            ? isRoot
+              ? 'bg-[#FFCC00] text-slate-950 font-black ring-4 ring-cyan-400 shadow-[0_0_20px_rgba(34,211,238,1)] scale-125 z-40 animate-pulse'
+              : 'bg-cyan-400 text-slate-950 font-black ring-4 ring-cyan-300 shadow-[0_0_18px_rgba(34,211,238,1)] scale-125 z-40 animate-pulse'
+            : isRoot
             ? 'bg-[#FFCC00] text-slate-950 font-black ring-2 ring-amber-300/60 scale-105 z-20 shadow-md'
             : isInActiveBox
             ? 'bg-slate-700/90 text-white font-bold border border-slate-500/50 hover:bg-slate-600 z-10'
