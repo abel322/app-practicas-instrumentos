@@ -10,7 +10,7 @@ import {
 import { getFretboardAudioEngine } from '@/lib/music-theory/fretboardAudio';
 import { FingerAssignment, NoteDisplayMode } from '@/lib/music-theory/scaleSystems';
 import { FretboardNoteNode } from './FretboardNoteNode';
-import { Volume2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Volume2, ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
 import { useTheme } from '@/components/theme/ThemeProvider';
 
 export interface ActiveFretNote {
@@ -35,6 +35,8 @@ export interface FretboardViewControlsProps {
   onDisplayModeChange?: (mode: NoteDisplayMode) => void;
   visibleFrets: number;
   onVisibleFretsChange: (frets: number) => void;
+  isFullscreen: boolean;
+  onToggleFullscreen: () => void;
 }
 
 export function FretboardViewControls({
@@ -47,12 +49,20 @@ export function FretboardViewControls({
   onDisplayModeChange,
   visibleFrets,
   onVisibleFretsChange,
+  isFullscreen,
+  onToggleFullscreen,
 }: FretboardViewControlsProps) {
   const isRange012 = activeFretRange[0] === 0 && activeFretRange[1] === 12;
   const isRange1224 = activeFretRange[0] === 12 && activeFretRange[1] === 24;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-[#16161a] border-b border-slate-800 text-xs backdrop-blur-md">
+    <div
+      className={`flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs backdrop-blur-md transition-all ${
+        isFullscreen
+          ? 'bg-slate-900/90 border border-slate-800 rounded-xl mb-2 shrink-0'
+          : 'bg-[#16161a] border-b border-slate-800'
+      }`}
+    >
       {/* 1. Botonera de Modo de Visualización Minimalista: [ Note ] | [ Degree ] | [ Finger ] */}
       <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800">
         <button
@@ -148,8 +158,8 @@ export function FretboardViewControls({
         </button>
       </div>
 
-      {/* 4. Switch: Ajustar a Pantalla vs Desplazamiento */}
-      <div className="flex items-center gap-1 ml-auto">
+      {/* 4. Switch Ajustado/Scroll y Botón Fullscreen (Modo Estudio Zen) */}
+      <div className="flex items-center gap-1.5 ml-auto shrink-0">
         <button
           type="button"
           onClick={onToggleViewMode}
@@ -160,6 +170,30 @@ export function FretboardViewControls({
           }`}
         >
           {viewMode === 'fit' ? <span>↔️ Ajustado</span> : <span>🔍 Scroll</span>}
+        </button>
+
+        <button
+          type="button"
+          onClick={onToggleFullscreen}
+          className={`p-1.5 rounded-lg border transition-all flex items-center gap-1.5 text-xs font-bold shadow-sm ${
+            isFullscreen
+              ? 'bg-rose-950/70 hover:bg-rose-900 text-rose-300 border-rose-800/80'
+              : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-800 hover:border-slate-700'
+          }`}
+          title={isFullscreen ? 'Salir de pantalla completa (Esc)' : 'Modo Estudio Zen (Pantalla Completa)'}
+          aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla Completa'}
+        >
+          {isFullscreen ? (
+            <>
+              <Minimize2 className="w-4 h-4 text-rose-400" />
+              <span className="hidden sm:inline text-[11px]">Salir</span>
+            </>
+          ) : (
+            <>
+              <Maximize2 className="w-4 h-4 text-[#FFCC00]" />
+              <span className="hidden sm:inline text-[11px]">Estudio Zen</span>
+            </>
+          )}
         </button>
       </div>
     </div>
@@ -206,6 +240,52 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [internalViewMode, setInternalViewMode] = useState<'scroll' | 'fit'>('scroll');
   const viewMode = controlledViewMode !== undefined ? controlledViewMode : internalViewMode;
+
+  // Estado y manejador de Pantalla Completa / Estudio Zen
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+
+  const toggleFullscreen = useCallback(async () => {
+    if (!isFullscreen) {
+      if (document.documentElement.requestFullscreen) {
+        try {
+          await document.documentElement.requestFullscreen();
+        } catch (err) {
+          console.warn('Fullscreen no permitido directamente por el navegador:', err);
+        }
+      }
+      setIsFullscreen(true);
+    } else {
+      if (document.exitFullscreen && document.fullscreenElement) {
+        try {
+          await document.exitFullscreen();
+        } catch (err) {
+          console.warn('Error al salir de fullscreen nativo:', err);
+        }
+      }
+      setIsFullscreen(false);
+    }
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen]);
 
   const [visibleFrets, setVisibleFrets] = useState<number>(24);
   const config = INSTRUMENTS[instrument];
@@ -463,7 +543,13 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   }, [fretFocusRange, fretPositions, viewMode]);
 
   return (
-    <div className="w-full max-w-full rounded-2xl overflow-hidden border border-slate-800 shadow-2xl bg-[#1e1e24] my-2 min-w-0 flex flex-col">
+    <div
+      className={`transition-all duration-200 ${
+        isFullscreen
+          ? 'fixed inset-0 z-50 bg-[#121217] flex flex-col justify-between p-2 sm:p-4 overflow-hidden w-screen h-screen'
+          : 'w-full max-w-full rounded-2xl overflow-hidden border border-slate-800 shadow-2xl bg-[#1e1e24] my-2 min-w-0 flex flex-col'
+      }`}
+    >
       {/* 1. Barra Superior Minimalista de Control */}
       <FretboardViewControls
         viewMode={viewMode}
@@ -475,10 +561,16 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
         onDisplayModeChange={onDisplayModeChange}
         visibleFrets={visibleFrets}
         onVisibleFretsChange={setVisibleFrets}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={toggleFullscreen}
       />
 
       {/* 2. Barra de Estado de Alto Contraste */}
-      <div className="flex items-center justify-between px-3.5 py-2 border-b border-slate-800/80 bg-[#16161a] text-[11px] font-mono text-slate-400 backdrop-blur-md">
+      <div
+        className={`flex items-center justify-between px-3.5 py-2 text-[11px] font-mono text-slate-400 backdrop-blur-md ${
+          isFullscreen ? 'bg-slate-900/60 border border-slate-800/80 rounded-xl mb-2' : 'border-b border-slate-800/80 bg-[#16161a]'
+        }`}
+      >
         <div className="flex items-center gap-2 truncate">
           <span className="w-2.5 h-2.5 rounded-full bg-[#FFCC00] shadow-[0_0_8px_rgba(255,204,0,0.8)] shrink-0" />
           <span className="font-bold text-slate-100 text-xs truncate">
@@ -487,6 +579,11 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
           {activeFretRangeState && (
             <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-amber-300 font-mono shrink-0 border border-slate-700">
               Tr. {activeFretRangeState[0]}–{activeFretRangeState[1]}
+            </span>
+          )}
+          {isFullscreen && (
+            <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-[#FFCC00] font-bold border border-amber-500/30">
+              MODO ZEN
             </span>
           )}
         </div>
@@ -536,8 +633,12 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
       {/* Top Banner (si se proporciona) */}
       {topBanner}
 
-      {/* 3. Contenedor del Diapasón SVG */}
-      <div className="relative w-full max-w-full">
+      {/* 3. Contenedor del Diapasón SVG Maximizado */}
+      <div
+        className={`relative w-full max-w-full flex-1 flex flex-col justify-center min-h-0 ${
+          isFullscreen ? 'overflow-hidden my-auto' : ''
+        }`}
+      >
         {viewMode === 'scroll' && (
           <>
             <button
@@ -565,7 +666,9 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
           ref={containerRef}
           className={`w-full max-w-full ${
             isFit ? 'overflow-x-hidden' : 'overflow-x-auto scroll-smooth touch-pan-x'
-          } overflow-y-hidden py-3 px-1 custom-scrollbar min-w-0 select-none`}
+          } overflow-y-hidden py-3 px-1 custom-scrollbar min-w-0 select-none ${
+            isFullscreen ? 'rounded-xl border border-slate-800 shadow-inner' : ''
+          }`}
           style={{
             WebkitOverflowScrolling: 'touch',
             background: '#1e1e24',
@@ -1024,7 +1127,11 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
       </div>
 
       {/* 4. Leyenda Limpia de Alto Contraste */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 border-t border-slate-800/80 bg-[#16161a] text-[11px] backdrop-blur-md">
+      <div
+        className={`flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 text-[11px] backdrop-blur-md ${
+          isFullscreen ? 'bg-slate-900/60 border border-slate-800/80 rounded-xl mt-2 shrink-0' : 'border-t border-slate-800/80 bg-[#16161a]'
+        }`}
+      >
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-full bg-[#FFCC00] ring-1 ring-amber-300/80" />
