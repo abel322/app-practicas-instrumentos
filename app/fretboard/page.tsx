@@ -167,14 +167,14 @@ export default function FretboardPage() {
   }, [activeProgression, rootNote, currentProgressionStepIndex, selectedProgressionId, stepResourceOverrides]);
 
   const handleStepImprovResourceChange = useCallback(
-    (resourceId: string) => {
-      const overrideKey = `${selectedProgressionId}_${currentProgressionStepIndex}`;
+    (stepIndex: number, resourceId: string) => {
+      const overrideKey = `${selectedProgressionId}_${stepIndex}`;
       setStepResourceOverrides((prev) => ({
         ...prev,
         [overrideKey]: resourceId,
       }));
     },
-    [selectedProgressionId, currentProgressionStepIndex]
+    [selectedProgressionId]
   );
 
   const currentImprovGuide = useMemo(() => {
@@ -186,20 +186,25 @@ export default function FretboardPage() {
     if (!customResource) return baseGuide;
 
     const rootIdx = CHROMATIC_NOTES.indexOf(currentStep.rootNote);
-    const customNotes = customResource.intervals.map(
-      (semi) => CHROMATIC_NOTES[(rootIdx + semi + 12) % 12]
-    );
+    const safeRootIdx = rootIdx === -1 ? 0 : rootIdx;
+
+    const customNotes = customResource.intervals.map((intervalItem) => {
+      const semitoneValue = typeof intervalItem === 'number' ? intervalItem : intervalItem.semitones;
+      return CHROMATIC_NOTES[(safeRootIdx + semitoneValue + 12) % 12];
+    });
+
+    const resourceTitle = customResource.name || customResource.label || '';
 
     return {
       ...baseGuide,
       primaryMode: {
         ...baseGuide.primaryMode,
-        name: `${currentStep.rootNote} ${customResource.label}`,
+        name: `${currentStep.rootNote} ${resourceTitle}`,
         scaleNotes: customNotes,
         character:
           customResource.type === 'arpeggio'
-            ? `Arpegio asignado (${customResource.label}) sobre ${currentStep.fullChordLabel}`
-            : `Escala/Modo asignado (${customResource.label}) sobre ${currentStep.fullChordLabel}`,
+            ? `Arpegio asignado (${resourceTitle}) sobre ${currentStep.fullChordLabel}`
+            : `Escala/Modo asignado (${resourceTitle}) sobre ${currentStep.fullChordLabel}`,
       },
     };
   }, [activeProgression, rootNote, currentProgressionStepIndex, activeStepResourceId]);
@@ -1030,11 +1035,14 @@ export default function FretboardPage() {
 
       if (customResource && customResource.type === 'arpeggio') {
         const rootIdx = CHROMATIC_NOTES.indexOf(currentStep.rootNote);
-        customResource.intervals.forEach((semi) => {
-          const noteName = CHROMATIC_NOTES[(rootIdx + semi + 12) % 12];
-          const meta = SEMITONE_INTERVAL_LABELS[((semi % 12) + 12) % 12] || { label: '', role: 'other' };
+        const safeRootIdx = rootIdx === -1 ? 0 : rootIdx;
+        customResource.intervals.forEach((intervalItem) => {
+          const semitoneValue = typeof intervalItem === 'number' ? intervalItem : intervalItem.semitones;
+          const noteName = CHROMATIC_NOTES[(safeRootIdx + semitoneValue + 12) % 12];
+          const meta = SEMITONE_INTERVAL_LABELS[((semitoneValue % 12) + 12) % 12] || { label: '', role: 'other' };
+          const intervalLabel = typeof intervalItem === 'object' && intervalItem.label ? intervalItem.label : meta.label;
           chordNoteMap.set(noteName, {
-            interval: meta.label,
+            interval: intervalLabel,
             role: meta.role,
           });
         });
@@ -1048,13 +1056,16 @@ export default function FretboardPage() {
       }
 
       const scaleNoteMap = new Map<string, { interval: string; role: NoteRole }>();
-      if (customResource && customResource.type === 'scale') {
+      if (customResource && customResource.type !== 'arpeggio') {
         const rootIdx = CHROMATIC_NOTES.indexOf(currentStep.rootNote);
-        customResource.intervals.forEach((semi) => {
-          const noteName = CHROMATIC_NOTES[(rootIdx + semi + 12) % 12];
-          const meta = SEMITONE_INTERVAL_LABELS[((semi % 12) + 12) % 12] || { label: '', role: 'other' };
+        const safeRootIdx = rootIdx === -1 ? 0 : rootIdx;
+        customResource.intervals.forEach((intervalItem) => {
+          const semitoneValue = typeof intervalItem === 'number' ? intervalItem : intervalItem.semitones;
+          const noteName = CHROMATIC_NOTES[(safeRootIdx + semitoneValue + 12) % 12];
+          const meta = SEMITONE_INTERVAL_LABELS[((semitoneValue % 12) + 12) % 12] || { label: '', role: 'other' };
+          const intervalLabel = typeof intervalItem === 'object' && intervalItem.label ? intervalItem.label : meta.label;
           scaleNoteMap.set(noteName, {
-            interval: meta.label,
+            interval: intervalLabel,
             role: meta.role,
           });
         });
@@ -1401,7 +1412,9 @@ export default function FretboardPage() {
             improvMode={improvMode}
             onImprovModeChange={setImprovMode}
             selectedResourceId={activeStepResourceId}
-            onResourceIdChange={handleStepImprovResourceChange}
+            onResourceIdChange={(resId) =>
+              handleStepImprovResourceChange(currentProgressionStepIndex, resId)
+            }
           />
         )}
 

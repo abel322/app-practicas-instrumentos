@@ -1,6 +1,7 @@
 export interface ImprovResourceOption {
   id: string;
   name: string;
+  label?: string;
   type: 'scale' | 'arpeggio' | 'pentatonic';
   tag: string;
   intervals: { label: string; semitones: number }[];
@@ -266,5 +267,11 @@ export function findImprovResourceById(
 ): ImprovResourceOption | null {
   if (!resourceId || resourceId === 'default') return null;
   const allOptions = Object.values(CHORD_IMPROV_RESOURCES).flat();
-  return allOptions.find((opt) => opt.id === resourceId) || getImprovOptionsForChord(degreeLabel)[0] || null;
+  const match = allOptions.find((opt) => opt.id === resourceId) || getImprovOptionsForChord(degreeLabel)[0] || null;
+  if (!match) return null;
+  return {
+    ...match,
+    label: match.label || match.name,
+  };
 }
+
