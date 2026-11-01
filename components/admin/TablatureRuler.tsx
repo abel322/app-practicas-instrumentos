@@ -5,24 +5,20 @@ import React from 'react';
  * según el índice del paso y el total de pasos del compás.
  */
 export function getStepRhythmLabel(stepIndex: number, totalSteps: number = 16): { label: string; isBeat: boolean } {
-  if (totalSteps === 16) {
-    // 4/4 en semicorcheas (16 pasos: 1 e y a 2 e y a...)
-    const beatNumber = Math.floor(stepIndex / 4) + 1;
-    const subIndex = stepIndex % 4;
-    const subLabels = [beatNumber.toString(), 'e', 'y', 'a'];
+  if (totalSteps === 4) {
     return {
-      label: subLabels[subIndex],
-      isBeat: subIndex === 0
+      label: (stepIndex + 1).toString(),
+      isBeat: true,
     };
   }
-  
+
   if (totalSteps === 8) {
     // 4/4 en corcheas (8 pasos: 1 y 2 y 3 y 4 y)
     const beatNumber = Math.floor(stepIndex / 2) + 1;
     const subIndex = stepIndex % 2;
     return {
       label: subIndex === 0 ? beatNumber.toString() : 'y',
-      isBeat: subIndex === 0
+      isBeat: subIndex === 0,
     };
   }
 
@@ -33,14 +29,65 @@ export function getStepRhythmLabel(stepIndex: number, totalSteps: number = 16): 
     const subLabels = [beatNumber.toString(), 'tri', 'ple'];
     return {
       label: subLabels[subIndex],
-      isBeat: subIndex === 0
+      isBeat: subIndex === 0,
     };
   }
 
-  // Por defecto si es 4 tiempos
+  if (totalSteps === 16) {
+    // 4/4 en semicorcheas (16 pasos: 1 e y a 2 e y a...)
+    const beatNumber = Math.floor(stepIndex / 4) + 1;
+    const subIndex = stepIndex % 4;
+    const subLabels = [beatNumber.toString(), 'e', 'y', 'a'];
+    return {
+      label: subLabels[subIndex],
+      isBeat: subIndex === 0,
+    };
+  }
+
+  if (totalSteps === 20) {
+    // Quintillos (5:4 - 20 pasos: 1 • • • • 2 • • • •)
+    const beatNumber = Math.floor(stepIndex / 5) + 1;
+    const subIndex = stepIndex % 5;
+    return {
+      label: subIndex === 0 ? beatNumber.toString() : '•',
+      isBeat: subIndex === 0,
+    };
+  }
+
+  if (totalSteps === 24) {
+    // Tresillos de semicorchea (24 pasos: 6 por tiempo)
+    const beatNumber = Math.floor(stepIndex / 6) + 1;
+    const subIndex = stepIndex % 6;
+    return {
+      label: subIndex === 0 ? beatNumber.toString() : '•',
+      isBeat: subIndex === 0,
+    };
+  }
+
+  if (totalSteps === 28) {
+    // Septillos (7:4 - 28 pasos: 7 por tiempo)
+    const beatNumber = Math.floor(stepIndex / 7) + 1;
+    const subIndex = stepIndex % 7;
+    return {
+      label: subIndex === 0 ? beatNumber.toString() : '•',
+      isBeat: subIndex === 0,
+    };
+  }
+
+  if (totalSteps === 32) {
+    // Fusas (32 pasos: 8 por tiempo)
+    const beatNumber = Math.floor(stepIndex / 8) + 1;
+    const subIndex = stepIndex % 8;
+    return {
+      label: subIndex === 0 ? beatNumber.toString() : '•',
+      isBeat: subIndex === 0,
+    };
+  }
+
+  // Por defecto
   return {
     label: (stepIndex + 1).toString(),
-    isBeat: true
+    isBeat: stepIndex % 4 === 0,
   };
 }
 

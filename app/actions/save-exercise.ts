@@ -4,7 +4,7 @@ import prisma from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 
 export interface SaveExercisePayload {
-  instrumentType: 'drums' | 'bass' | 'guitar';
+  instrumentType: 'drums' | 'bass' | 'guitar' | 'piano';
   title: string;
   category: string;
   difficulty: string;
@@ -12,6 +12,7 @@ export interface SaveExercisePayload {
   timeSignature: string;
   totalMeasures: number;
   stepsPerMeasure: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: any[];
 }
 
@@ -72,9 +73,19 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
         url: `/practice/${exercise.slug}`,
       };
     } else {
-      // Guardar en tabla StringExercise (Bajo o Guitarra)
-      const instrument = formData.instrumentType === 'bass' ? 'bass_4' : 'guitar_6';
-      const tuning = formData.instrumentType === 'bass' ? 'E A D G' : 'E A D G B E';
+      // Guardar en tabla StringExercise (Bajo, Guitarra o Piano)
+      const instrument =
+        formData.instrumentType === 'piano'
+          ? 'piano'
+          : formData.instrumentType === 'bass'
+          ? 'bass_4'
+          : 'guitar_6';
+      const tuning =
+        formData.instrumentType === 'piano'
+          ? '88 Keys Standard'
+          : formData.instrumentType === 'bass'
+          ? 'E A D G'
+          : 'E A D G B E';
 
       let slug = baseSlug;
       const existing = await prisma.stringExercise.findUnique({ where: { slug } }).catch(() => null);
@@ -97,7 +108,8 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
         },
       });
 
-      // Revalidar rutas de cuerdas
+      // Revalidar rutas
+      revalidatePath('/');
       revalidatePath('/strings');
       revalidatePath(`/strings/practice/${exercise.slug}`);
 
@@ -108,6 +120,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
         url: `/strings/practice/${exercise.slug}`,
       };
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     console.error('❌ Error al guardar ejercicio en DB:', error);
     return {

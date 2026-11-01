@@ -7,6 +7,7 @@ import { DrumVoice, StickingType } from '@/types/drum';
 import { StringTechnique } from '@/types/strings';
 import { getAudioEngine } from '@/lib/drumAudioEngine';
 import { getStringsAudioEngine } from '@/lib/stringsAudioEngine';
+import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
 import { saveExerciseAction } from '@/app/actions/save-exercise';
 import { 
   Play, 
@@ -21,6 +22,7 @@ import {
   ArrowLeft, 
   Drum, 
   Music, 
+  KeyboardMusic,
   Sparkles, 
   ExternalLink,
   ChevronRight,
@@ -31,11 +33,13 @@ import {
 } from 'lucide-react';
 import { getStepRhythmLabel } from './TablatureRuler';
 import { AVAILABLE_FRETS } from './NoteSelectorModal';
+import { PianoRollBuilder } from './PianoRollBuilder';
 
 export { getStepRhythmLabel, AVAILABLE_FRETS };
 
 
-type InstrumentCategory = 'drums' | 'bass' | 'guitar';
+type InstrumentCategory = 'drums' | 'bass' | 'guitar' | 'piano';
+type SubdivisionType = '1/4' | '1/8' | '1/16' | '1/32' | '1/8T' | '1/16T' | 'quintillo' | 'septillo';
 
 interface EditorNote {
   step: number;        // Global step index: measureIndex * stepsPerMeasure + stepInMeasure
@@ -46,10 +50,14 @@ interface EditorNote {
   drumVoice?: DrumVoice; // Para batería
   accent?: boolean;
   sticking?: StickingType;
+  midiNumber?: number; // Para piano (36 a 84)
+  velocity?: number;
+  durationSteps?: number;
 }
 
 const DRUM_CATEGORIES = ['Rudimentos', 'Grooves', 'Independencia', 'Acentos & Síncopas'];
 const STRINGS_CATEGORIES = ['Slap & Pop', 'Walking Bass', 'Escalas & Arpegios', 'Licks & Riffs', 'Fingerpicking'];
+const PIANO_CATEGORIES = ['Clásico', 'Jazz & Baladas', 'Pop & Worship', 'Acordes & Arpegios', 'Independencia de Manos'];
 
 const BASS_STRINGS = [
   { num: 1, label: 'G', name: '1ª Cuerda (Sol)' },
@@ -84,7 +92,7 @@ export const ExerciseBuilder: React.FC = () => {
   const [difficulty, setDifficulty] = useState<'Básico' | 'Intermedio' | 'Avanzado'>('Intermedio');
   const [bpm, setBpm] = useState(95);
   const [timeSignature, setTimeSignature] = useState<'4/4' | '6/8' | '7/8'>('4/4');
-  const [subdivision, setSubdivision] = useState<'1/16' | '1/8' | '1/4' | '1/8T'>('1/16');
+  const [subdivision, setSubdivision] = useState<SubdivisionType>('1/16');
 
   // Gestión de Compases (1 a 8 compases)
   const [totalMeasures, setTotalMeasures] = useState<number>(2);
@@ -123,7 +131,9 @@ export const ExerciseBuilder: React.FC = () => {
   // Pasos por compás según compás y subdivisión
   const stepsPerMeasure = useMemo(() => {
     if (timeSignature === '6/8') {
-      return subdivision === '1/8' ? 6 : 12;
+      if (subdivision === '1/8') return 6;
+      if (subdivision === '1/32') return 24;
+      return 12;
     }
     if (timeSignature === '7/8') {
       return subdivision === '1/8' ? 7 : 14;
@@ -137,6 +147,15 @@ export const ExerciseBuilder: React.FC = () => {
       case '1/8T':
         return 12;
       case '1/16':
+        return 16;
+      case '1/16T':
+        return 24;
+      case 'quintillo':
+        return 20;
+      case 'septillo':
+        return 28;
+      case '1/32':
+        return 32;
       default:
         return 16;
     }
@@ -148,6 +167,8 @@ export const ExerciseBuilder: React.FC = () => {
   useEffect(() => {
     if (instrument === 'drums') {
       if (!DRUM_CATEGORIES.includes(category)) setCategory(DRUM_CATEGORIES[0]);
+    } else if (instrument === 'piano') {
+      if (!PIANO_CATEGORIES.includes(category)) setCategory(PIANO_CATEGORIES[0]);
     } else {
       if (!STRINGS_CATEGORIES.includes(category)) setCategory(STRINGS_CATEGORIES[0]);
     }
@@ -343,6 +364,29 @@ export const ExerciseBuilder: React.FC = () => {
     setActiveCell(null);
   };
 
+  const handleTogglePianoNote = useCallback(
+    (stepInMeasure: number, midiNumber: number, velocity: number = 100) => {
+      const globalStep = currentMeasure * stepsPerMeasure + stepInMeasure;
+      setNotes((prev) => {
+        const existingIdx = prev.findIndex(
+          (n) => n.step === globalStep && n.midiNumber === midiNumber
+        );
+        if (existingIdx >= 0) {
+          return prev.filter((_, idx) => idx !== existingIdx);
+        } else {
+          const newNote: EditorNote = {
+            step: globalStep,
+            midiNumber,
+            velocity,
+            durationSteps: 1,
+          };
+          return [...prev, newNote];
+        }
+      });
+    },
+    [currentMeasure, stepsPerMeasure]
+  );
+
   // ============================================================================
   // PREVISUALIZACIÓN DE AUDIO & RUNWAY EN TIEMPO REAL
   // ============================================================================
@@ -357,12 +401,56 @@ export const ExerciseBuilder: React.FC = () => {
     bpmRef.current = bpm;
   }, [bpm]);
 
+  const isBeatStep = useCallback(
+    (stepNumber: number) => {
+      const stepInMeasure = stepNumber % stepsPerMeasure;
+      if (timeSignature === '6/8') {
+        const stepsPerDottedQuarter = stepsPerMeasure / 2;
+        return stepInMeasure % stepsPerDottedQuarter === 0;
+      }
+      if (timeSignature === '7/8') {
+        return stepInMeasure === 0;
+      }
+      const stepsPerBeat = Math.max(1, Math.round(stepsPerMeasure / 4));
+      return stepInMeasure % stepsPerBeat === 0;
+    },
+    [stepsPerMeasure, timeSignature]
+  );
+
   const getStepDuration = useCallback(() => {
+    const beatDuration = 60 / bpmRef.current;
+
     if (timeSignature === '6/8') {
-      return (60 / bpmRef.current) / 2;
+      if (subdivision === '1/8') return beatDuration / 2;
+      if (subdivision === '1/32') return beatDuration / 8;
+      return beatDuration / 4;
     }
-    return (60 / bpmRef.current) / 4;
-  }, [timeSignature]);
+    if (timeSignature === '7/8') {
+      if (subdivision === '1/8') return beatDuration / 2;
+      return beatDuration / 4;
+    }
+
+    switch (subdivision) {
+      case '1/4':
+        return beatDuration;
+      case '1/8':
+        return beatDuration / 2;
+      case '1/8T':
+        return beatDuration / 3;
+      case '1/16':
+        return beatDuration / 4;
+      case '1/16T':
+        return beatDuration / 6;
+      case 'quintillo':
+        return beatDuration / 5;
+      case 'septillo':
+        return beatDuration / 7;
+      case '1/32':
+        return beatDuration / 8;
+      default:
+        return beatDuration / 4;
+    }
+  }, [timeSignature, subdivision]);
 
   const scheduleStep = useCallback(
     (stepNumber: number, time: number) => {
@@ -372,12 +460,24 @@ export const ExerciseBuilder: React.FC = () => {
         hits.forEach((h) => {
           engine.trigger(h.drumVoice!, time, 0.85, !!h.accent);
         });
-        if (stepNumber % 4 === 0) {
-          engine.playMetronome(time, stepNumber === 0);
+        if (isBeatStep(stepNumber)) {
+          engine.playMetronome(time, stepNumber % stepsPerMeasure === 0);
+        }
+      } else if (instrument === 'piano') {
+        const engine = getPianoAudioEngine();
+        const pianoNotes = notes.filter((n) => n.step === stepNumber && n.midiNumber !== undefined);
+        pianoNotes.forEach((n) => {
+          const vel = n.velocity ? n.velocity / 127 : 0.85;
+          engine.triggerNote(n.midiNumber!, time, 0.8, vel);
+        });
+        if (isBeatStep(stepNumber)) {
+          engine.playMetronome(time, stepNumber % stepsPerMeasure === 0);
         }
       } else {
         const engine = getStringsAudioEngine();
-        const stringNotes = notes.filter((n) => n.step === stepNumber && n.string !== undefined && n.fret !== undefined);
+        const stringNotes = notes.filter(
+          (n) => n.step === stepNumber && n.string !== undefined && n.fret !== undefined
+        );
         stringNotes.forEach((n) => {
           engine.triggerNote(
             instrument === 'bass' ? 'bass_4' : 'guitar_6',
@@ -388,18 +488,20 @@ export const ExerciseBuilder: React.FC = () => {
             0.85
           );
         });
-        if (stepNumber % 4 === 0) {
-          engine.playMetronome(time, stepNumber === 0);
+        if (isBeatStep(stepNumber)) {
+          engine.playMetronome(time, stepNumber % stepsPerMeasure === 0);
         }
       }
     },
-    [instrument, notes]
+    [instrument, notes, isBeatStep, stepsPerMeasure]
   );
 
   const schedulerLoop = useCallback(() => {
     const audioCtx =
       instrument === 'drums'
         ? getAudioEngine().getAudioContext()
+        : instrument === 'piano'
+        ? getPianoAudioEngine().getAudioContext()
         : getStringsAudioEngine().getAudioContext();
 
     if (!audioCtx) return;
@@ -442,7 +544,12 @@ export const ExerciseBuilder: React.FC = () => {
       setIsPlaying(true);
       isPlayingRef.current = true;
 
-      const engine = instrument === 'drums' ? getAudioEngine() : getStringsAudioEngine();
+      const engine =
+        instrument === 'drums'
+          ? getAudioEngine()
+          : instrument === 'piano'
+          ? getPianoAudioEngine()
+          : getStringsAudioEngine();
       engine.init();
       engine.resume();
       const ctx = engine.getAudioContext();
@@ -492,6 +599,21 @@ export const ExerciseBuilder: React.FC = () => {
           sticking: n.sticking ?? 'R',
           velocity: n.accent ? 1.0 : 0.8,
         }));
+    } else if (instrument === 'piano') {
+      const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+      formattedData = notes
+        .filter((n) => n.midiNumber !== undefined)
+        .map((n) => {
+          const midi = n.midiNumber!;
+          const noteName = `${NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
+          return {
+            step: n.step,
+            midiNumber: midi,
+            noteName,
+            velocity: n.velocity ?? 100,
+            durationSteps: n.durationSteps ?? 1,
+          };
+        });
     } else {
       formattedData = notes
         .filter((n) => n.string !== undefined && n.fret !== undefined)
@@ -612,6 +734,32 @@ export const ExerciseBuilder: React.FC = () => {
               <Sparkles className="w-3.5 h-3.5" />
               <span>Guitarra (6C)</span>
             </button>
+
+            <button
+              onClick={() => {
+                setInstrument('piano');
+                handleStop();
+                if (!notes.some((n) => n.midiNumber !== undefined)) {
+                  setNotes([
+                    { step: 0, midiNumber: 48, velocity: 90 }, // C3
+                    { step: 0, midiNumber: 55, velocity: 85 }, // G3
+                    { step: 0, midiNumber: 60, velocity: 95 }, // C4
+                    { step: 0, midiNumber: 64, velocity: 90 }, // E4
+                    { step: 4, midiNumber: 67, velocity: 90 }, // G4
+                    { step: 8, midiNumber: 71, velocity: 95 }, // B4
+                    { step: 12, midiNumber: 72, velocity: 100 }, // C5
+                  ]);
+                }
+              }}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                instrument === 'piano'
+                  ? 'bg-[#0891b2] text-white shadow-sm dark:bg-cyan-500 dark:text-zinc-950 dark:shadow-[0_0_15px_rgba(34,211,238,0.35)]'
+                  : 'text-slate-700 hover:text-slate-950 dark:text-zinc-400 dark:hover:text-white'
+              }`}
+            >
+              <KeyboardMusic className="w-3.5 h-3.5" />
+              <span>Piano</span>
+            </button>
           </div>
 
           {/* Botón Publicar Ejercicio */}
@@ -694,10 +842,18 @@ export const ExerciseBuilder: React.FC = () => {
             onChange={(e) => setSubdivision(e.target.value as any)}
             className="w-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-white/10 rounded-xl px-2.5 py-1.5 text-slate-900 dark:text-white font-mono focus:border-cyan-500 focus:outline-none"
           >
-            <option value="1/16">1/16 (Semicorcheas - 16p)</option>
-            <option value="1/8">1/8 (Corcheas - 8p)</option>
-            <option value="1/4">1/4 (Negras - 4p)</option>
-            <option value="1/8T">1/8T (Tresillos - 12p)</option>
+            <optgroup label="── SUBDIVISIONES REGULARES ──" className="bg-slate-950 text-slate-400 font-bold">
+              <option value="1/4">1/4 (Negras - 4 pasos)</option>
+              <option value="1/8">1/8 (Corcheas - 8 pasos)</option>
+              <option value="1/16">1/16 (Semicorcheas - 16 pasos)</option>
+              <option value="1/32">1/32 (Fusas - 32 pasos)</option>
+            </optgroup>
+            <optgroup label="── SUBDIVISIONES IRREGULARES (TRESILLOS / POLIRRITMIA) ──" className="bg-slate-950 text-amber-400 font-bold">
+              <option value="1/8T">1/8T (Tresillos de Corchea - 12 pasos)</option>
+              <option value="1/16T">1/16T (Tresillos de Semicorchea - 24 pasos)</option>
+              <option value="quintillo">Quintillo (5:4 - 20 pasos)</option>
+              <option value="septillo">Septillo (7:4 - 28 pasos)</option>
+            </optgroup>
           </select>
         </div>
 
@@ -739,7 +895,12 @@ export const ExerciseBuilder: React.FC = () => {
             onChange={(e) => setCategory(e.target.value)}
             className="w-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-white/10 rounded-xl px-2.5 py-1.5 text-slate-900 dark:text-white focus:border-cyan-500 focus:outline-none"
           >
-            {(instrument === 'drums' ? DRUM_CATEGORIES : STRINGS_CATEGORIES).map((cat) => (
+            {(instrument === 'drums'
+              ? DRUM_CATEGORIES
+              : instrument === 'piano'
+              ? PIANO_CATEGORIES
+              : STRINGS_CATEGORIES
+            ).map((cat) => (
               <option key={cat} value={cat}>
                 {cat}
               </option>
@@ -882,6 +1043,32 @@ export const ExerciseBuilder: React.FC = () => {
               </button>
             </div>
           </div>
+        ) : instrument === 'piano' ? (
+          // Controles para Piano / Teclado
+          <div className="flex flex-wrap items-center justify-between w-full gap-2 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">Modo Teclado:</span>
+              <span className="px-2.5 py-1 rounded-xl bg-cyan-950/70 border border-cyan-800/60 text-cyan-300 font-mono text-[11px] font-bold flex items-center gap-1.5">
+                <KeyboardMusic className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Rango C2 - C6 (49 Teclas Polifónicas)</span>
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const sourceStart = currentMeasure * stepsPerMeasure;
+                  const sourceEnd = sourceStart + stepsPerMeasure;
+                  setNotes((prev) => prev.filter((n) => n.step < sourceStart || n.step >= sourceEnd));
+                }}
+                className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-rose-500/10 border border-white/10 hover:border-rose-500/30 text-zinc-400 hover:text-rose-300 text-[11px] font-medium transition-colors"
+                title="Limpiar todas las notas de este compás"
+              >
+                Limpiar Compás {currentMeasure + 1}
+              </button>
+            </div>
+          </div>
         ) : (
           // Controles de Técnicas para Bajo y Guitarra
           <div className="flex flex-wrap items-center gap-2">
@@ -951,7 +1138,19 @@ export const ExerciseBuilder: React.FC = () => {
         )}
       </div>
 
-      {/* 5. Rejilla Interactiva de Tablatura / Pentagrama con Acabado Mástil de Palisandro */}
+      {/* 5. Rejilla Interactiva según el Instrumento */}
+      {instrument === 'piano' ? (
+        <PianoRollBuilder
+          currentMeasure={currentMeasure}
+          totalSteps={stepsPerMeasure}
+          activeSubdivision={subdivision}
+          notes={notes}
+          onToggleNote={handleTogglePianoNote}
+          isPlaying={isPlaying}
+          playbackActiveStep={playbackActiveStep}
+          measureStartStep={activeMeasureStart}
+        />
+      ) : (
       <div 
         className={`w-full overflow-x-auto rounded-2xl p-4 sm:p-6 transition-all relative ${
           instrument === 'drums'
@@ -1144,9 +1343,10 @@ export const ExerciseBuilder: React.FC = () => {
           )}
         </div>
       </div>
+      )}
 
       {/* 6. Panel Flotante / Diálogo de Edición Rápida de Traste */}
-      {activeCell && activeCell.string !== undefined && (
+      {activeCell && activeCell.string !== undefined && instrument !== 'piano' && (
         <div className="p-4 rounded-2xl glass-panel border border-cyan-500/30 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 overflow-hidden flex-1 min-w-0">
             <span className="text-xs text-zinc-400 font-medium shrink-0">

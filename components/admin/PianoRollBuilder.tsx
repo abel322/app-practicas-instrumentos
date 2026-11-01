@@ -1,0 +1,295 @@
+'use client';
+
+import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { midiInputService } from '@/lib/audio/midiInputService';
+import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
+import { Radio, Music2, Info, ChevronRight, CheckCircle2 } from 'lucide-react';
+
+export interface PianoNoteStep {
+  step: number;
+  midiNumber?: number;
+  velocity?: number;
+  durationSteps?: number;
+}
+
+interface PianoRollBuilderProps {
+  currentMeasure: number;
+  totalSteps: number; // Pasos en este compás (ej: 4, 8, 12, 16, 20, 24, 28, 32)
+  activeSubdivision: string;
+  notes: PianoNoteStep[];
+  onToggleNote: (stepInMeasure: number, midiNumber: number, velocity?: number) => void;
+  isPlaying?: boolean;
+  playbackActiveStep?: number;
+  measureStartStep: number;
+}
+
+// Rango de 4 octavas útiles: C2 (36) a C6 (84) -> 49 teclas ordenadas de agudo a grave
+const PIANO_KEYS = Array.from({ length: 49 }, (_, i) => 84 - i);
+
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+export function PianoRollBuilder({
+  currentMeasure,
+  totalSteps,
+  activeSubdivision,
+  notes,
+  onToggleNote,
+  isPlaying = false,
+  playbackActiveStep = 0,
+  measureStartStep = 0,
+}: PianoRollBuilderProps) {
+  const [activeMidiDevice, setActiveMidiDevice] = useState<string | null>(null);
+  const [activeStepInput, setActiveStepInput] = useState<number>(0);
+  const [pressedMidiKeys, setPressedMidiKeys] = useState<Set<number>>(new Set());
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Inicialización de Web MIDI API y detección reactiva de teclado USB
+  useEffect(() => {
+    midiInputService.initialize().then(() => {
+      setActiveMidiDevice(midiInputService.connectedDeviceName);
+    });
+
+    const unsubDevice = midiInputService.onDeviceChange((deviceName) => {
+      setActiveMidiDevice(deviceName);
+    });
+
+    const unsubNotes = midiInputService.subscribe((midiNum, noteName, vel, isNoteOn) => {
+      setPressedMidiKeys((prev) => {
+        const next = new Set(prev);
+        if (isNoteOn) next.add(midiNum);
+        else next.delete(midiNum);
+        return next;
+      });
+
+      if (isNoteOn) {
+        // Reproducir sonido inmediato con el motor polifónico
+        getPianoAudioEngine().triggerNote(midiNum, 0, 0.8, vel / 127);
+        // Estampar nota en el paso rítmico seleccionado
+        onToggleNote(activeStepInput, midiNum, vel);
+      }
+    });
+
+    return () => {
+      unsubDevice();
+      unsubNotes();
+    };
+  }, [activeStepInput, onToggleNote]);
+
+  const isBlackKey = (midi: number) => [1, 3, 6, 8, 10].includes(midi % 12);
+
+  // Si cambia la cantidad de pasos, asegurarse que activeStepInput sea válido
+  useEffect(() => {
+    if (activeStepInput >= totalSteps) {
+      setActiveStepInput(0);
+    }
+  }, [totalSteps, activeStepInput]);
+
+  const playbackStepInMeasure = isPlaying ? playbackActiveStep - measureStartStep : -1;
+
+  // Total de notas en el compás actual
+  const currentMeasureNotesCount = useMemo(() => {
+    return notes.filter(
+      (n) => n.step >= measureStartStep && n.step < measureStartStep + totalSteps && n.midiNumber !== undefined
+    ).length;
+  }, [notes, measureStartStep, totalSteps]);
+
+  return (
+    <div className="w-full flex flex-col bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl select-none">
+      {/* 1. Barra Superior de Estado MIDI y Asistente de Grabación */}
+      <div className="flex flex-wrap items-center justify-between gap-3 px-3 sm:px-4 py-2.5 bg-slate-900 border-b border-slate-800 text-xs">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Indicador de Conexión MIDI USB */}
+          <div
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all ${
+              activeMidiDevice
+                ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                : 'bg-slate-950 border-slate-800 text-slate-500'
+            }`}
+          >
+            <Radio
+              className={`w-4 h-4 shrink-0 ${
+                activeMidiDevice ? 'text-emerald-400 animate-pulse' : 'text-slate-600'
+              }`}
+            />
+            <span className="font-mono text-xs font-bold truncate max-w-[220px] sm:max-w-[280px]">
+              {activeMidiDevice ? `🟢 MIDI: ${activeMidiDevice}` : 'MIDI no detectado (Conecta tu teclado USB)'}
+            </span>
+          </div>
+
+          {/* Badge del Paso Activo de Grabación */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-cyan-900/50 text-cyan-300 font-mono text-xs">
+            <span className="text-slate-400 font-sans text-[11px]">Paso activo:</span>
+            <strong className="text-cyan-400 font-black">#{activeStepInput + 1}</strong>
+            <span className="text-[10px] text-slate-500">/ {totalSteps}</span>
+          </div>
+
+          <span className="hidden md:inline-flex items-center gap-1 text-[11px] text-slate-400">
+            <span>Compás {currentMeasure + 1}</span>
+            <span className="text-amber-400 font-bold">({currentMeasureNotesCount} notas)</span>
+          </span>
+        </div>
+
+        {/* Guía rápida de uso */}
+        <div className="flex items-center gap-2 text-[11px] text-slate-400">
+          <Info className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+          <span className="hidden sm:inline">Haz clic en la cuadrícula o toca teclas en tu teclado MIDI físico</span>
+          <span className="sm:hidden">Toca o usa MIDI</span>
+        </div>
+      </div>
+
+      {/* 2. Área del Piano Roll con scroll sincronizado (Horizontal & Vertical) */}
+      <div
+        ref={containerRef}
+        className="w-full max-h-[460px] overflow-y-auto overflow-x-auto flex flex-col no-scrollbar bg-[#0f1117]"
+      >
+        {/* Cabecera pegajosa con números de pasos rítmicos */}
+        <div className="flex sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 min-w-max shadow-md">
+          {/* Esquina superior izquierda fija */}
+          <div className="w-20 sm:w-24 shrink-0 bg-slate-950 p-2 text-[10px] font-bold text-slate-400 border-r border-slate-800 flex items-center justify-between">
+            <span>Teclas</span>
+            <Music2 className="w-3.5 h-3.5 text-cyan-500 opacity-70" />
+          </div>
+
+          {/* Fila de pasos */}
+          <div className="flex flex-1">
+            {Array.from({ length: totalSteps }).map((_, stepIdx) => {
+              const isSelectedForRecording = activeStepInput === stepIdx;
+              const isCurrentlyPlaying = isPlaying && playbackStepInMeasure === stepIdx;
+              const isBeat =
+                totalSteps === 12
+                  ? stepIdx % 3 === 0
+                  : totalSteps === 20
+                  ? stepIdx % 5 === 0
+                  : totalSteps === 24
+                  ? stepIdx % 6 === 0
+                  : totalSteps === 28
+                  ? stepIdx % 7 === 0
+                  : stepIdx % 4 === 0;
+
+              return (
+                <div
+                  key={stepIdx}
+                  onClick={() => setActiveStepInput(stepIdx)}
+                  className={`w-8 sm:w-9 text-center py-1.5 text-[10px] font-mono font-bold cursor-pointer border-r border-slate-800/80 transition-all select-none relative ${
+                    isCurrentlyPlaying
+                      ? 'bg-cyan-500 text-slate-950 font-black shadow-[0_0_10px_rgba(34,211,238,0.8)] scale-105 z-20'
+                      : isSelectedForRecording
+                      ? 'bg-cyan-950 text-cyan-300 ring-2 ring-cyan-400 font-black z-10'
+                      : isBeat
+                      ? 'bg-slate-800/90 text-amber-300 hover:bg-slate-700'
+                      : 'text-slate-500 hover:bg-slate-800/60'
+                  }`}
+                  title={`Paso ${stepIdx + 1} (Clic para seleccionar como destino de grabación)`}
+                >
+                  {stepIdx + 1}
+                  {isBeat && (
+                    <span className="w-1 h-1 rounded-full bg-amber-400/80 mx-auto block mt-0.5" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 3. Filas de Notas: Teclado Vertical a la izquierda + Cuadrícula Matricial */}
+        <div className="flex flex-col min-w-max">
+          {PIANO_KEYS.map((midi) => {
+            const black = isBlackKey(midi);
+            const isPressed = pressedMidiKeys.has(midi);
+            const keyLabel = `${NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
+            const isCKey = midi % 12 === 0;
+
+            return (
+              <div
+                key={midi}
+                className={`flex h-5 border-b border-slate-900/60 items-center ${
+                  isCKey ? 'border-b-cyan-900/40' : ''
+                }`}
+              >
+                {/* Tecla del Teclado Vertical Izquierdo */}
+                <div
+                  onClick={() => {
+                    getPianoAudioEngine().triggerNote(midi, 0, 0.8, 0.85);
+                    onToggleNote(activeStepInput, midi, 100);
+                  }}
+                  className={`w-20 sm:w-24 shrink-0 px-2 h-full flex items-center justify-between text-[10px] font-mono border-r border-slate-800 cursor-pointer transition-all select-none ${
+                    isPressed
+                      ? 'bg-cyan-400 text-slate-950 font-black shadow-[0_0_12px_rgba(34,211,238,0.8)] z-10'
+                      : black
+                      ? 'bg-[#18181b] text-slate-400 hover:bg-slate-800 hover:text-white'
+                      : 'bg-[#27272a] text-slate-200 hover:bg-zinc-700 hover:text-white'
+                  }`}
+                  title={`Tocar ${keyLabel} (MIDI ${midi})`}
+                >
+                  <span className={`font-bold ${isCKey ? 'text-cyan-400 font-black' : ''}`}>
+                    {keyLabel}
+                  </span>
+                  {isCKey && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-sm" />}
+                </div>
+
+                {/* Celdas del Paso de Tiempo Matricial */}
+                <div className="flex flex-1 h-full">
+                  {Array.from({ length: totalSteps }).map((_, stepIdx) => {
+                    const globalStep = measureStartStep + stepIdx;
+                    const hasNote = notes.some(
+                      (n) => n.step === globalStep && n.midiNumber === midi
+                    );
+                    const isSelectedStep = activeStepInput === stepIdx;
+                    const isPlayingStep = isPlaying && playbackStepInMeasure === stepIdx;
+                    const isBeat =
+                      totalSteps === 12
+                        ? stepIdx % 3 === 0
+                        : totalSteps === 20
+                        ? stepIdx % 5 === 0
+                        : totalSteps === 24
+                        ? stepIdx % 6 === 0
+                        : totalSteps === 28
+                        ? stepIdx % 7 === 0
+                        : stepIdx % 4 === 0;
+
+                    return (
+                      <div
+                        key={stepIdx}
+                        onClick={() => {
+                          setActiveStepInput(stepIdx);
+                          if (!hasNote) {
+                            getPianoAudioEngine().triggerNote(midi, 0, 0.8, 0.85);
+                          }
+                          onToggleNote(stepIdx, midi, 100);
+                        }}
+                        className={`w-8 sm:w-9 h-full border-r border-slate-900/40 cursor-pointer transition-all relative flex items-center justify-center ${
+                          hasNote
+                            ? 'bg-amber-400 border-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.5)] z-10'
+                            : isPlayingStep
+                            ? 'bg-cyan-500/25 ring-1 ring-cyan-400/40'
+                            : isSelectedStep
+                            ? 'bg-cyan-950/30 hover:bg-cyan-900/40'
+                            : isBeat
+                            ? 'bg-slate-900/40 hover:bg-slate-800/60'
+                            : black
+                            ? 'bg-[#121319]/90 hover:bg-slate-800/40'
+                            : 'bg-slate-900/20 hover:bg-slate-800/40'
+                        }`}
+                      >
+                        {hasNote && (
+                          <div className="w-full h-full bg-amber-400 rounded-sm border border-amber-200/80 shadow-sm flex items-center justify-center">
+                            <span className="text-[7px] font-mono font-black text-slate-950 opacity-80">
+                              {NOTE_NAMES[midi % 12]}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default PianoRollBuilder;
+
