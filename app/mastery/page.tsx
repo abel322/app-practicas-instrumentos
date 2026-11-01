@@ -10,6 +10,8 @@ import { PracticeExecutionModal } from '@/components/mastery/PracticeExecutionMo
 import { MasteryCelebrationModal } from '@/components/mastery/MasteryCelebrationModal';
 import { WarmupSessionModal } from '@/components/mastery/WarmupSessionModal';
 import { AddLevelModal } from '@/components/mastery/AddLevelModal';
+import { ConfirmDeleteModal } from '@/components/ui/ConfirmDeleteModal';
+import { toast } from '@/components/ui/ToastNotification';
 
 export default function MasteryPage() {
   const [selectedInstrument, setSelectedInstrument] = useState<MasteryInstrument>('guitar');
@@ -21,6 +23,10 @@ export default function MasteryPage() {
   const [isAddLevelOpen, setIsAddLevelOpen] = useState<boolean>(false);
   const [editingCustomSkill, setEditingCustomSkill] = useState<MasterySkillNode | null>(null);
 
+  // Estado de eliminación de nivel
+  const [levelToDelete, setLevelToDelete] = useState<MasterySkillNode | null>(null);
+  const [isDeletingLevel, setIsDeletingLevel] = useState<boolean>(false);
+
   const {
     progress,
     isLoaded,
@@ -30,7 +36,7 @@ export default function MasteryPage() {
     resetInstrumentProgress,
     addCustomLevel,
     editCustomLevel,
-    deleteCustomLevel,
+    deleteLevelAndReindex,
   } = useMasteryProgress();
 
   const currentSkills = getSkills(selectedInstrument);
@@ -78,14 +84,34 @@ export default function MasteryPage() {
 
   const handleSaveQuickLevel = (input: CustomLevelInput) => {
     addCustomLevel(selectedInstrument, input);
+    toast.success(`Nivel agregado exitosamente a la ruta técnica.`);
   };
 
   const handleUpdateLevel = (skillId: string, input: Partial<CustomLevelInput>) => {
     editCustomLevel(selectedInstrument, skillId, input);
+    toast.success(`Nivel actualizado con éxito.`);
   };
 
-  const handleDeleteSkill = (skillId: string) => {
-    deleteCustomLevel(selectedInstrument, skillId);
+  const handleRequestDeleteSkill = (skill: MasterySkillNode) => {
+    setLevelToDelete(skill);
+  };
+
+  const handleConfirmDeleteLevel = () => {
+    if (!levelToDelete) return;
+    setIsDeletingLevel(true);
+
+    try {
+      const deletedNumber = levelToDelete.level;
+      deleteLevelAndReindex(selectedInstrument, levelToDelete.id);
+      toast.success(
+        `Nivel ${deletedNumber} eliminado con éxito. Los niveles posteriores han sido reindexados automáticamente.`
+      );
+      setLevelToDelete(null);
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al eliminar el nivel.');
+    } finally {
+      setIsDeletingLevel(false);
+    }
   };
 
   const nextAvailableLevel =
@@ -102,7 +128,10 @@ export default function MasteryPage() {
           completedCount={completedLevels.length}
           totalLevels={currentSkills.length}
           totalMinutes={totalMinutes}
-          onResetProgress={() => resetInstrumentProgress(selectedInstrument)}
+          onResetProgress={() => {
+            resetInstrumentProgress(selectedInstrument);
+            toast.info(`Progreso de ${selectedInstrument} reiniciado.`);
+          }}
         />
 
         {/* Modo de Mantenimiento Diario (2 min) */}
@@ -122,7 +151,7 @@ export default function MasteryPage() {
             onOpenPractice={handleOpenPractice}
             onAddNewLevel={handleOpenAddModal}
             onEditSkill={handleEditSkill}
-            onDeleteSkill={handleDeleteSkill}
+            onDeleteSkill={handleRequestDeleteSkill}
           />
         </section>
       </div>
@@ -173,6 +202,18 @@ export default function MasteryPage() {
         onSaveQuickLevel={handleSaveQuickLevel}
         editingSkill={editingCustomSkill}
         onUpdateLevel={handleUpdateLevel}
+      />
+
+      {/* Modal de Confirmación de Eliminación de Nivel */}
+      <ConfirmDeleteModal
+        isOpen={!!levelToDelete}
+        onClose={() => setLevelToDelete(null)}
+        onConfirm={handleConfirmDeleteLevel}
+        title={levelToDelete ? `¿Eliminar el Nivel ${levelToDelete.level} de la ruta técnica?` : '¿Eliminar nivel?'}
+        itemName={levelToDelete ? `${levelToDelete.title} (${levelToDelete.difficultyLabel} - ${levelToDelete.targetBpm} BPM)` : undefined}
+        description="Al eliminar este nivel, los niveles posteriores se reordenarán secuencialmente (el nivel posterior ocupará este número) y tu progreso se recalculará de forma consistente."
+        confirmText="Eliminar Nivel"
+        isDeleting={isDeletingLevel}
       />
 
       {/* Footer Minimalista */}

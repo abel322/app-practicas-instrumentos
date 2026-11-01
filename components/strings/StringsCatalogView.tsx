@@ -1,10 +1,19 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { StringExerciseData, StringInstrument } from '@/types/strings';
 import { StringExerciseCard } from './StringExerciseCard';
-import { Search, Music, Sparkles } from 'lucide-react';
+import { Search, Music } from 'lucide-react';
+import { ConfirmDeleteModal } from '@/components/ui/ConfirmDeleteModal';
+import { toast } from '@/components/ui/ToastNotification';
+import { deleteExerciseAction } from '@/app/actions/save-exercise';
+import {
+  getDeletedExerciseSlugs,
+  markExerciseAsDeleted,
+  getLocalExercises,
+} from '@/lib/exercises/customExercisesStorage';
 
 interface StringsCatalogViewProps {
   initialExercises: StringExerciseData[];
@@ -20,14 +29,122 @@ const CATEGORIES = [
 ];
 
 export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialExercises }) => {
+  const router = useRouter();
+  const [exercises, setExercises] = useState<StringExerciseData[]>(initialExercises);
   const [selectedInstrument, setSelectedInstrument] = useState<'all' | StringInstrument>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('Todas');
 
+  // Modal de confirmación de eliminación
+  const [exerciseToDelete, setExerciseToDelete] = useState<StringExerciseData | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+
+  // Sincronizar en el cliente con ejercicios locales modificados y omitir los eliminados
+  useEffect(() => {
+    try {
+      const deletedSlugs = getDeletedExerciseSlugs();
+      const localCustom = getLocalExercises().filter(
+        (ex) => ex.instrumentType !== 'drums' && (ex.tabData || ex.instrument)
+      );
+
+      setExercises((prev) => {
+        let list = prev.filter((ex) => !deletedSlugs.includes(ex.slug));
+
+        localCustom.forEach((customEx) => {
+          if (deletedSlugs.includes(customEx.slug)) return;
+
+          const idx = list.findIndex((e) => e.slug === customEx.slug);
+          const mappedEx: StringExerciseData = {
+            id: customEx.id || customEx.slug,
+            slug: customEx.slug,
+            title: customEx.title,
+            instrument:
+              customEx.instrument ||
+              (customEx.instrumentType === 'bass'
+                ? 'bass_4'
+                : customEx.instrumentType === 'piano'
+                ? ('piano' as any)
+                : 'guitar_6'),
+            tuning:
+              customEx.tuning ||
+              (customEx.instrumentType === 'bass' ? 'E A D G' : 'E A D G B E'),
+            category: customEx.category,
+            difficulty: customEx.difficulty,
+            bpmDefault: customEx.bpmDefault || customEx.bpm || 90,
+            timeSignature: customEx.timeSignature || '4/4',
+            totalSteps: customEx.totalSteps || (customEx.tabData ? customEx.tabData.length : 32),
+            tabData: Array.isArray(customEx.tabData)
+              ? customEx.tabData
+              : Array.isArray(customEx.data)
+              ? customEx.data
+              : [],
+            description: customEx.description || '',
+          };
+
+          if (idx !== -1) {
+            list[idx] = mappedEx;
+          } else {
+            list = [mappedEx, ...list];
+          }
+        });
+
+        return list;
+      });
+    } catch (err) {
+      console.warn('Error sincronizando ejercicios locales de cuerdas:', err);
+    }
+  }, []);
+
+  const handleEdit = (ex: StringExerciseData) => {
+    const instType =
+      ex.instrument === 'bass_4'
+        ? 'bass'
+        : ex.instrument === ('piano' as any)
+        ? 'piano'
+        : 'guitar';
+    try {
+      sessionStorage.setItem(
+        'soundlab_editing_exercise',
+        JSON.stringify({ ...ex, instrumentType: instType })
+      );
+    } catch (_) {}
+    router.push(`/admin/builder?editSlug=${ex.slug}&instrument=${instType}`);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!exerciseToDelete) return;
+    setIsDeleting(true);
+
+    const instType =
+      exerciseToDelete.instrument === 'bass_4'
+        ? 'bass'
+        : exerciseToDelete.instrument === ('piano' as any)
+        ? 'piano'
+        : 'guitar';
+
+    try {
+      // 1. Notificar a Prisma vía server action
+      await deleteExerciseAction(exerciseToDelete.slug, instType);
+
+      // 2. Persistir eliminación localmente
+      markExerciseAsDeleted(exerciseToDelete.slug);
+
+      // 3. Actualizar estado reactivo sin recargar
+      setExercises((prev) => prev.filter((e) => e.slug !== exerciseToDelete.slug));
+
+      toast.success(`Ejercicio "${exerciseToDelete.title}" eliminado con éxito.`);
+      setExerciseToDelete(null);
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al eliminar el ejercicio.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Filtrado de ejercicios
   const filteredExercises = useMemo(() => {
-    return initialExercises.filter((ex) => {
+    return exercises.filter((ex) => {
       const matchesInstrument =
         selectedInstrument === 'all' || ex.instrument === selectedInstrument;
 
@@ -45,7 +162,7 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
 
       return matchesInstrument && matchesCategory && matchesDifficulty && matchesSearch;
     });
-  }, [initialExercises, selectedInstrument, selectedCategory, selectedDifficulty, searchQuery]);
+  }, [exercises, selectedInstrument, selectedCategory, selectedDifficulty, searchQuery]);
 
   return (
     <div className="w-full flex flex-col gap-8">
@@ -100,43 +217,28 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
             <span className="relative z-10">Guitarra (6 Cuerdas)</span>
           </button>
         </div>
-
-        {/* Contador rápido */}
-        <div className="text-xs text-slate-600 dark:text-zinc-400 font-mono px-3">
-          {filteredExercises.length} {filteredExercises.length === 1 ? 'ejercicio' : 'ejercicios'} encontrados
-        </div>
       </div>
 
-      {/* 2. Filtros de Categorías y Buscador */}
+      {/* 2. Barra de Filtros, Categorías y Búsqueda */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         {/* Píldoras de Categoría */}
-        <div className="flex flex-wrap items-center gap-1.5 p-1.5 rounded-2xl bg-[#dce2ec]/80 dark:bg-slate-900/80 border border-slate-300/80 dark:border-white/10 overflow-x-auto shadow-sm">
-          {CATEGORIES.map((cat) => {
-            const isActive = selectedCategory === cat;
-            return (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`relative px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all select-none ${
-                  isActive
-                    ? 'text-white dark:text-zinc-950 font-bold'
-                    : 'bg-slate-200/80 hover:bg-slate-300 text-slate-700 border border-slate-300/60 font-semibold dark:bg-transparent dark:text-zinc-400 dark:border-transparent dark:hover:text-zinc-200'
-                }`}
-              >
-                {isActive && (
-                  <motion.div
-                    layoutId="activeStringCatPill"
-                    className="absolute inset-0 rounded-xl bg-[#0891b2] dark:bg-cyan-400 shadow-sm dark:shadow-[0_0_15px_rgba(34,211,238,0.3)]"
-                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                  />
-                )}
-                <span className="relative z-10">{cat}</span>
-              </button>
-            );
-          })}
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 no-scrollbar">
+          {CATEGORIES.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border ${
+                selectedCategory === cat
+                  ? 'bg-[#0891b2] text-white border-[#0891b2] shadow-sm dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/50'
+                  : 'bg-slate-200/80 text-slate-700 border-slate-300/80 hover:bg-slate-300 dark:bg-zinc-900/60 dark:text-zinc-400 dark:border-white/5 dark:hover:bg-zinc-800'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
         </div>
 
-        {/* Buscador & Dificultad */}
+        {/* Buscador y filtro de dificultad */}
         <div className="flex items-center gap-3 w-full md:w-auto">
           <div className="relative flex-1 md:w-64">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-zinc-500" />
@@ -170,7 +272,7 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
         </div>
       </div>
 
-      {/* 3. Grid de Tarjetas */}
+      {/* 3. Grid de Ejercicios */}
       <AnimatePresence mode="popLayout">
         {filteredExercises.length > 0 ? (
           <motion.div
@@ -182,6 +284,8 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
                 key={exercise.id || exercise.slug}
                 exercise={exercise}
                 index={index}
+                onEdit={handleEdit}
+                onRequestDelete={(ex) => setExerciseToDelete(ex)}
               />
             ))}
           </motion.div>
@@ -213,6 +317,17 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Modal de Confirmación de Eliminación */}
+      <ConfirmDeleteModal
+        isOpen={!!exerciseToDelete}
+        onClose={() => setExerciseToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title="¿Estás seguro de eliminar este ejercicio?"
+        itemName={exerciseToDelete ? `${exerciseToDelete.title} (${exerciseToDelete.category})` : undefined}
+        description="Esta acción eliminará el ejercicio de cuerdas de la biblioteca y de la base de datos permanentemente."
+        isDeleting={isDeleting}
+      />
     </div>
   );
 };

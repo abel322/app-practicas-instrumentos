@@ -8,11 +8,11 @@ import {
   CustomLevelInput,
 } from '@/types/mastery';
 import {
+  getMasterySkillsTree,
   getStoredCustomLevels,
-  getMergedSkillsForInstrument,
   addCustomMasteryLevel,
   updateCustomMasteryLevel,
-  deleteCustomMasteryLevel,
+  deleteMasteryLevelAndReindex,
 } from './customLevelsStorage';
 
 const STORAGE_KEY = 'soundlab_mastery_v1';
@@ -46,7 +46,7 @@ const INITIAL_STATE: MasteryProgressState = {
 
 export function useMasteryProgress() {
   const [progress, setProgress] = useState<MasteryProgressState>(INITIAL_STATE);
-  const [customLevels, setCustomLevels] = useState<Record<MasteryInstrument, MasterySkillNode[]>>({
+  const [skillsTree, setSkillsTree] = useState<Record<MasteryInstrument, MasterySkillNode[]>>({
     guitar: [],
     piano: [],
     bass: [],
@@ -67,7 +67,7 @@ export function useMasteryProgress() {
           drums: { ...INITIAL_STATE.drums, ...(parsed.drums || {}) },
         });
       }
-      setCustomLevels(getStoredCustomLevels());
+      setSkillsTree(getMasterySkillsTree());
     } catch (e) {
       console.warn('Error reading mastery state from localStorage:', e);
     } finally {
@@ -88,9 +88,9 @@ export function useMasteryProgress() {
   // Obtener lista completa de habilidades para un instrumento
   const getSkills = useCallback(
     (instrument: MasteryInstrument): MasterySkillNode[] => {
-      return getMergedSkillsForInstrument(instrument, customLevels[instrument]);
+      return skillsTree[instrument] || [];
     },
-    [customLevels]
+    [skillsTree]
   );
 
   // Verificar si un nivel está desbloqueado
@@ -120,7 +120,7 @@ export function useMasteryProgress() {
       const completed = new Set(instData.completedLevels);
       completed.add(level);
 
-      const allSkills = getMergedSkillsForInstrument(instrument, customLevels[instrument]);
+      const allSkills = skillsTree[instrument] || [];
       const maxAvailableLevel = allSkills.length > 0 ? Math.max(...allSkills.map((s) => s.level)) : 10;
       const nextLevel = Math.min(maxAvailableLevel, level + 1);
 
@@ -141,7 +141,7 @@ export function useMasteryProgress() {
 
       saveState(nextState);
     },
-    [progress, customLevels, saveState]
+    [progress, skillsTree, saveState]
   );
 
   // Incrementar repetición limpia
@@ -205,17 +205,17 @@ export function useMasteryProgress() {
     [progress, saveState]
   );
 
-  // Añadir nivel personalizado
+  // Añadir nivel
   const addCustomLevel = useCallback(
     (instrument: MasteryInstrument, input: CustomLevelInput): MasterySkillNode => {
       const created = addCustomMasteryLevel(instrument, input);
-      setCustomLevels(getStoredCustomLevels());
+      setSkillsTree(getMasterySkillsTree());
       return created;
     },
     []
   );
 
-  // Editar nivel personalizado
+  // Editar nivel (Cualquier nivel del 1 en adelante)
   const editCustomLevel = useCallback(
     (
       instrument: MasteryInstrument,
@@ -224,28 +224,28 @@ export function useMasteryProgress() {
     ): MasterySkillNode | null => {
       const updated = updateCustomMasteryLevel(instrument, skillId, input);
       if (updated) {
-        setCustomLevels(getStoredCustomLevels());
+        setSkillsTree(getMasterySkillsTree());
       }
       return updated;
     },
     []
   );
 
-  // Eliminar nivel personalizado
-  const deleteCustomLevel = useCallback(
-    (instrument: MasteryInstrument, skillId: string): boolean => {
-      const ok = deleteCustomMasteryLevel(instrument, skillId);
-      if (ok) {
-        setCustomLevels(getStoredCustomLevels());
-      }
-      return ok;
+  // Eliminar cualquier nivel con reindexación automática y recalculo de progreso
+  const deleteLevelAndReindexProgress = useCallback(
+    (instrument: MasteryInstrument, skillId: string) => {
+      const { updatedProgress } = deleteMasteryLevelAndReindex(instrument, skillId, progress);
+      setSkillsTree(getMasterySkillsTree());
+      setProgress(updatedProgress);
+      return true;
     },
-    []
+    [progress]
   );
 
   return {
     progress,
-    customLevels,
+    customLevels: getStoredCustomLevels(),
+    skillsTree,
     isLoaded,
     getSkills,
     isLevelUnlocked,
@@ -256,6 +256,7 @@ export function useMasteryProgress() {
     resetInstrumentProgress,
     addCustomLevel,
     editCustomLevel,
-    deleteCustomLevel,
+    deleteCustomLevel: deleteLevelAndReindexProgress,
+    deleteLevelAndReindex: deleteLevelAndReindexProgress,
   };
 }

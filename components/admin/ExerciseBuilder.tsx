@@ -11,6 +11,8 @@ import { getStringsAudioEngine } from '@/lib/stringsAudioEngine';
 import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
 import { saveExerciseAction } from '@/app/actions/save-exercise';
 import { addCustomMasteryLevel } from '@/lib/mastery/customLevelsStorage';
+import { toast } from '@/components/ui/ToastNotification';
+import { saveLocalExercise, getLocalExercises } from '@/lib/exercises/customExercisesStorage';
 import { 
   Play, 
   Pause, 
@@ -21,6 +23,7 @@ import {
   Plus, 
   Copy, 
   Trash2, 
+  Pencil,
   ArrowLeft, 
   Drum, 
   Music, 
@@ -103,12 +106,17 @@ export const ExerciseBuilder: React.FC = () => {
   const [destination, setDestination] = useState<'general' | 'mastery'>('general');
   const [masteryLevel, setMasteryLevel] = useState<number>(11);
 
-  // Leer query params si viene derivado desde Ruta Técnica
+  // Modo Edición de Ejercicio Existente
+  const [editingSlug, setEditingSlug] = useState<string | null>(null);
+
+  // Leer query params si viene derivado desde Ruta Técnica o en Modo Edición
   useEffect(() => {
     if (!searchParams) return;
     const target = searchParams.get('target');
     const inst = searchParams.get('instrument');
     const lvl = searchParams.get('level');
+    const editSlug = searchParams.get('editSlug');
+
     if (target === 'mastery') {
       setDestination('mastery');
     }
@@ -117,6 +125,88 @@ export const ExerciseBuilder: React.FC = () => {
     }
     if (lvl) {
       setMasteryLevel(parseInt(lvl) || 11);
+    }
+
+    if (editSlug) {
+      setEditingSlug(editSlug);
+      try {
+        let exerciseData: any = null;
+        const sessionRaw = sessionStorage.getItem('soundlab_editing_exercise');
+        if (sessionRaw) {
+          const parsed = JSON.parse(sessionRaw);
+          if (parsed.slug === editSlug) {
+            exerciseData = parsed;
+          }
+        }
+        if (!exerciseData) {
+          const localList = getLocalExercises();
+          const found = localList.find((e: any) => e.slug === editSlug);
+          if (found) exerciseData = found;
+        }
+
+        if (exerciseData) {
+          if (exerciseData.title) setTitle(exerciseData.title);
+          if (exerciseData.category) setCategory(exerciseData.category);
+          if (exerciseData.difficulty) setDifficulty(exerciseData.difficulty);
+          if (exerciseData.bpmDefault || exerciseData.bpm) {
+            setBpm(Number(exerciseData.bpmDefault || exerciseData.bpm));
+          }
+          if (exerciseData.timeSignature) setTimeSignature(exerciseData.timeSignature);
+
+          let detectedInst: InstrumentCategory = 'bass';
+          if (exerciseData.instrumentType) {
+            detectedInst = exerciseData.instrumentType;
+          } else if (exerciseData.instrument === 'piano') {
+            detectedInst = 'piano';
+          } else if (exerciseData.instrument === 'bass_4') {
+            detectedInst = 'bass';
+          } else if (exerciseData.instrument === 'guitar_6') {
+            detectedInst = 'guitar';
+          } else if (exerciseData.hitsData) {
+            detectedInst = 'drums';
+          }
+          setInstrument(detectedInst);
+
+          let loadedNotes: EditorNote[] = [];
+          if (detectedInst === 'drums' && Array.isArray(exerciseData.hitsData || exerciseData.data)) {
+            const hits = exerciseData.hitsData || exerciseData.data;
+            loadedNotes = hits.map((h: any) => ({
+              step: h.step,
+              drumVoice: h.instrument,
+              accent: !!h.accent,
+              sticking: h.sticking || 'R',
+              velocity: h.velocity ?? 0.8,
+            }));
+          } else if (detectedInst === 'piano' && Array.isArray(exerciseData.tabData || exerciseData.data)) {
+            const pNotes = exerciseData.tabData || exerciseData.data;
+            loadedNotes = pNotes.map((p: any) => ({
+              step: p.step,
+              midiNumber: p.midiNumber,
+              velocity: p.velocity ?? 100,
+              durationSteps: p.durationSteps || 1,
+            }));
+          } else if (Array.isArray(exerciseData.tabData || exerciseData.data)) {
+            const sNotes = exerciseData.tabData || exerciseData.data;
+            loadedNotes = sNotes.map((s: any) => ({
+              step: s.step,
+              string: s.string,
+              fret: s.fret,
+              technique: s.technique || 'normal',
+              finger: s.finger || '1',
+              velocity: s.velocity ?? 0.85,
+            }));
+          }
+
+          if (loadedNotes.length > 0) {
+            setNotes(loadedNotes);
+            const maxStep = Math.max(...loadedNotes.map((n) => n.step), 0);
+            const calculatedMeasures = Math.max(1, Math.ceil((maxStep + 1) / 16));
+            setTotalMeasures(Math.min(8, calculatedMeasures));
+          }
+        }
+      } catch (err) {
+        console.warn('Error loading exercise for editing:', err);
+      }
     }
   }, [searchParams]);
 
@@ -704,6 +794,7 @@ export const ExerciseBuilder: React.FC = () => {
       }
 
       const res = await saveExerciseAction({
+        slug: editingSlug || undefined,
         instrumentType: instrument,
         title,
         category,
@@ -714,6 +805,31 @@ export const ExerciseBuilder: React.FC = () => {
         stepsPerMeasure,
         data: formattedData,
       });
+
+      if (res.success) {
+        saveLocalExercise({
+          slug: res.slug,
+          instrumentType: instrument,
+          title,
+          category,
+          difficulty,
+          bpmDefault: bpm,
+          bpm,
+          timeSignature,
+          totalSteps,
+          totalMeasures,
+          stepsPerMeasure,
+          hitsData: instrument === 'drums' ? formattedData : undefined,
+          tabData: instrument !== 'drums' ? formattedData : undefined,
+          instrument: instrument === 'bass' ? 'bass_4' : instrument === 'piano' ? 'piano' : 'guitar_6',
+        });
+
+        if (editingSlug) {
+          toast.success(`Ejercicio "${title}" actualizado con éxito.`);
+        } else {
+          toast.success(`Ejercicio "${title}" publicado con éxito.`);
+        }
+      }
 
       setSaveResult(res);
     } catch (e: any) {
@@ -746,6 +862,12 @@ export const ExerciseBuilder: React.FC = () => {
               <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#0891b2]/15 text-[#0891b2] border border-[#0891b2]/30 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/30">
                 Studio Builder
               </span>
+              {editingSlug && (
+                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                  <Pencil className="w-2.5 h-2.5" />
+                  Modo Edición
+                </span>
+              )}
               <span className="text-xs text-slate-500 dark:text-zinc-400 font-mono">
                 {totalMeasures} {totalMeasures === 1 ? 'Compás' : 'Compases'} ({totalSteps} Pasos)
               </span>
@@ -837,7 +959,7 @@ export const ExerciseBuilder: React.FC = () => {
             </button>
           </div>
 
-          {/* Botón Publicar Ejercicio */}
+          {/* Botón Guardar / Publicar Ejercicio */}
           <button
             onClick={handlePublish}
             disabled={isSaving}
@@ -845,10 +967,12 @@ export const ExerciseBuilder: React.FC = () => {
           >
             {isSaving ? (
               <span className="inline-block w-4 h-4 border-2 border-white dark:border-zinc-950 border-t-transparent rounded-full animate-spin" />
+            ) : editingSlug ? (
+              <CheckCircle2 className="w-4 h-4" />
             ) : (
               <Save className="w-4 h-4" />
             )}
-            <span>Publicar Ejercicio</span>
+            <span>{editingSlug ? 'Guardar Cambios' : 'Publicar Ejercicio'}</span>
           </button>
         </div>
       </div>

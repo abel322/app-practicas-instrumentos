@@ -1,34 +1,76 @@
-import { MasteryInstrument, MasterySkillNode, CustomLevelInput, InteractiveNoteStep } from '@/types/mastery';
+import {
+  MasteryInstrument,
+  MasterySkillNode,
+  CustomLevelInput,
+  InteractiveNoteStep,
+  MasteryProgressState,
+} from '@/types/mastery';
 import { MASTERY_SKILL_NODES } from './masteryData';
 
-const CUSTOM_LEVELS_STORAGE_KEY = 'soundlab_custom_mastery_nodes_v1';
+export const MASTERY_TREE_STORAGE_KEY = 'soundlab_mastery_skills_tree_v2';
+export const LEGACY_CUSTOM_LEVELS_KEY = 'soundlab_custom_mastery_nodes_v1';
 
-export function getStoredCustomLevels(): Record<MasteryInstrument, MasterySkillNode[]> {
+/**
+ * Obtiene el árbol completo de habilidades por instrumento.
+ * Si es la primera vez, inicializa con los nodos de maestría por defecto más niveles personalizados previos.
+ */
+export function getMasterySkillsTree(): Record<MasteryInstrument, MasterySkillNode[]> {
   if (typeof window === 'undefined') {
-    return { guitar: [], piano: [], bass: [], drums: [] };
-  }
-  try {
-    const raw = localStorage.getItem(CUSTOM_LEVELS_STORAGE_KEY);
-    if (!raw) return { guitar: [], piano: [], bass: [], drums: [] };
-    const parsed = JSON.parse(raw);
     return {
-      guitar: Array.isArray(parsed.guitar) ? parsed.guitar : [],
-      piano: Array.isArray(parsed.piano) ? parsed.piano : [],
-      bass: Array.isArray(parsed.bass) ? parsed.bass : [],
-      drums: Array.isArray(parsed.drums) ? parsed.drums : [],
+      guitar: MASTERY_SKILL_NODES.guitar || [],
+      piano: MASTERY_SKILL_NODES.piano || [],
+      bass: MASTERY_SKILL_NODES.bass || [],
+      drums: MASTERY_SKILL_NODES.drums || [],
     };
+  }
+
+  try {
+    const raw = localStorage.getItem(MASTERY_TREE_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          guitar: Array.isArray(parsed.guitar) ? parsed.guitar : MASTERY_SKILL_NODES.guitar,
+          piano: Array.isArray(parsed.piano) ? parsed.piano : MASTERY_SKILL_NODES.piano,
+          bass: Array.isArray(parsed.bass) ? parsed.bass : MASTERY_SKILL_NODES.bass,
+          drums: Array.isArray(parsed.drums) ? parsed.drums : MASTERY_SKILL_NODES.drums,
+        };
+      }
+    }
+
+    // Inicializar fusionando predeterminados y cualquier custom legacy
+    const legacyRaw = localStorage.getItem(LEGACY_CUSTOM_LEVELS_KEY);
+    const legacy = legacyRaw ? JSON.parse(legacyRaw) : {};
+
+    const initialTree: Record<MasteryInstrument, MasterySkillNode[]> = {
+      guitar: [...MASTERY_SKILL_NODES.guitar, ...(Array.isArray(legacy.guitar) ? legacy.guitar : [])].sort((a, b) => a.level - b.level),
+      piano: [...MASTERY_SKILL_NODES.piano, ...(Array.isArray(legacy.piano) ? legacy.piano : [])].sort((a, b) => a.level - b.level),
+      bass: [...MASTERY_SKILL_NODES.bass, ...(Array.isArray(legacy.bass) ? legacy.bass : [])].sort((a, b) => a.level - b.level),
+      drums: [...MASTERY_SKILL_NODES.drums, ...(Array.isArray(legacy.drums) ? legacy.drums : [])].sort((a, b) => a.level - b.level),
+    };
+
+    localStorage.setItem(MASTERY_TREE_STORAGE_KEY, JSON.stringify(initialTree));
+    return initialTree;
   } catch (err) {
-    console.warn('Error reading custom mastery levels from localStorage:', err);
-    return { guitar: [], piano: [], bass: [], drums: [] };
+    console.warn('Error reading mastery skills tree from localStorage:', err);
+    return {
+      guitar: MASTERY_SKILL_NODES.guitar || [],
+      piano: MASTERY_SKILL_NODES.piano || [],
+      bass: MASTERY_SKILL_NODES.bass || [],
+      drums: MASTERY_SKILL_NODES.drums || [],
+    };
   }
 }
 
-export function saveStoredCustomLevels(data: Record<MasteryInstrument, MasterySkillNode[]>): void {
+/**
+ * Guarda el árbol completo de habilidades en localStorage.
+ */
+export function saveMasterySkillsTree(data: Record<MasteryInstrument, MasterySkillNode[]>): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(CUSTOM_LEVELS_STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(MASTERY_TREE_STORAGE_KEY, JSON.stringify(data));
   } catch (err) {
-    console.warn('Error saving custom mastery levels to localStorage:', err);
+    console.warn('Error saving mastery skills tree to localStorage:', err);
   }
 }
 
@@ -80,42 +122,37 @@ export function generateInteractiveStepsFromText(
 }
 
 /**
- * Obtiene todas las habilidades para un instrumento (predeterminadas + personalizadas ordenadas por nivel)
+ * Obtiene todas las habilidades para un instrumento
  */
 export function getMergedSkillsForInstrument(
   instrument: MasteryInstrument,
-  customLevels?: MasterySkillNode[]
+  _customLevels?: MasterySkillNode[]
 ): MasterySkillNode[] {
-  const defaultList = MASTERY_SKILL_NODES[instrument] || [];
-  const customList = customLevels || getStoredCustomLevels()[instrument] || [];
-
-  const combined = [...defaultList, ...customList];
-  // Ordenar por número de nivel
-  return combined.sort((a, b) => a.level - b.level);
+  const tree = getMasterySkillsTree();
+  return tree[instrument] || [];
 }
 
 /**
- * Añade un nivel personalizado a un instrumento
+ * Añade un nivel a un instrumento
  */
 export function addCustomMasteryLevel(
   instrument: MasteryInstrument,
   input: CustomLevelInput
 ): MasterySkillNode {
-  const currentStored = getStoredCustomLevels();
-  const allCurrent = getMergedSkillsForInstrument(instrument, currentStored[instrument]);
+  const currentTree = getMasterySkillsTree();
+  const list = [...(currentTree[instrument] || [])];
 
-  // Si no se especificó nivel, asignar el siguiente al más alto
   const nextLevelNumber =
     input.level && input.level > 0
       ? input.level
-      : allCurrent.length > 0
-      ? Math.max(...allCurrent.map((s) => s.level)) + 1
-      : 11;
+      : list.length > 0
+      ? Math.max(...list.map((s) => s.level)) + 1
+      : 1;
 
   const generatedSteps = generateInteractiveStepsFromText(instrument, input.tabOrNotation);
 
   const newSkill: MasterySkillNode = {
-    id: `custom-${instrument}-lvl-${nextLevelNumber}-${Date.now()}`,
+    id: `level-${instrument}-lvl-${nextLevelNumber}-${Date.now()}`,
     instrument,
     level: nextLevelNumber,
     title: input.title.trim() || `Técnica Personalizada Nivel ${nextLevelNumber}`,
@@ -136,7 +173,7 @@ export function addCustomMasteryLevel(
     microExercise: {
       title: input.microExerciseTitle?.trim() || input.title.trim(),
       tabOrNotation: input.tabOrNotation.trim(),
-      description: input.description?.trim() || 'Micro-ejercicio compuesto por el usuario en Studio Builder.',
+      description: input.description?.trim() || 'Micro-ejercicio creado en la ruta técnica.',
       fingering: 'Digitación personalizada',
       techniqueKey: 'custom_studio_exercise',
       instructions: [
@@ -153,26 +190,33 @@ export function addCustomMasteryLevel(
     createdAt: new Date().toISOString(),
   };
 
-  currentStored[instrument] = [...currentStored[instrument], newSkill];
-  saveStoredCustomLevels(currentStored);
+  list.push(newSkill);
+  list.sort((a, b) => a.level - b.level);
+  currentTree[instrument] = list;
+  saveMasterySkillsTree(currentTree);
 
   return newSkill;
 }
 
 /**
- * Actualiza un nivel personalizado
+ * Actualiza cualquier nivel de la ruta técnica (del Nivel 1 en adelante)
  */
 export function updateCustomMasteryLevel(
   instrument: MasteryInstrument,
   skillId: string,
   input: Partial<CustomLevelInput>
 ): MasterySkillNode | null {
-  const currentStored = getStoredCustomLevels();
-  const list = currentStored[instrument];
-  const idx = list.findIndex((s) => s.id === skillId);
+  const currentTree = getMasterySkillsTree();
+  const list = currentTree[instrument] || [];
+  const idx = list.findIndex((s) => s.id === skillId || s.level === Number(skillId));
   if (idx === -1) return null;
 
   const target = list[idx];
+  const tabChanged = input.tabOrNotation && input.tabOrNotation !== target.microExercise.tabOrNotation;
+  const interactiveSteps = tabChanged
+    ? generateInteractiveStepsFromText(instrument, input.tabOrNotation!)
+    : target.microExercise.interactiveSteps;
+
   const updatedSkill: MasterySkillNode = {
     ...target,
     title: input.title !== undefined ? input.title.trim() : target.title,
@@ -189,29 +233,134 @@ export function updateCustomMasteryLevel(
       title: input.microExerciseTitle || target.microExercise.title,
       tabOrNotation: input.tabOrNotation || target.microExercise.tabOrNotation,
       description: input.description || target.microExercise.description,
+      interactiveSteps,
     },
   };
 
   list[idx] = updatedSkill;
-  saveStoredCustomLevels(currentStored);
+  currentTree[instrument] = list;
+  saveMasterySkillsTree(currentTree);
   return updatedSkill;
 }
 
 /**
- * Elimina un nivel personalizado
+ * Elimina cualquier nivel de la ruta técnica (Nivel 1 en adelante) y
+ * REINDEXA automáticamente los niveles posteriores (el Nivel 4 pasa a ser 3, etc.)
+ * recalculando el progreso del usuario sin corromperlo.
  */
+export function deleteMasteryLevelAndReindex(
+  instrument: MasteryInstrument,
+  skillId: string,
+  currentProgress: MasteryProgressState
+): { updatedSkills: MasterySkillNode[]; updatedProgress: MasteryProgressState } {
+  const currentTree = getMasterySkillsTree();
+  const list = [...(currentTree[instrument] || [])];
+  const targetIdx = list.findIndex((s) => s.id === skillId || s.level === Number(skillId));
+
+  if (targetIdx === -1) {
+    return { updatedSkills: list, updatedProgress: currentProgress };
+  }
+
+  const deletedLevelNumber = list[targetIdx].level;
+
+  // 1. Remover el nodo de nivel
+  list.splice(targetIdx, 1);
+
+  // 2. Reindexación secuencial estricta: 1, 2, 3...
+  for (let i = 0; i < list.length; i++) {
+    list[i] = {
+      ...list[i],
+      level: i + 1,
+    };
+  }
+
+  currentTree[instrument] = list;
+  saveMasterySkillsTree(currentTree);
+
+  // 3. Recalcular el progreso del usuario de forma coherente
+  const instProgress = currentProgress[instrument] || {
+    completedLevels: [],
+    activeLevel: 1,
+    cleanRepsCount: {},
+    totalPracticeMinutes: 0,
+  };
+
+  // 3a. Niveles completados: descartar el eliminado y re-mapear niveles superiores
+  const nextCompleted = instProgress.completedLevels
+    .filter((lvl) => lvl !== deletedLevelNumber)
+    .map((lvl) => (lvl > deletedLevelNumber ? lvl - 1 : lvl));
+  const uniqueCompleted = Array.from(new Set(nextCompleted)).sort((a, b) => a - b);
+
+  // 3b. Nivel activo: ajustar según la posición eliminada
+  let nextActive = instProgress.activeLevel;
+  if (instProgress.activeLevel > deletedLevelNumber) {
+    nextActive = Math.max(1, instProgress.activeLevel - 1);
+  } else if (instProgress.activeLevel === deletedLevelNumber) {
+    const maxCompleted = uniqueCompleted.length > 0 ? Math.max(...uniqueCompleted) : 0;
+    nextActive = Math.min(list.length || 1, maxCompleted + 1);
+  } else {
+    nextActive = Math.min(list.length || 1, instProgress.activeLevel);
+  }
+
+  // 3c. Repeticiones limpias (cleanRepsCount): reindexar claves numéricas
+  const nextReps: Record<number, number> = {};
+  if (instProgress.cleanRepsCount) {
+    Object.entries(instProgress.cleanRepsCount).forEach(([k, reps]) => {
+      const lvl = parseInt(k, 10);
+      if (lvl < deletedLevelNumber) {
+        nextReps[lvl] = reps;
+      } else if (lvl > deletedLevelNumber) {
+        nextReps[lvl - 1] = reps;
+      }
+    });
+  }
+
+  const nextProgressState: MasteryProgressState = {
+    ...currentProgress,
+    [instrument]: {
+      ...instProgress,
+      completedLevels: uniqueCompleted,
+      activeLevel: nextActive,
+      cleanRepsCount: nextReps,
+    },
+  };
+
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('soundlab_mastery_v1', JSON.stringify(nextProgressState));
+    } catch (_) {}
+  }
+
+  return {
+    updatedSkills: list,
+    updatedProgress: nextProgressState,
+  };
+}
+
+/**
+ * Función legacy para mantener compatibilidad
+ */
+export function getStoredCustomLevels(): Record<MasteryInstrument, MasterySkillNode[]> {
+  const tree = getMasterySkillsTree();
+  return {
+    guitar: tree.guitar.filter((s) => s.isCustom),
+    piano: tree.piano.filter((s) => s.isCustom),
+    bass: tree.bass.filter((s) => s.isCustom),
+    drums: tree.drums.filter((s) => s.isCustom),
+  };
+}
+
 export function deleteCustomMasteryLevel(
   instrument: MasteryInstrument,
   skillId: string
 ): boolean {
-  const currentStored = getStoredCustomLevels();
-  const initialLength = currentStored[instrument].length;
-  currentStored[instrument] = currentStored[instrument].filter((s) => s.id !== skillId);
+  const currentTree = getMasterySkillsTree();
+  const initialLength = currentTree[instrument].length;
+  currentTree[instrument] = currentTree[instrument].filter((s) => s.id !== skillId);
 
-  if (currentStored[instrument].length !== initialLength) {
-    saveStoredCustomLevels(currentStored);
+  if (currentTree[instrument].length !== initialLength) {
+    saveMasterySkillsTree(currentTree);
     return true;
   }
   return false;
 }
-

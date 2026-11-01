@@ -2,17 +2,27 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { StringExerciseData } from '@/types/strings';
-import { Play, Activity, Clock, Music, Sliders } from 'lucide-react';
+import { Play, Activity, Clock, Pencil, Trash2 } from 'lucide-react';
 
 interface StringExerciseCardProps {
   exercise: StringExerciseData;
   index: number;
+  onEdit?: (exercise: StringExerciseData) => void;
+  onRequestDelete?: (exercise: StringExerciseData) => void;
 }
 
-export const StringExerciseCard: React.FC<StringExerciseCardProps> = ({ exercise, index }) => {
+export const StringExerciseCard: React.FC<StringExerciseCardProps> = ({
+  exercise,
+  index,
+  onEdit,
+  onRequestDelete,
+}) => {
+  const router = useRouter();
   const isBass = exercise.instrument === 'bass_4';
+  const isPiano = exercise.instrument === ('piano' as any);
 
   const getDifficultyBadge = (difficulty: string) => {
     switch (difficulty) {
@@ -27,8 +37,33 @@ export const StringExerciseCard: React.FC<StringExerciseCardProps> = ({ exercise
     }
   };
 
+  const handleEdit = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const instType = isPiano ? 'piano' : isBass ? 'bass' : 'guitar';
+    if (onEdit) {
+      onEdit(exercise);
+    } else {
+      try {
+        sessionStorage.setItem(
+          'soundlab_editing_exercise',
+          JSON.stringify({ ...exercise, instrumentType: instType })
+        );
+      } catch (_) {}
+      router.push(`/admin/builder?editSlug=${exercise.slug}&instrument=${instType}`);
+    }
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onRequestDelete) {
+      onRequestDelete(exercise);
+    }
+  };
+
   // Extraer las primeras notas para una vista previa de la tablatura
-  const tabPreview = exercise.tabData.slice(0, 10);
+  const tabPreview = (exercise.tabData || []).slice(0, 10);
 
   return (
     <motion.div
@@ -42,27 +77,51 @@ export const StringExerciseCard: React.FC<StringExerciseCardProps> = ({ exercise
       <div className="absolute top-0 right-0 -mr-16 -mt-16 w-36 h-36 bg-[#0891b2]/5 dark:bg-cyan-500/10 rounded-full blur-2xl group-hover:bg-[#0891b2]/10 dark:group-hover:bg-cyan-500/20 transition-all duration-500 pointer-events-none" />
 
       <div>
-        {/* Cabecera: Instrumento y Dificultad */}
+        {/* Cabecera: Instrumento, Dificultad y Acciones CRUD */}
         <div className="flex items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
             <span
               className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
-                isBass
+                isPiano
+                  ? 'bg-amber-500/15 border-amber-500/30 text-amber-700 dark:text-amber-300'
+                  : isBass
                   ? 'bg-[#0891b2]/15 border-[#0891b2]/30 text-[#0891b2] dark:bg-cyan-500/15 dark:border-cyan-500/30 dark:text-cyan-300'
                   : 'bg-fuchsia-600/15 border-fuchsia-600/30 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:border-fuchsia-500/30 dark:text-fuchsia-300'
               }`}
             >
-              {isBass ? 'Bajo (4 Cuerdas)' : 'Guitarra (6 Cuerdas)'}
+              {isPiano ? 'Piano' : isBass ? 'Bajo (4 Cuerdas)' : 'Guitarra (6 Cuerdas)'}
             </span>
           </div>
 
-          <span
-            className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${getDifficultyBadge(
-              exercise.difficulty
-            )}`}
-          >
-            {exercise.difficulty}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span
+              className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${getDifficultyBadge(
+                exercise.difficulty
+              )}`}
+            >
+              {exercise.difficulty}
+            </span>
+
+            {/* Acciones CRUD al pasar el cursor */}
+            <div className="flex items-center gap-1 ml-1 opacity-70 group-hover:opacity-100 transition-opacity">
+              <button
+                type="button"
+                onClick={handleEdit}
+                title="Editar en Studio Builder"
+                className="p-1 rounded-lg text-slate-500 hover:text-cyan-600 dark:text-zinc-400 dark:hover:text-cyan-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                title="Eliminar ejercicio"
+                className="p-1 rounded-lg text-slate-500 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950/40 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Categoría */}
@@ -96,7 +155,9 @@ export const StringExerciseCard: React.FC<StringExerciseCardProps> = ({ exercise
                   className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-white dark:bg-white/5 border border-slate-300 dark:border-white/10 text-[10px] text-slate-700 dark:text-zinc-300"
                 >
                   <span className="text-slate-500 dark:text-zinc-500 text-[9px]">c{note.string}:</span>
-                  <span className="text-[#0891b2] dark:text-cyan-400 font-bold">{note.technique === 'ghost' ? 'X' : note.fret}</span>
+                  <span className="text-[#0891b2] dark:text-cyan-400 font-bold">
+                    {note.technique === 'ghost' ? 'X' : note.fret}
+                  </span>
                   {note.technique && note.technique !== 'normal' && note.technique !== 'ghost' && (
                     <span className="text-[9px] text-fuchsia-600 dark:text-fuchsia-400 uppercase font-extrabold ml-0.5">
                       ({note.technique[0]})

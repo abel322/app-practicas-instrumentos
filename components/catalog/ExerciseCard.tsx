@@ -2,16 +2,26 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { DrumExerciseData } from '@/types/drum';
-import { Play, Activity, Clock, Zap } from 'lucide-react';
+import { Play, Activity, Clock, Pencil, Trash2 } from 'lucide-react';
 
 interface ExerciseCardProps {
   exercise: DrumExerciseData;
   index: number;
+  onEdit?: (exercise: DrumExerciseData) => void;
+  onRequestDelete?: (exercise: DrumExerciseData) => void;
 }
 
-export const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, index }) => {
+export const ExerciseCard: React.FC<ExerciseCardProps> = ({
+  exercise,
+  index,
+  onEdit,
+  onRequestDelete,
+}) => {
+  const router = useRouter();
+
   // Configuración de colores para nivel de dificultad
   const getDifficultyBadge = (difficulty: string) => {
     switch (difficulty) {
@@ -23,6 +33,30 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, index }) =
         return 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-500/30';
       default:
         return 'bg-cyan-100 text-cyan-800 border-cyan-300 dark:bg-cyan-950/50 dark:text-cyan-300 dark:border-cyan-500/30';
+    }
+  };
+
+  const handleEdit = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onEdit) {
+      onEdit(exercise);
+    } else {
+      try {
+        sessionStorage.setItem(
+          'soundlab_editing_exercise',
+          JSON.stringify({ ...exercise, instrumentType: 'drums' })
+        );
+      } catch (_) {}
+      router.push(`/admin/builder?editSlug=${exercise.slug}&instrument=drums`);
+    }
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onRequestDelete) {
+      onRequestDelete(exercise);
     }
   };
 
@@ -43,19 +77,41 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, index }) =
       <div className="absolute top-0 right-0 -mr-16 -mt-16 w-36 h-36 bg-[#0891b2]/5 dark:bg-cyan-500/10 rounded-full blur-2xl group-hover:bg-[#0891b2]/10 dark:group-hover:bg-cyan-500/20 transition-all duration-500 pointer-events-none" />
 
       <div>
-        {/* Cabecera de la Card: Categoría y Dificultad */}
+        {/* Cabecera de la Card: Categoría, Dificultad y Acciones CRUD */}
         <div className="flex items-center justify-between gap-2 mb-4">
           <span className="text-xs uppercase tracking-widest font-bold text-[#0891b2] dark:text-cyan-400">
             {exercise.category}
           </span>
 
-          <span
-            className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${getDifficultyBadge(
-              exercise.difficulty
-            )}`}
-          >
-            {exercise.difficulty}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span
+              className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${getDifficultyBadge(
+                exercise.difficulty
+              )}`}
+            >
+              {exercise.difficulty}
+            </span>
+
+            {/* Menú Contextual / Botones de Gestión (Editar / Eliminar) */}
+            <div className="flex items-center gap-1 ml-1 opacity-70 group-hover:opacity-100 transition-opacity">
+              <button
+                type="button"
+                onClick={handleEdit}
+                title="Editar en Studio Builder"
+                className="p-1 rounded-lg text-slate-500 hover:text-cyan-600 dark:text-zinc-400 dark:hover:text-cyan-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                title="Eliminar ejercicio"
+                className="p-1 rounded-lg text-slate-500 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950/40 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Título */}

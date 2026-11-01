@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 
 export interface SaveExercisePayload {
+  slug?: string;
   instrumentType: 'drums' | 'bass' | 'guitar' | 'piano';
   title: string;
   category: string;
@@ -36,15 +37,46 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
       return { success: false, error: 'El título del ejercicio es obligatorio.' };
     }
 
-    const baseSlug = slugify(formData.title) || `ejercicio-${Date.now()}`;
+    const baseSlug = formData.slug ? formData.slug.trim() : slugify(formData.title) || `ejercicio-${Date.now()}`;
     const totalSteps = formData.totalMeasures * formData.stepsPerMeasure;
 
     if (formData.instrumentType === 'drums') {
-      // Guardar en tabla DrumExercise
       let slug = baseSlug;
-      // Verificar si ya existe con slug idéntico para no colisionar en caso de título duplicado
-      const existing = await prisma.drumExercise.findUnique({ where: { slug } }).catch(() => null);
-      if (existing) {
+
+      if (formData.slug) {
+        // Modo edición o sobreescritura
+        const existing = await prisma.drumExercise.findUnique({ where: { slug: formData.slug } }).catch(() => null);
+        if (existing) {
+          const updated = await prisma.drumExercise.update({
+            where: { slug: formData.slug },
+            data: {
+              title: formData.title.trim(),
+              category: formData.category,
+              difficulty: formData.difficulty,
+              bpmDefault: Number(formData.bpm) || 100,
+              timeSignature: formData.timeSignature,
+              totalSteps: totalSteps,
+              hitsData: formData.data,
+            },
+          });
+
+          revalidatePath('/');
+          revalidatePath('/drums');
+          revalidatePath(`/practice/${updated.slug}`);
+
+          return {
+            success: true,
+            slug: updated.slug,
+            instrument: 'drums',
+            url: `/practice/${updated.slug}`,
+            isUpdate: true,
+          };
+        }
+      }
+
+      // Si no existe o no tiene slug previo, verificar colisión
+      const existingCollision = await prisma.drumExercise.findUnique({ where: { slug } }).catch(() => null);
+      if (existingCollision) {
         slug = `${baseSlug}-${Math.floor(1000 + Math.random() * 9000)}`;
       }
 
@@ -71,6 +103,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
         slug: exercise.slug,
         instrument: 'drums',
         url: `/practice/${exercise.slug}`,
+        isUpdate: false,
       };
     } else {
       // Guardar en tabla StringExercise (Bajo, Guitarra o Piano)
@@ -87,9 +120,42 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
           ? 'E A D G'
           : 'E A D G B E';
 
+      if (formData.slug) {
+        // Modo edición o sobreescritura
+        const existing = await prisma.stringExercise.findUnique({ where: { slug: formData.slug } }).catch(() => null);
+        if (existing) {
+          const updated = await prisma.stringExercise.update({
+            where: { slug: formData.slug },
+            data: {
+              title: formData.title.trim(),
+              instrument,
+              tuning,
+              category: formData.category,
+              difficulty: formData.difficulty,
+              bpmDefault: Number(formData.bpm) || 90,
+              timeSignature: formData.timeSignature,
+              totalSteps: totalSteps,
+              tabData: formData.data,
+            },
+          });
+
+          revalidatePath('/');
+          revalidatePath('/strings');
+          revalidatePath(`/strings/practice/${updated.slug}`);
+
+          return {
+            success: true,
+            slug: updated.slug,
+            instrument: formData.instrumentType,
+            url: `/strings/practice/${updated.slug}`,
+            isUpdate: true,
+          };
+        }
+      }
+
       let slug = baseSlug;
-      const existing = await prisma.stringExercise.findUnique({ where: { slug } }).catch(() => null);
-      if (existing) {
+      const existingCollision = await prisma.stringExercise.findUnique({ where: { slug } }).catch(() => null);
+      if (existingCollision) {
         slug = `${baseSlug}-${Math.floor(1000 + Math.random() * 9000)}`;
       }
 
@@ -118,6 +184,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
         slug: exercise.slug,
         instrument: formData.instrumentType,
         url: `/strings/practice/${exercise.slug}`,
+        isUpdate: false,
       };
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -126,6 +193,40 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
     return {
       success: false,
       error: error?.message || 'Error desconocido al guardar en la base de datos.',
+    };
+  }
+}
+
+export async function deleteExerciseAction(
+  slug: string,
+  instrumentType: 'drums' | 'bass' | 'guitar' | 'piano'
+) {
+  try {
+    if (!slug) {
+      return { success: false, error: 'Slug de ejercicio no especificado.' };
+    }
+
+    if (instrumentType === 'drums') {
+      await prisma.drumExercise.delete({ where: { slug } }).catch((err) => {
+        console.warn('Prisma drum delete info (probablemente ya eliminado o en memoria):', err?.message || err);
+      });
+      revalidatePath('/');
+      revalidatePath('/drums');
+      return { success: true };
+    } else {
+      await prisma.stringExercise.delete({ where: { slug } }).catch((err) => {
+        console.warn('Prisma string delete info (probablemente ya eliminado o en memoria):', err?.message || err);
+      });
+      revalidatePath('/');
+      revalidatePath('/strings');
+      return { success: true };
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('❌ Error al eliminar ejercicio en DB:', error);
+    return {
+      success: false,
+      error: error?.message || 'Error desconocido al eliminar de la base de datos.',
     };
   }
 }

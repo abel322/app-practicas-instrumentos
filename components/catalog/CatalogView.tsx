@@ -1,11 +1,20 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DrumExerciseData, ExerciseCategory } from '@/types/drum';
 import { CategoryFilter } from './CategoryFilter';
 import { ExerciseCard } from './ExerciseCard';
-import { Search, SlidersHorizontal, Drum, Sparkles } from 'lucide-react';
+import { Search, Drum } from 'lucide-react';
+import { ConfirmDeleteModal } from '@/components/ui/ConfirmDeleteModal';
+import { toast } from '@/components/ui/ToastNotification';
+import { deleteExerciseAction } from '@/app/actions/save-exercise';
+import {
+  getDeletedExerciseSlugs,
+  markExerciseAsDeleted,
+  getLocalExercises,
+} from '@/lib/exercises/customExercisesStorage';
 
 interface CatalogViewProps {
   initialExercises: DrumExerciseData[];
@@ -20,24 +29,113 @@ const CATEGORIES: ExerciseCategory[] = [
 ];
 
 export const CatalogView: React.FC<CatalogViewProps> = ({ initialExercises }) => {
+  const router = useRouter();
+  const [exercises, setExercises] = useState<DrumExerciseData[]>(initialExercises);
   const [selectedCategory, setSelectedCategory] = useState<ExerciseCategory>('Todos');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('Todas');
 
+  // Modal de confirmación de eliminación
+  const [exerciseToDelete, setExerciseToDelete] = useState<DrumExerciseData | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+
+  // Sincronizar en el cliente con ejercicios locales modificados y omitir los eliminados
+  useEffect(() => {
+    try {
+      const deletedSlugs = getDeletedExerciseSlugs();
+      const localCustom = getLocalExercises().filter(
+        (ex) => ex.instrumentType === 'drums' || ex.hitsData
+      );
+
+      setExercises((prev) => {
+        // Excluir los eliminados
+        let list = prev.filter((ex) => !deletedSlugs.includes(ex.slug));
+
+        // Fusionar o anteponer ejercicios creados/actualizados en localStorage
+        localCustom.forEach((customEx) => {
+          if (deletedSlugs.includes(customEx.slug)) return;
+
+          const idx = list.findIndex((e) => e.slug === customEx.slug);
+          const mappedEx: DrumExerciseData = {
+            id: customEx.id || customEx.slug,
+            slug: customEx.slug,
+            title: customEx.title,
+            category: customEx.category,
+            difficulty: customEx.difficulty,
+            bpmDefault: customEx.bpmDefault || customEx.bpm || 100,
+            timeSignature: customEx.timeSignature || '4/4',
+            totalSteps: customEx.totalSteps || (customEx.hitsData ? customEx.hitsData.length : 32),
+            hitsData: Array.isArray(customEx.hitsData)
+              ? customEx.hitsData
+              : Array.isArray(customEx.data)
+              ? customEx.data
+              : [],
+            description: customEx.description || '',
+          };
+
+          if (idx !== -1) {
+            list[idx] = mappedEx;
+          } else {
+            list = [mappedEx, ...list];
+          }
+        });
+
+        return list;
+      });
+    } catch (err) {
+      console.warn('Error sincronizando ejercicios locales:', err);
+    }
+  }, []);
+
+  // Manejar edición: guardar en sessionStorage y navegar a Studio Builder
+  const handleEdit = (ex: DrumExerciseData) => {
+    try {
+      sessionStorage.setItem(
+        'soundlab_editing_exercise',
+        JSON.stringify({ ...ex, instrumentType: 'drums' })
+      );
+    } catch (_) {}
+    router.push(`/admin/builder?editSlug=${ex.slug}&instrument=drums`);
+  };
+
+  // Manejar confirmación de eliminación
+  const handleConfirmDelete = async () => {
+    if (!exerciseToDelete) return;
+    setIsDeleting(true);
+
+    try {
+      // 1. Notificar a la base de datos vía server action
+      await deleteExerciseAction(exerciseToDelete.slug, 'drums');
+
+      // 2. Persistir eliminación localmente para que no reaparezca
+      markExerciseAsDeleted(exerciseToDelete.slug);
+
+      // 3. Actualizar estado reactivo sin recargar la página
+      setExercises((prev) => prev.filter((e) => e.slug !== exerciseToDelete.slug));
+
+      toast.success(`Ejercicio "${exerciseToDelete.title}" eliminado con éxito.`);
+      setExerciseToDelete(null);
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al eliminar el ejercicio.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Conteo de ejercicios por categoría
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {
-      Todos: initialExercises.length,
+      Todos: exercises.length,
     };
-    initialExercises.forEach((ex) => {
+    exercises.forEach((ex) => {
       counts[ex.category] = (counts[ex.category] || 0) + 1;
     });
     return counts;
-  }, [initialExercises]);
+  }, [exercises]);
 
   // Filtrado reactivo de ejercicios
   const filteredExercises = useMemo(() => {
-    return initialExercises.filter((ex) => {
+    return exercises.filter((ex) => {
       const matchesCategory =
         selectedCategory === 'Todos' || ex.category === selectedCategory;
 
@@ -52,7 +150,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialExercises }) =>
 
       return matchesCategory && matchesDifficulty && matchesSearch;
     });
-  }, [initialExercises, selectedCategory, selectedDifficulty, searchQuery]);
+  }, [exercises, selectedCategory, selectedDifficulty, searchQuery]);
 
   return (
     <div className="w-full flex flex-col gap-8">
@@ -114,6 +212,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialExercises }) =>
                 key={exercise.id || exercise.slug}
                 exercise={exercise}
                 index={index}
+                onEdit={handleEdit}
+                onRequestDelete={(ex) => setExerciseToDelete(ex)}
               />
             ))}
           </motion.div>
@@ -144,6 +244,17 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialExercises }) =>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Modal de Confirmación de Eliminación */}
+      <ConfirmDeleteModal
+        isOpen={!!exerciseToDelete}
+        onClose={() => setExerciseToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title="¿Estás seguro de eliminar este ejercicio?"
+        itemName={exerciseToDelete ? `${exerciseToDelete.title} (${exerciseToDelete.category})` : undefined}
+        description="Esta acción eliminará el ejercicio de la biblioteca y de la base de datos de manera permanente."
+        isDeleting={isDeleting}
+      />
     </div>
   );
 };

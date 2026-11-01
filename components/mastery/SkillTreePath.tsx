@@ -24,7 +24,7 @@ interface SkillTreePathProps {
   onOpenPractice: (skill: MasterySkillNode) => void;
   onAddNewLevel?: () => void;
   onEditSkill?: (skill: MasterySkillNode) => void;
-  onDeleteSkill?: (skillId: string) => void;
+  onDeleteSkill?: (skill: MasterySkillNode) => void;
 }
 
 export const SkillTreePath: React.FC<SkillTreePathProps> = ({
@@ -256,37 +256,27 @@ export const SkillTreePath: React.FC<SkillTreePathProps> = ({
                         <span>Sesión 15m</span>
                       </div>
 
-                      {/* Acciones para Niveles Personalizados del Usuario */}
-                      {skill.isCustom && (
-                        <div className="flex items-center gap-1.5 ml-2">
-                          {onEditSkill && (
-                            <button
-                              onClick={() => onEditSkill(skill)}
-                              title="Editar nivel personalizado"
-                              className="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 hover:text-amber-500 transition-colors"
-                            >
-                              <Pencil className="w-3 h-3" />
-                            </button>
-                          )}
-                          {onDeleteSkill && (
-                            <button
-                              onClick={() => {
-                                if (
-                                  window.confirm(
-                                    `¿Seguro que deseas eliminar el nivel personalizado "${skill.title}"?`
-                                  )
-                                ) {
-                                  onDeleteSkill(skill.id);
-                                }
-                              }}
-                              title="Eliminar nivel personalizado"
-                              className="p-1 rounded-md hover:bg-rose-100 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-500 transition-colors"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-                      )}
+                      {/* Acciones de Gestión de Nivel (Nivel 1 en adelante) */}
+                      <div className="flex items-center gap-1.5 ml-2">
+                        {onEditSkill && (
+                          <button
+                            onClick={() => onEditSkill(skill)}
+                            title="Editar nivel"
+                            className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 hover:text-amber-500 transition-colors"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {onDeleteSkill && (
+                          <button
+                            onClick={() => onDeleteSkill(skill)}
+                            title="Eliminar nivel"
+                            className="p-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-500 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
