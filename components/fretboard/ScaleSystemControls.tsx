@@ -6,7 +6,8 @@ import {
   NoteDisplayMode, 
   CAGED_BOXES, 
   THREE_NPS_PATTERNS,
-  THREE_TO_TWO_SYSTEM_PATTERNS
+  THREE_TO_TWO_SYSTEM_PATTERNS,
+  ThreeToTwoLayoutMode,
 } from '@/lib/music-theory/scaleSystems';
 
 export interface ScaleSystemControlsProps {
@@ -18,6 +19,8 @@ export interface ScaleSystemControlsProps {
   onDisplayModeChange: (mode: NoteDisplayMode) => void;
   scaleViewMode?: 'single_box' | 'full_neck_map';
   onScaleViewModeChange?: (mode: 'single_box' | 'full_neck_map') => void;
+  threeToTwoLayout?: ThreeToTwoLayoutMode;
+  onThreeToTwoLayoutChange?: (layout: ThreeToTwoLayoutMode) => void;
 }
 
 export function ScaleSystemControls({
@@ -29,6 +32,8 @@ export function ScaleSystemControls({
   onDisplayModeChange,
   scaleViewMode = 'single_box',
   onScaleViewModeChange,
+  threeToTwoLayout = 'vertical',
+  onThreeToTwoLayoutChange,
 }: ScaleSystemControlsProps) {
   const patterns =
     system === 'caged'
@@ -152,6 +157,60 @@ export function ScaleSystemControls({
         </div>
 
       </div>
+
+      {/* Selector de Trayectoria 3 a 2 (Vertical vs Diagonal Ascendente / Descendente) */}
+      {system === 'three_to_two' && onThreeToTwoLayoutChange && (
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900/80 p-2 sm:p-2.5 rounded-xl border border-amber-900/40">
+          <div className="flex items-center gap-2">
+            <span className="text-amber-400 font-bold text-xs">⚡ Trayectoria 3-2:</span>
+            <div className="inline-flex p-0.5 bg-slate-950 rounded-lg border border-slate-800 text-xs">
+              <button
+                type="button"
+                onClick={() => onThreeToTwoLayoutChange('vertical')}
+                className={`px-2.5 py-1 rounded text-xs font-bold transition-all ${
+                  (threeToTwoLayout || 'vertical') === 'vertical'
+                    ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                ⬍ Vertical (Caja)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onThreeToTwoLayoutChange('diagonal_asc')}
+                className={`px-2.5 py-1 rounded text-xs font-bold transition-all flex items-center gap-1 ${
+                  threeToTwoLayout === 'diagonal_asc'
+                    ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <span>↗ Diagonal Ascendente</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onThreeToTwoLayoutChange('diagonal_desc')}
+                className={`px-2.5 py-1 rounded text-xs font-bold transition-all flex items-center gap-1 ${
+                  threeToTwoLayout === 'diagonal_desc'
+                    ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <span>↙ Diagonal Descendente</span>
+              </button>
+            </div>
+          </div>
+
+          <span className="text-[11px] text-amber-300/80 hidden sm:inline font-mono">
+            {threeToTwoLayout === 'diagonal_asc'
+              ? '↗ Shift de Dedo 1 hacia agudos (+2 trastes/cuerda)'
+              : threeToTwoLayout === 'diagonal_desc'
+              ? '↙ Desplazamiento hacia la cejuela (-2 trastes/cuerda)'
+              : '⬍ Digitación fija dentro del rango local de 4-5 trastes'}
+          </span>
+        </div>
+      )}
 
       {/* Botonera de Posiciones con Leyenda de Extensión */}
       <div className="flex items-center justify-between gap-2">

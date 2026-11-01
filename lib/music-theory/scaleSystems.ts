@@ -13,10 +13,21 @@ import { ALL_SCALES_CATALOG, ScaleFormula } from './scaleDefinitions';
 import {
   THREE_TO_TWO_PATTERNS,
   THREE_TO_TWO_SYSTEM_PATTERNS,
+  ThreeToTwoLayoutMode,
+  DiagonalNode,
+  ThreeToTwoDiagonalTrack,
+  THREE_TO_TWO_DIAGONAL_TRACKS,
   calculateThreeToTwoNotes,
+  calculateThreeToTwoDiagonalNotes,
 } from './threeToTwoSystem';
 
-export { THREE_TO_TWO_PATTERNS, THREE_TO_TWO_SYSTEM_PATTERNS };
+export {
+  THREE_TO_TWO_PATTERNS,
+  THREE_TO_TWO_SYSTEM_PATTERNS,
+  THREE_TO_TWO_DIAGONAL_TRACKS,
+  calculateThreeToTwoDiagonalNotes,
+};
+export type { ThreeToTwoLayoutMode, DiagonalNode, ThreeToTwoDiagonalTrack };
 export type ScaleSystemType = 'caged' | '3nps' | 'three_to_two';
 export type NoteDisplayMode = 'notes' | 'degrees' | 'fingers';
 
@@ -436,9 +447,16 @@ export function calculateScaleSystemNotes(
   rootNote: string,
   scaleKey: ScaleKey,
   system: ScaleSystemType,
-  patternId: number
+  patternId: number,
+  threeToTwoLayout: ThreeToTwoLayoutMode = 'vertical'
 ): ScaleCalculationResult {
   if (system === 'three_to_two') {
+    if (threeToTwoLayout === 'diagonal_asc') {
+      return calculateThreeToTwoDiagonalNotes(instrument, rootNote, scaleKey, 'ascending', patternId);
+    }
+    if (threeToTwoLayout === 'diagonal_desc') {
+      return calculateThreeToTwoDiagonalNotes(instrument, rootNote, scaleKey, 'descending', patternId);
+    }
     return calculateThreeToTwoNotes(instrument, rootNote, scaleKey, patternId);
   }
 

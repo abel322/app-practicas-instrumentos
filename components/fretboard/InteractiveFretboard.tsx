@@ -29,6 +29,7 @@ export interface ActiveFretNote {
   midi: number;
   isDimmed?: boolean;
   isTargetTone?: boolean;
+  isShiftPoint?: boolean;
 }
 
 export interface FretboardViewControlsProps {
@@ -809,6 +810,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                 displayMode={displayMode}
                 isInActiveBox={!activeItem.isDimmed}
                 isHighlighted={isStepActive}
+                isShiftPoint={activeItem.isShiftPoint}
                 size="md"
               />
             </div>

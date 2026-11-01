@@ -56,6 +56,7 @@ import {
   THREE_NPS_PATTERNS,
   THREE_NPS_BASE_PATTERNS,
   assignFingersToString,
+  ThreeToTwoLayoutMode,
 } from '@/lib/music-theory/scaleSystems';
 import {
   THREE_TO_TWO_PATTERNS,
@@ -116,6 +117,7 @@ export default function FretboardPage() {
   const [scaleSystem, setScaleSystem] = useState<ScaleSystemType>('caged');
   const [activePatternId, setActivePatternId] = useState<number>(1);
   const [scaleViewMode, setScaleViewMode] = useState<'single_box' | 'full_neck_map'>('single_box');
+  const [threeToTwoLayout, setThreeToTwoLayout] = useState<ThreeToTwoLayoutMode>('vertical');
 
   // Estado de Persistencia en Base de Datos PostgreSQL
   const [customDbPattern, setCustomDbPattern] = useState<{
@@ -324,9 +326,10 @@ export default function FretboardPage() {
       rootNote,
       scaleKey,
       scaleSystem,
-      activePatternId
+      activePatternId,
+      threeToTwoLayout
     );
-  }, [studyMode, instrument, rootNote, scaleKey, scaleSystem, activePatternId]);
+  }, [studyMode, instrument, rootNote, scaleKey, scaleSystem, activePatternId, threeToTwoLayout]);
 
   // Zonas / Brackets de Posición a lo largo de todo el mástil (0 a 24 trastes)
   const positionZones = useMemo(() => {
@@ -1392,6 +1395,8 @@ export default function FretboardPage() {
     chordSystem,
     progressionSystem,
     selectedThreeToTwoPattern,
+    threeToTwoLayout,
+    scaleSystem,
     activeProgression,
     currentProgressionStepIndex,
     scaleResult,
@@ -1667,6 +1672,8 @@ export default function FretboardPage() {
             onDisplayModeChange={setDisplayMode}
             scaleViewMode={scaleViewMode}
             onScaleViewModeChange={setScaleViewMode}
+            threeToTwoLayout={threeToTwoLayout}
+            onThreeToTwoLayoutChange={setThreeToTwoLayout}
           />
         )}
 

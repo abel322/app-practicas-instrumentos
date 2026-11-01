@@ -368,3 +368,223 @@ export function getThreeToTwoChordVoicing(
   };
 }
 
+// ============================================================================
+// DIGITACIONES DIAGONALES 3 A 2 (SHIFTING HORIZONTAL A LO LARGO DEL MÁSTIL)
+// ============================================================================
+
+export type ThreeToTwoLayoutMode = 'vertical' | 'diagonal_asc' | 'diagonal_desc';
+
+export interface DiagonalNode {
+  stringIndex: number; // 5 (6ª cuerda) a 0 (1ª cuerda)
+  fret: number;
+  note: string;
+  finger: number; // 1, 2, 3, 4
+  isShiftPoint?: boolean; // Indica si en esa nota se realiza el cambio de posición de la mano
+}
+
+export interface ThreeToTwoDiagonalTrack {
+  id: string;
+  name: string;
+  description: string;
+  direction: 'ascending' | 'descending';
+  startFretRange: [number, number];
+  endFretRange: [number, number];
+  calculateNodes: (rootNote: string, scaleNotes: string[], startingFret: number) => DiagonalNode[];
+}
+
+export const THREE_TO_TWO_DIAGONAL_TRACKS: ThreeToTwoDiagonalTrack[] = [
+  {
+    id: 'diag_asc_6to1',
+    name: 'Diagonal Mayor (Tr. 3 al 15)',
+    description: 'Avanza 2 trastes por cuerda alternando 3 y 2 notas con shift de dedo 1.',
+    direction: 'ascending',
+    startFretRange: [3, 7],
+    endFretRange: [12, 15],
+    calculateNodes: (rootNote: string, _scaleNotes: string[], _startingFret: number): DiagonalNode[] => {
+      const res = calculateThreeToTwoDiagonalNotes('guitar_6', rootNote, 'major', 'ascending', 1);
+      return res.notes.map((n) => ({
+        stringIndex: n.stringIndex,
+        fret: n.fret,
+        note: n.note,
+        finger: n.fingerAssignment?.finger || 1,
+        isShiftPoint: n.isShiftPoint,
+      }));
+    },
+  },
+  {
+    id: 'diag_pentatonic_connect',
+    name: 'Diagonal Pentatónica + Notas de Paso',
+    description: 'Conecta 3 cajas consecutivas a través de slides/cambios de posición en cuerdas 4ª y 2ª.',
+    direction: 'ascending',
+    startFretRange: [5, 8],
+    endFretRange: [12, 15],
+    calculateNodes: (rootNote: string, _scaleNotes: string[], _startingFret: number): DiagonalNode[] => {
+      const res = calculateThreeToTwoDiagonalNotes('guitar_6', rootNote, 'pentatonic_minor', 'ascending', 1);
+      return res.notes.map((n) => ({
+        stringIndex: n.stringIndex,
+        fret: n.fret,
+        note: n.note,
+        finger: n.fingerAssignment?.finger || 1,
+        isShiftPoint: n.isShiftPoint,
+      }));
+    },
+  },
+];
+
+/**
+ * Calcula las notas, intervalos, roles y digitaciones para un recorrido diagonal
+ * a lo largo de todo el diapasón (ascendente o descendente) alternando 3 y 2 notas por cuerda.
+ */
+export function calculateThreeToTwoDiagonalNotes(
+  instrument: InstrumentType,
+  rootNote: string,
+  scaleKey: ScaleKey,
+  direction: 'ascending' | 'descending' = 'ascending',
+  patternIdOrIndex: string | number = 1
+): { notes: ActiveFretNote[]; fretRange: [number, number]; boxBaseFret: number } {
+  const config = INSTRUMENTS[instrument];
+  const totalFrets = config.totalFrets;
+  const pattern = getThreeToTwoPattern(patternIdOrIndex);
+  const formula: ScaleFormula = ALL_SCALES_CATALOG[scaleKey] || ALL_SCALES_CATALOG.major;
+
+  const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
+  const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
+  const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+
+  const numStrings = config.strings.length;
+
+  // Encontrar el traste ancla en la cuerda más grave (6ª cuerda en guitarra, 4ª en bajo)
+  let anchorFret = (pattern.baseMinFret + shift) % 12;
+  if (anchorFret < 1) anchorFret += 12;
+
+  if (direction === 'ascending') {
+    while (anchorFret > 5 && anchorFret - 12 >= 1) {
+      anchorFret -= 12;
+    }
+  } else {
+    while (anchorFret < 11 && anchorFret + 12 <= totalFrets - 4) {
+      anchorFret += 12;
+    }
+  }
+
+  const notes: ActiveFretNote[] = [];
+  let prevFirstFret = anchorFret;
+
+  for (let sFromBass = 0; sFromBass < numStrings; sFromBass++) {
+    const sIdx = (numStrings - 1) - sFromBass;
+    const str = config.strings[sIdx];
+    const targetCount = pattern.stringDistribution[sFromBass % pattern.stringDistribution.length] || 2;
+
+    let idealStartFret: number;
+    if (sFromBass === 0) {
+      idealStartFret = anchorFret;
+    } else if (direction === 'ascending') {
+      idealStartFret = prevFirstFret + 2;
+    } else {
+      idealStartFret = Math.max(1, prevFirstFret - 2);
+    }
+
+    if (direction === 'ascending' && idealStartFret > totalFrets - 4) {
+      idealStartFret = Math.max(1, idealStartFret - 12);
+    }
+
+    const validScaleFrets: {
+      fret: number;
+      note: string;
+      interval: string;
+      role: NoteRole;
+      isRoot: boolean;
+      midi: number;
+    }[] = [];
+
+    for (let f = 0; f <= totalFrets; f++) {
+      const fn = getFretNote(str.midi, f);
+      const noteIdx = CHROMATIC_NOTES.indexOf(fn.note);
+      const semitones = (noteIdx - targetRootIdx + 12) % 12;
+      const intervalIdx = formula.intervals.indexOf(semitones);
+
+      if (intervalIdx !== -1) {
+        const degree = formula.degrees[intervalIdx];
+        let role: NoteRole = 'other';
+        if (degree === 'R') role = 'root';
+        else if (degree.includes('3')) role = 'third';
+        else if (degree.includes('5')) role = 'fifth';
+        else if (degree.includes('7')) role = 'seventh';
+
+        validScaleFrets.push({
+          fret: f,
+          note: fn.note,
+          interval: degree,
+          role,
+          isRoot: semitones === 0,
+          midi: fn.midi,
+        });
+      }
+    }
+
+    let chosenCandidateFrets = validScaleFrets.filter((item) => item.fret >= idealStartFret);
+    if (chosenCandidateFrets.length < targetCount) {
+      chosenCandidateFrets = validScaleFrets.slice(-targetCount);
+    } else {
+      chosenCandidateFrets = chosenCandidateFrets.slice(0, targetCount);
+    }
+
+    if (chosenCandidateFrets.length === 0) continue;
+
+    const firstFret = chosenCandidateFrets[0].fret;
+    const isShiftString = sFromBass > 0;
+
+    const fingers: number[] = [];
+    if (chosenCandidateFrets.length === 3) {
+      const d1 = chosenCandidateFrets[1].fret - chosenCandidateFrets[0].fret;
+      const d2 = chosenCandidateFrets[2].fret - chosenCandidateFrets[1].fret;
+      if (d1 === 1 && d2 === 2) {
+        fingers.push(1, 2, 4);
+      } else if (d1 === 2 && d2 === 1) {
+        fingers.push(1, 3, 4);
+      } else {
+        fingers.push(1, 2, 4);
+      }
+    } else if (chosenCandidateFrets.length === 2) {
+      const d = chosenCandidateFrets[1].fret - chosenCandidateFrets[0].fret;
+      if (d <= 2) {
+        fingers.push(1, 3);
+      } else {
+        fingers.push(1, 4);
+      }
+    } else {
+      fingers.push(1);
+    }
+
+    chosenCandidateFrets.forEach((item, idx) => {
+      const isShiftPoint = isShiftString && idx === 0;
+      notes.push({
+        stringIndex: sIdx,
+        fret: item.fret,
+        note: item.note,
+        interval: item.interval,
+        role: item.role,
+        fingerAssignment: {
+          finger: fingers[idx] || 1,
+          isStretch: false,
+        },
+        finger: String(fingers[idx] || 1),
+        isShiftPoint,
+        midi: item.midi,
+      });
+    });
+
+    prevFirstFret = firstFret;
+  }
+
+  const allFrets = notes.map((n) => n.fret);
+  const minFret = allFrets.length > 0 ? Math.min(...allFrets) : 0;
+  const maxFret = allFrets.length > 0 ? Math.max(...allFrets) : 12;
+
+  return {
+    notes,
+    fretRange: [minFret, maxFret],
+    boxBaseFret: minFret,
+  };
+}
+

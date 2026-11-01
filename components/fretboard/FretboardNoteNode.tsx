@@ -13,6 +13,7 @@ export interface FretboardNoteNodeProps {
   isInActiveBox?: boolean;
   isGhost?: boolean;
   isHighlighted?: boolean;
+  isShiftPoint?: boolean;
   size?: 'sm' | 'md';
   onClick?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
@@ -28,6 +29,7 @@ export function FretboardNoteNode({
   isInActiveBox = true,
   isGhost = false,
   isHighlighted = false,
+  isShiftPoint = false,
   onClick,
   onContextMenu,
 }: FretboardNoteNodeProps) {
@@ -75,6 +77,15 @@ export function FretboardNoteNode({
           {displayText}
         </span>
       </div>
+
+      {isShiftPoint && (
+        <span
+          className="absolute -top-1.5 -right-1.5 px-1 py-0.2 text-[8px] font-black font-mono rounded bg-amber-400 text-slate-950 shadow-md border border-amber-300 z-30 flex items-center leading-tight pointer-events-none"
+          title="Cambio de posición (Shift de mano)"
+        >
+          ↗
+        </span>
+      )}
     </div>
   );
 }
