@@ -12,39 +12,42 @@ export interface ChordNotePayload {
 }
 
 export interface SaveChordVoicingInput {
-  instrumentType: string;
-  keyRoot: string;
-  cagedBoxId: number;
-  extension: string;
-  degreeIndex: number;
-  chordName: string;
-  notesData: ChordNotePayload[];
+  instrument?: string;
+  root: string;
+  chordType: string;
+  shape: string;
+  frets: ChordNotePayload[];
+}
+
+function normalizeInstrument(inst?: string | null): string {
+  if (!inst) return 'guitar_6c';
+  if (inst === 'guitar_6') return 'guitar_6c';
+  if (inst === 'bass_4') return 'bass_4c';
+  if (inst === 'bass_5') return 'bass_5c';
+  return inst;
 }
 
 export async function saveChordVoicingAction(input: SaveChordVoicingInput) {
   try {
+    const instrument = normalizeInstrument(input.instrument);
     const saved = await prisma.customChordVoicing.upsert({
       where: {
-        voicing_unique_identifier: {
-          instrumentType: input.instrumentType,
-          keyRoot: input.keyRoot,
-          cagedBoxId: input.cagedBoxId,
-          extension: input.extension,
-          degreeIndex: input.degreeIndex,
+        chord_unique_identifier: {
+          instrument,
+          root: input.root,
+          chordType: input.chordType,
+          shape: input.shape,
         },
       },
       update: {
-        chordName: input.chordName,
-        notesData: input.notesData as any,
+        fretsJson: input.frets as any,
       },
       create: {
-        instrumentType: input.instrumentType,
-        keyRoot: input.keyRoot,
-        cagedBoxId: input.cagedBoxId,
-        extension: input.extension,
-        degreeIndex: input.degreeIndex,
-        chordName: input.chordName,
-        notesData: input.notesData as any,
+        instrument,
+        root: input.root,
+        chordType: input.chordType,
+        shape: input.shape,
+        fretsJson: input.frets as any,
       },
     });
 
@@ -61,21 +64,20 @@ export async function saveChordVoicingAction(input: SaveChordVoicingInput) {
 }
 
 export async function getCustomChordVoicingAction(
-  instrumentType: string,
-  keyRoot: string,
-  cagedBoxId: number,
-  extension: string,
-  degreeIndex: number
+  instrument: string,
+  root: string,
+  chordType: string,
+  shape: string
 ) {
   try {
+    const inst = normalizeInstrument(instrument);
     const voicing = await prisma.customChordVoicing.findUnique({
       where: {
-        voicing_unique_identifier: {
-          instrumentType,
-          keyRoot,
-          cagedBoxId,
-          extension,
-          degreeIndex,
+        chord_unique_identifier: {
+          instrument: inst,
+          root,
+          chordType,
+          shape,
         },
       },
     });
@@ -88,20 +90,19 @@ export async function getCustomChordVoicingAction(
 }
 
 export async function resetChordVoicingAction(
-  instrumentType: string,
-  keyRoot: string,
-  cagedBoxId: number,
-  extension: string,
-  degreeIndex: number
+  instrument: string,
+  root: string,
+  chordType: string,
+  shape: string
 ) {
   try {
+    const inst = normalizeInstrument(instrument);
     await prisma.customChordVoicing.deleteMany({
       where: {
-        instrumentType,
-        keyRoot,
-        cagedBoxId,
-        extension,
-        degreeIndex,
+        instrument: inst,
+        root,
+        chordType,
+        shape,
       },
     });
 

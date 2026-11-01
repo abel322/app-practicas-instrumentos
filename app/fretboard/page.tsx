@@ -75,9 +75,6 @@ import {
   ScaleNotePayload,
 } from '@/app/actions/scalePatternActions';
 import {
-  getCustomChordVoicingAction,
-  saveChordVoicingAction,
-  resetChordVoicingAction,
   ChordNotePayload,
 } from '@/app/actions/chordVoicingActions';
 
@@ -108,6 +105,9 @@ export default function FretboardPage() {
   const [customChordNotes, setCustomChordNotes] = useState<ChordNotePayload[] | null>(null);
   const [isCustomChordFromDb, setIsCustomChordFromDb] = useState<boolean>(false);
   const [isSavingChordDb, setIsSavingChordDb] = useState<boolean>(false);
+  const [customVoicingsMap, setCustomVoicingsMap] = useState<Record<string, ChordNotePayload[]>>({});
+  const customVoicingsMapRef = useRef(customVoicingsMap);
+  customVoicingsMapRef.current = customVoicingsMap;
 
   // Estado Modo 2: Escalas y Sistema Dual (CAGED vs 3NPS)
   const [scaleKey, setScaleKey] = useState<ScaleKey>('major');
@@ -257,7 +257,22 @@ export default function FretboardPage() {
     return degreeVariations.find((v) => v.id === activeVariationId) || degreeVariations[0];
   }, [degreeVariations, activeVariationId]);
 
-  // Clave de extensión efectiva para persistencia en PostgreSQL (CustomChordVoicing.extension)
+  // Helper para derivar el tipo de acorde armónico para persistencia (ej: "major", "m", "m7", "maj7", "7")
+  const getVoicingChordType = useCallback((chord?: CagedChordVoicing): string => {
+    if (!chord) return 'major';
+    const name = chord.chordName || '';
+    const root = chord.rootNote || '';
+    if (name.startsWith(root)) {
+      const suffix = name.slice(root.length).trim();
+      if (!suffix) return 'major';
+      return suffix;
+    }
+    if (chord.chordType === 'maj') return 'major';
+    if (chord.chordType === 'min') return 'm';
+    return chord.chordType || 'major';
+  }, []);
+
+  // Clave de extensión efectiva para variaciones
   const effectiveChordExtensionKey = useMemo(() => {
     const baseKey =
       !activeVariation || isStandardVariation(activeVariation.id)
@@ -358,31 +373,77 @@ export default function FretboardPage() {
     };
   }, [studyMode, instrument, scaleSystem, scaleKey, activePatternId]);
 
-  // Carga automática del voicing de acorde personalizado desde la Base de Datos PostgreSQL
+  // Carga automática al seleccionar acorde o refrescar la página (Hydration desde PostgreSQL / Cache)
   useEffect(() => {
     let isCancelled = false;
 
-    if (studyMode === 'chords') {
-      getCustomChordVoicingAction(
-        instrument,
-        rootNote,
-        activeCagedBoxId,
-        effectiveChordExtensionKey,
-        activeChordDegreeIndex
-      ).then((res) => {
+    if (studyMode !== 'chords') {
+      setCustomChordNotes(null);
+      setIsCustomChordFromDb(false);
+      return;
+    }
+
+    const baseChord = cagedChords[activeChordDegreeIndex] || cagedChords[0];
+    const selectedInstrument =
+      instrument === 'guitar_6'
+        ? 'guitar_6c'
+        : instrument === 'bass_4'
+        ? 'bass_4c'
+        : instrument === 'bass_5'
+        ? 'bass_5c'
+        : instrument;
+    const selectedRoot = baseChord?.rootNote || rootNote;
+    const selectedChordType = getVoicingChordType(baseChord);
+    const selectedCagedShape =
+      CAGED_BOX_DEFINITIONS.find((b) => b.id === activeCagedBoxId)?.shapeLetter || 'C';
+
+    const cacheKey = `${selectedInstrument}_${selectedRoot}_${selectedChordType}_${selectedCagedShape}`;
+
+    // 1. Si ya está en la caché local en memoria, usarlo inmediatamente
+    if (customVoicingsMapRef.current[cacheKey]) {
+      setCustomChordNotes(customVoicingsMapRef.current[cacheKey]);
+      setIsCustomChordFromDb(true);
+      return;
+    }
+
+    // 2. Si no está en caché, consultar a la API de PostgreSQL
+    const fetchCustomVoicing = async () => {
+      try {
+        const res = await fetch(
+          `/api/chords/custom?instrument=${encodeURIComponent(
+            selectedInstrument
+          )}&root=${encodeURIComponent(selectedRoot)}&chordType=${encodeURIComponent(
+            selectedChordType
+          )}&shape=${encodeURIComponent(selectedCagedShape)}`
+        );
         if (isCancelled) return;
-        if (res.success && res.data && Array.isArray(res.data.notesData)) {
-          setCustomChordNotes(res.data.notesData as unknown as ChordNotePayload[]);
-          setIsCustomChordFromDb(true);
-        } else {
+        if (res.ok) {
+          const data = await res.json();
+          if (
+            data.voicing &&
+            Array.isArray(data.voicing.fretsJson) &&
+            data.voicing.fretsJson.length > 0
+          ) {
+            const frets = data.voicing.fretsJson as ChordNotePayload[];
+            setCustomChordNotes(frets);
+            setIsCustomChordFromDb(true);
+            setCustomVoicingsMap((prev) => ({ ...prev, [cacheKey]: frets }));
+            return;
+          }
+        }
+        // Si no existe versión personalizada en BD, mantener preset calculado
+        setCustomChordNotes(null);
+        setIsCustomChordFromDb(false);
+      } catch (e) {
+        console.warn('No se pudo verificar voicing personalizado desde BD, usando preset:', e);
+        if (!isCancelled) {
           setCustomChordNotes(null);
           setIsCustomChordFromDb(false);
         }
-      });
-    } else {
-      setCustomChordNotes(null);
-      setIsCustomChordFromDb(false);
-    }
+      }
+    };
+
+    fetchCustomVoicing();
 
     return () => {
       isCancelled = true;
@@ -392,8 +453,12 @@ export default function FretboardPage() {
     instrument,
     rootNote,
     activeCagedBoxId,
-    effectiveChordExtensionKey,
     activeChordDegreeIndex,
+    activeExtensionFamily,
+    tonalityMode,
+    activeVariationId,
+    cagedChords,
+    getVoicingChordType,
   ]);
 
   // Si se cambia de modo (ej. a acordes o progresiones), desactivar el editor de escalas
@@ -785,59 +850,147 @@ export default function FretboardPage() {
     [isChordEditorActive, activeCagedChord, config.strings, rootNote, tonalityMode, activeExtensionFamily, activeChordDegreeIndex]
   );
 
-  // Guardar acorde en PostgreSQL
+  // Guardar acorde editado en PostgreSQL
   const handleSaveChordToDb = useCallback(async () => {
-    if (!activeCagedChord) return;
+    const baseChord = cagedChords[activeChordDegreeIndex] || cagedChords[0];
+    if (!baseChord) return;
+
+    const selectedInstrument =
+      instrument === 'guitar_6'
+        ? 'guitar_6c'
+        : instrument === 'bass_4'
+        ? 'bass_4c'
+        : instrument === 'bass_5'
+        ? 'bass_5c'
+        : instrument;
+    const selectedRoot = baseChord?.rootNote || rootNote;
+    const selectedChordType = getVoicingChordType(baseChord);
+    const selectedCagedShape =
+      CAGED_BOX_DEFINITIONS.find((b) => b.id === activeCagedBoxId)?.shapeLetter || 'C';
+
+    const notesToSave: ChordNotePayload[] = (
+      customChordNotes !== null ? customChordNotes : activeCagedChord?.notes || baseChord.notes
+    ).map((n) => ({
+      stringIndex: n.stringIndex,
+      fret: n.fret,
+      finger: n.finger,
+      intervalLabel: n.intervalLabel,
+      isRoot: n.isRoot,
+    }));
+
+    if (notesToSave.length === 0) {
+      alert('Debes agregar al menos una nota en el diapasón para guardar el voicing.');
+      return;
+    }
+
     setIsSavingChordDb(true);
     try {
-      const notesToSave: ChordNotePayload[] = (
-        customChordNotes !== null ? customChordNotes : activeCagedChord.notes
-      ).map((n) => ({
-        stringIndex: n.stringIndex,
-        fret: n.fret,
-        finger: n.finger,
-        intervalLabel: n.intervalLabel,
-        isRoot: n.isRoot,
-      }));
+      const payload = {
+        instrument: selectedInstrument,
+        root: selectedRoot,
+        chordType: selectedChordType,
+        shape: selectedCagedShape,
+        frets: notesToSave,
+      };
 
-      const res = await saveChordVoicingAction({
-        instrumentType: instrument,
-        keyRoot: rootNote,
-        cagedBoxId: activeCagedBoxId,
-        extension: effectiveChordExtensionKey,
-        degreeIndex: activeChordDegreeIndex,
-        chordName: activeCagedChord.chordName,
-        notesData: notesToSave,
+      const res = await fetch('/api/chords/custom', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
 
-      if (res.success) {
+      if (res.ok) {
+        const cacheKey = `${selectedInstrument}_${selectedRoot}_${selectedChordType}_${selectedCagedShape}`;
+        setCustomVoicingsMap((prev) => ({
+          ...prev,
+          [cacheKey]: notesToSave,
+        }));
+        setCustomChordNotes(notesToSave);
         setIsCustomChordFromDb(true);
+        setIsChordEditorActive(false);
+        alert(
+          `¡Voicing de ${baseChord.chordName} (Forma ${selectedCagedShape}) guardado exitosamente en base de datos!`
+        );
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || 'Error al guardar el voicing en el servidor.');
       }
+    } catch (err) {
+      console.error('Error al conectar con la API de acordes:', err);
+      alert('Error de conexión al intentar guardar en base de datos.');
     } finally {
       setIsSavingChordDb(false);
     }
   }, [
     activeCagedChord,
-    customChordNotes,
+    cagedChords,
+    activeChordDegreeIndex,
     instrument,
     rootNote,
     activeCagedBoxId,
-    effectiveChordExtensionKey,
-    activeChordDegreeIndex,
+    customChordNotes,
+    getVoicingChordType,
   ]);
 
   // Restablecer acorde eliminando el registro de PostgreSQL
   const handleResetChordDb = useCallback(async () => {
-    await resetChordVoicingAction(
-      instrument,
-      rootNote,
-      activeCagedBoxId,
-      effectiveChordExtensionKey,
-      activeChordDegreeIndex
-    );
-    setCustomChordNotes(null);
-    setIsCustomChordFromDb(false);
-  }, [instrument, rootNote, activeCagedBoxId, effectiveChordExtensionKey, activeChordDegreeIndex]);
+    const baseChord = cagedChords[activeChordDegreeIndex] || cagedChords[0];
+    if (!baseChord) return;
+
+    const selectedInstrument =
+      instrument === 'guitar_6'
+        ? 'guitar_6c'
+        : instrument === 'bass_4'
+        ? 'bass_4c'
+        : instrument === 'bass_5'
+        ? 'bass_5c'
+        : instrument;
+    const selectedRoot = baseChord?.rootNote || rootNote;
+    const selectedChordType = getVoicingChordType(baseChord);
+    const selectedCagedShape =
+      CAGED_BOX_DEFINITIONS.find((b) => b.id === activeCagedBoxId)?.shapeLetter || 'C';
+
+    try {
+      setIsSavingChordDb(true);
+      const res = await fetch(
+        `/api/chords/custom?instrument=${encodeURIComponent(
+          selectedInstrument
+        )}&root=${encodeURIComponent(selectedRoot)}&chordType=${encodeURIComponent(
+          selectedChordType
+        )}&shape=${encodeURIComponent(selectedCagedShape)}`,
+        { method: 'DELETE' }
+      );
+
+      const cacheKey = `${selectedInstrument}_${selectedRoot}_${selectedChordType}_${selectedCagedShape}`;
+      setCustomVoicingsMap((prev) => {
+        const next = { ...prev };
+        delete next[cacheKey];
+        return next;
+      });
+
+      setCustomChordNotes(null);
+      setIsCustomChordFromDb(false);
+      setIsChordEditorActive(false);
+
+      if (res.ok) {
+        alert(
+          `Voicing de ${baseChord.chordName} (Forma ${selectedCagedShape}) restablecido al preset por defecto.`
+        );
+      }
+    } catch (err) {
+      console.error('Error al restablecer voicing:', err);
+      alert('Error de conexión al restablecer el voicing.');
+    } finally {
+      setIsSavingChordDb(false);
+    }
+  }, [
+    cagedChords,
+    activeChordDegreeIndex,
+    instrument,
+    rootNote,
+    activeCagedBoxId,
+    getVoicingChordType,
+  ]);
 
   // Rango mínimo y máximo del patrón actualmente editado
   const { editorMinFret, editorMaxFret } = useMemo(() => {

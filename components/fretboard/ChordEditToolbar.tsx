@@ -24,7 +24,7 @@ export function ChordEditToolbar({
 }: ChordEditToolbarProps) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 p-2 bg-slate-900/95 border border-slate-800 rounded-2xl my-2 text-xs">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={onToggleEditing}
@@ -43,6 +43,19 @@ export function ChordEditToolbar({
             Personalizado en BD
           </span>
         )}
+
+        {isCustom && !isEditing && (
+          <button
+            type="button"
+            onClick={onResetFactory}
+            disabled={isSaving}
+            className="px-2.5 py-1.5 bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/60 font-bold rounded-xl flex items-center gap-1 transition-all active:scale-95 text-[11px]"
+            title="Descartar cambios guardados en BD y volver al preset original"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Restablecer Voicing por Defecto</span>
+          </button>
+        )}
       </div>
 
       {isEditing && (
@@ -51,20 +64,23 @@ export function ChordEditToolbar({
             type="button"
             onClick={onSaveToDB}
             disabled={isSaving}
-            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl flex items-center gap-1 shadow-md transition-all"
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl flex items-center gap-1 shadow-md transition-all active:scale-95"
+            title={`Guardar cambios de ${chordName} en la base de datos`}
           >
             <Save className="w-3.5 h-3.5" />
-            <span>{isSaving ? 'Guardando...' : `Guardar ${chordName} en BD`}</span>
+            <span>{isSaving ? 'Guardando en BD...' : 'Guardar Con BD'}</span>
           </button>
 
           {isCustom && (
             <button
               type="button"
               onClick={onResetFactory}
-              className="px-2.5 py-1.5 bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/60 font-bold rounded-xl flex items-center gap-1 transition-all"
+              disabled={isSaving}
+              className="px-2.5 py-1.5 bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/60 font-bold rounded-xl flex items-center gap-1 transition-all active:scale-95 text-[11px]"
+              title="Descartar cambios guardados en BD y volver al preset original"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Restablecer</span>
+              <span>Restablecer Voicing por Defecto</span>
             </button>
           )}
         </div>

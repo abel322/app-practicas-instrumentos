@@ -53,19 +53,16 @@ model CustomScalePattern {
 }
 
 model CustomChordVoicing {
-  id             String   @id @default(cuid())
-  instrumentType String   // "guitar_6", "bass_4", "bass_5"
-  keyRoot        String   // "C", "D", "E", etc.
-  cagedBoxId     Int      // 1 a 5 (C, A, G, E, D)
-  extension      String   // "triad", "seventh", "ninth", "eleventh", "thirteenth", "added", "suspended"
-  degreeIndex    Int      // 0 a 6 (I al vii°)
-  chordName      String   // ej. "Cmaj13", "Dm11", "Gsus4"
-  notesData      Json     // Array: { stringIndex: number, fret: number, finger: number, intervalLabel: string, isRoot: boolean }[]
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id          String   @id @default(cuid())
+  instrument  String   @default("guitar_6c") // "guitar_6c" | "bass_4c" | "bass_5c"
+  root        String   // ej. "C"
+  chordType   String   // ej. "major", "m7", "maj7"
+  shape       String   // ej. "C", "A", "G", "E", "D" o identificador de voicing
+  fretsJson   Json     // Array con las notas/trastes por cuerda: [{ stringIndex: 0, fret: 3, note: "C", isRoot: true }, ...]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  @@unique([instrumentType, keyRoot, cagedBoxId, extension, degreeIndex], name: "voicing_unique_identifier")
-  @@index([instrumentType, keyRoot, cagedBoxId])
+  @@unique([instrument, root, chordType, shape], name: "chord_unique_identifier")
 }
 
 model CustomProgression {
