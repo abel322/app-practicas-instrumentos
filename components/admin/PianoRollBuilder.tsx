@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { midiInputService } from '@/lib/audio/midiInputService';
 import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
+import { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
 import { Radio, Music2, Info, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
 
 export interface PianoNoteStep {
@@ -258,12 +259,11 @@ export function PianoRollBuilder({
           commitChord();
         }
 
-        // Reproducir sonido inmediato con el motor polifónico
-        getPianoAudioEngine().triggerNote(
+        // Reproducir sonido inmediato con el sintetizador polifónico de pre-escucha
+        pianoPreviewSynth.playNote(
           lastNote.noteNumber,
-          0,
-          0.8,
-          (lastNote.velocity || 100) / 127
+          0.35,
+          lastNote.velocity || 95
         );
 
         // Acumular la tecla en el buffer del acorde
@@ -468,7 +468,7 @@ export function PianoRollBuilder({
                 {/* Tecla del Teclado Vertical Izquierdo */}
                 <div
                   onClick={() => {
-                    getPianoAudioEngine().triggerNote(midi, 0, 0.8, 0.85);
+                    pianoPreviewSynth.playNote(midi, 0.35, 95);
                     if (toggleHandler) toggleHandler(activeStepInput, midi, 100);
                   }}
                   className={`w-20 sm:w-24 shrink-0 px-2 h-full flex items-center justify-between text-[10px] font-mono border-r border-slate-800 cursor-pointer transition-all select-none ${
@@ -505,9 +505,7 @@ export function PianoRollBuilder({
                         key={stepIdx}
                         onClick={() => {
                           setActiveStepInput(stepIdx);
-                          if (!hasNote) {
-                            getPianoAudioEngine().triggerNote(midi, 0, 0.8, 0.85);
-                          }
+                          pianoPreviewSynth.playNote(midi, 0.35, 95);
                           if (toggleHandler) toggleHandler(stepIdx, midi, 100);
                         }}
                         className={`w-8 sm:w-9 h-full cursor-pointer transition-all relative flex items-center justify-center ${
