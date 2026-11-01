@@ -11,6 +11,10 @@ import {
   Gauge,
   Clock,
   ShieldCheck,
+  Plus,
+  Pencil,
+  Trash2,
+  Sparkles,
 } from 'lucide-react';
 
 interface SkillTreePathProps {
@@ -18,6 +22,9 @@ interface SkillTreePathProps {
   activeLevel: number;
   completedLevels: number[];
   onOpenPractice: (skill: MasterySkillNode) => void;
+  onAddNewLevel?: () => void;
+  onEditSkill?: (skill: MasterySkillNode) => void;
+  onDeleteSkill?: (skillId: string) => void;
 }
 
 export const SkillTreePath: React.FC<SkillTreePathProps> = ({
@@ -25,23 +32,41 @@ export const SkillTreePath: React.FC<SkillTreePathProps> = ({
   activeLevel,
   completedLevels,
   onOpenPractice,
+  onAddNewLevel,
+  onEditSkill,
+  onDeleteSkill,
 }) => {
+  const nextLevelNumber = skills.length > 0 ? Math.max(...skills.map((s) => s.level)) + 1 : 1;
+
   return (
     <div className="relative w-full flex flex-col gap-6 py-4 select-none">
-      {/* Indicador de Título del Árbol */}
-      <div className="flex items-center justify-between">
+      {/* Indicador de Título del Árbol & Botón "+ Agregar Nivel" */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Zap className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
           <h2 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 font-mono">
-            Árbol de Progresión Técnica (10 Niveles Secuenciales)
+            Árbol de Progresión Técnica ({skills.length} Niveles Disponibles)
           </h2>
         </div>
-        <span className="text-xs font-mono text-slate-500 dark:text-slate-400 hidden sm:inline-block">
-          Desbloqueo progresivo por criterio de pase
-        </span>
+
+        <div className="flex items-center gap-3 justify-between sm:justify-end">
+          <span className="text-xs font-mono text-slate-500 dark:text-slate-400 hidden sm:inline-block">
+            Desbloqueo progresivo
+          </span>
+
+          {onAddNewLevel && (
+            <button
+              onClick={onAddNewLevel}
+              className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-sm transition-all hover:scale-105 active:scale-95"
+            >
+              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>+ Agregar Nivel</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Contenedor de los 10 Nodos */}
+      {/* Contenedor de Nodos */}
       <div className="relative flex flex-col gap-5">
         {skills.map((skill, index) => {
           const isCompleted = completedLevels.includes(skill.level);
@@ -56,7 +81,7 @@ export const SkillTreePath: React.FC<SkillTreePathProps> = ({
               <motion.div
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: Math.min(0.4, index * 0.05) }}
+                transition={{ duration: 0.3, delay: Math.min(0.4, index * 0.04) }}
                 className={`relative w-full rounded-2xl border transition-all overflow-hidden ${
                   isCompleted
                     ? 'bg-emerald-50/90 dark:bg-gradient-to-br dark:from-slate-900/95 dark:via-slate-900/80 dark:to-emerald-950/20 border-emerald-300 dark:border-emerald-500/40 shadow-xs dark:shadow-[0_0_20px_rgba(16,185,129,0.12)]'
@@ -121,6 +146,14 @@ export const SkillTreePath: React.FC<SkillTreePathProps> = ({
                           </span>
                         )}
 
+                        {/* Distinción de Nivel Personalizado */}
+                        {skill.isCustom && (
+                          <span className="text-[10px] font-mono font-black uppercase px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-amber-500" />
+                            Personalizado
+                          </span>
+                        )}
+
                         {/* Dificultad */}
                         <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-md bg-slate-200/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
                           {skill.difficultyLabel}
@@ -150,7 +183,7 @@ export const SkillTreePath: React.FC<SkillTreePathProps> = ({
                     </div>
                   </div>
 
-                  {/* Bloque Central: Comparativa de Velocidad (BPM Inicial vs Meta) */}
+                  {/* Bloque Central: Comparativa de Velocidad */}
                   <div className="flex flex-col sm:flex-row lg:flex-col justify-between lg:justify-center gap-2.5 p-3 rounded-xl bg-slate-100/80 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800/70 shrink-0 lg:w-60">
                     <div className="flex items-center justify-between text-xs font-mono">
                       <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -186,7 +219,7 @@ export const SkillTreePath: React.FC<SkillTreePathProps> = ({
                     </div>
                   </div>
 
-                  {/* Bloque Derecho: Botón de Lanzamiento */}
+                  {/* Bloque Derecho: Botón de Lanzamiento & Acciones de Edición/Eliminación */}
                   <div className="flex flex-col sm:flex-row lg:flex-col items-center justify-center gap-2 shrink-0">
                     <button
                       onClick={() => !isLocked && onOpenPractice(skill)}
@@ -217,9 +250,43 @@ export const SkillTreePath: React.FC<SkillTreePathProps> = ({
                       )}
                     </button>
 
-                    <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-cyan-500 dark:text-cyan-400" />
-                      <span>Sesión 15 min</span>
+                    <div className="flex items-center justify-between w-full text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-cyan-500 dark:text-cyan-400" />
+                        <span>Sesión 15m</span>
+                      </div>
+
+                      {/* Acciones para Niveles Personalizados del Usuario */}
+                      {skill.isCustom && (
+                        <div className="flex items-center gap-1.5 ml-2">
+                          {onEditSkill && (
+                            <button
+                              onClick={() => onEditSkill(skill)}
+                              title="Editar nivel personalizado"
+                              className="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 hover:text-amber-500 transition-colors"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                          )}
+                          {onDeleteSkill && (
+                            <button
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `¿Seguro que deseas eliminar el nivel personalizado "${skill.title}"?`
+                                  )
+                                ) {
+                                  onDeleteSkill(skill.id);
+                                }
+                              }}
+                              title="Eliminar nivel personalizado"
+                              className="p-1 rounded-md hover:bg-rose-100 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-500 transition-colors"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -242,6 +309,36 @@ export const SkillTreePath: React.FC<SkillTreePathProps> = ({
             </div>
           );
         })}
+
+        {/* Tarjeta Dashed al Final de la Lista: + Añadir Nivel Siguiente */}
+        {onAddNewLevel && (
+          <div className="relative flex flex-col items-center pt-1">
+            <div className="w-0.5 h-5 bg-slate-300 dark:bg-slate-800 my-0.5" />
+            <motion.button
+              whileHover={{ scale: 1.01 }}
+              onClick={onAddNewLevel}
+              className="w-full p-5 sm:p-6 rounded-2xl border-2 border-dashed border-amber-500/40 hover:border-amber-500 bg-amber-500/5 hover:bg-amber-500/10 text-amber-800 dark:text-amber-300 transition-all flex flex-col sm:flex-row items-center justify-between gap-4 cursor-pointer text-center sm:text-left shadow-xs"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-600 dark:text-amber-400 font-bold shrink-0">
+                  <Plus className="w-6 h-6 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                    + Añadir Nivel Siguiente (Nivel {nextLevelNumber})
+                  </h4>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    Diseña un ejercicio en Studio Builder o crea un nivel rápido con tablatura y BPM meta personalizados.
+                  </p>
+                </div>
+              </div>
+
+              <span className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shrink-0 shadow-xs">
+                Añadir Nivel {nextLevelNumber}
+              </span>
+            </motion.button>
+          </div>
+        )}
       </div>
     </div>
   );

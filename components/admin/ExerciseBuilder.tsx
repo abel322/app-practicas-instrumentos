@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DrumVoice, StickingType } from '@/types/drum';
 import { StringTechnique } from '@/types/strings';
@@ -9,6 +10,7 @@ import { getAudioEngine } from '@/lib/drumAudioEngine';
 import { getStringsAudioEngine } from '@/lib/stringsAudioEngine';
 import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
 import { saveExerciseAction } from '@/app/actions/save-exercise';
+import { addCustomMasteryLevel } from '@/lib/mastery/customLevelsStorage';
 import { 
   Play, 
   Pause, 
@@ -29,7 +31,8 @@ import {
   ChevronLeft,
   CheckCircle2,
   AlertCircle,
-  HelpCircle
+  HelpCircle,
+  Target
 } from 'lucide-react';
 import { getStepRhythmLabel } from './TablatureRuler';
 import { AVAILABLE_FRETS } from './NoteSelectorModal';
@@ -85,6 +88,8 @@ const DRUM_ROWS: { voice: DrumVoice; label: string; sub: string }[] = [
 ];
 
 export const ExerciseBuilder: React.FC = () => {
+  const searchParams = useSearchParams();
+
   // Configuración Principal del Ejercicio
   const [instrument, setInstrument] = useState<InstrumentCategory>('bass');
   const [title, setTitle] = useState('Nuevo Ejercicio Multicompás');
@@ -93,6 +98,27 @@ export const ExerciseBuilder: React.FC = () => {
   const [bpm, setBpm] = useState(95);
   const [timeSignature, setTimeSignature] = useState<'4/4' | '6/8' | '7/8'>('4/4');
   const [subdivision, setSubdivision] = useState<SubdivisionType>('1/16');
+
+  // Destino: Biblioteca General vs Asignar a Ruta Técnica
+  const [destination, setDestination] = useState<'general' | 'mastery'>('general');
+  const [masteryLevel, setMasteryLevel] = useState<number>(11);
+
+  // Leer query params si viene derivado desde Ruta Técnica
+  useEffect(() => {
+    if (!searchParams) return;
+    const target = searchParams.get('target');
+    const inst = searchParams.get('instrument');
+    const lvl = searchParams.get('level');
+    if (target === 'mastery') {
+      setDestination('mastery');
+    }
+    if (inst && ['drums', 'bass', 'guitar', 'piano'].includes(inst)) {
+      setInstrument(inst as InstrumentCategory);
+    }
+    if (lvl) {
+      setMasteryLevel(parseInt(lvl) || 11);
+    }
+  }, [searchParams]);
 
   // Gestión de Compases (1 a 8 compases)
   const [totalMeasures, setTotalMeasures] = useState<number>(2);
@@ -628,6 +654,55 @@ export const ExerciseBuilder: React.FC = () => {
     }
 
     try {
+      if (destination === 'mastery') {
+        let tabString = '';
+        if (instrument === 'piano') {
+          const sorted = [...notes].filter((n) => n.midiNumber !== undefined).sort((a, b) => a.step - b.step);
+          const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+          const names = sorted.map((n) => `${NOTE_NAMES[n.midiNumber! % 12]}${Math.floor(n.midiNumber! / 12) - 1}`);
+          tabString = `MD: [${names.slice(0, 16).join(' - ')}]`;
+        } else if (instrument === 'drums') {
+          const sorted = [...notes].filter((n) => n.drumVoice !== undefined).sort((a, b) => a.step - b.step);
+          tabString = `SD: | ${sorted.map((n) => (n.drumVoice === 'snare' ? 'o' : n.drumVoice === 'kick' ? 'B' : 'x')).slice(0, 16).join(' ')} |`;
+        } else {
+          const sorted = [...notes].filter((n) => n.string !== undefined && n.fret !== undefined).sort((a, b) => a.step - b.step);
+          tabString = sorted.map((n) => `C${n.string}:${n.fret}`).slice(0, 16).join(' ');
+          if (!tabString) tabString = `e|---5-7-8---|\nB|---5-7-8---|`;
+        }
+
+        addCustomMasteryLevel(instrument, {
+          title,
+          technique: category,
+          initialBpm: Math.round(bpm * 0.75),
+          targetBpm: bpm,
+          targetReps: 3,
+          subdivision,
+          tabOrNotation: tabString,
+          level: masteryLevel,
+          description: `Ejercicio compuesto en Studio Builder: ${title}`,
+          difficultyLabel: difficulty === 'Básico' ? 'Básico-Medio' : difficulty === 'Intermedio' ? 'Intermedio' : 'Avanzado',
+        });
+
+        // Intentar guardar también en BD
+        saveExerciseAction({
+          instrumentType: instrument,
+          title,
+          category,
+          difficulty,
+          bpm,
+          timeSignature,
+          totalMeasures,
+          stepsPerMeasure,
+          data: formattedData,
+        }).catch(() => {});
+
+        setSaveResult({
+          success: true,
+          url: '/mastery',
+        });
+        return;
+      }
+
       const res = await saveExerciseAction({
         instrumentType: instrument,
         title,
@@ -930,6 +1005,62 @@ export const ExerciseBuilder: React.FC = () => {
               </>
             )}
           </button>
+        </div>
+
+        {/* Destino del Ejercicio: Biblioteca General vs Asignar a Ruta Técnica */}
+        <div className="col-span-2 sm:col-span-4 lg:col-span-6 p-3 rounded-xl bg-amber-500/10 dark:bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <span className="text-[11px] font-mono font-bold uppercase text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+              <Target className="w-4 h-4 text-amber-500" />
+              Destino del Ejercicio:
+            </span>
+
+            <div className="flex items-center gap-1.5 bg-white/80 dark:bg-zinc-900/90 p-1 rounded-xl border border-slate-200 dark:border-white/10">
+              <button
+                type="button"
+                onClick={() => setDestination('general')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  destination === 'general'
+                    ? 'bg-slate-900 dark:bg-zinc-800 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                Biblioteca General
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDestination('mastery')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  destination === 'mastery'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
+                    : 'text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-300'
+                }`}
+              >
+                <Target className="w-3.5 h-3.5" />
+                <span>Asignar a Ruta Técnica</span>
+              </button>
+            </div>
+          </div>
+
+          {destination === 'mastery' && (
+            <div className="flex items-center gap-2 bg-white/90 dark:bg-zinc-900 px-3 py-1.5 rounded-xl border border-amber-500/40">
+              <span className="text-xs font-mono font-bold text-amber-700 dark:text-amber-300">
+                Nivel Asignado:
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={99}
+                value={masteryLevel}
+                onChange={(e) => setMasteryLevel(parseInt(e.target.value) || 11)}
+                className="w-16 px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-zinc-800 border border-slate-300 dark:border-white/20 text-xs font-mono font-bold text-center text-slate-900 dark:text-white"
+              />
+              <span className="text-[10px] font-mono text-slate-500 dark:text-zinc-400">
+                ({instrument.toUpperCase()})
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 export type MasteryInstrument = 'guitar' | 'piano' | 'bass' | 'drums';
 
-export type MasteryLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export type MasteryLevel = number;
 
 export interface InteractiveNoteStep {
   step: number;
@@ -48,6 +48,32 @@ export interface MasterySkillNode {
   microExercise: MicroExerciseSpec;
   proTips: string[];
   anatomicalFocus: string;
+  isCustom?: boolean;
+  createdAt?: string;
+}
+
+export interface CustomLevelInput {
+  title: string;
+  technique?: string;
+  category?: string;
+  difficultyLabel?:
+    | 'Fundamentos'
+    | 'Básico-Medio'
+    | 'Intermedio'
+    | 'Intermedio-Alto'
+    | 'Avanzado'
+    | 'Virtuoso / Maestría';
+  microExerciseTitle?: string;
+  tabOrNotation: string;
+  description?: string;
+  initialBpm: number;
+  targetBpm: number;
+  targetReps: number;
+  subdivision?: string;
+  subdivisionNote?: string;
+  passCriterion?: string;
+  sessionDurationMin?: number;
+  level?: number;
 }
 
 export interface MasteryInstrumentProgress {

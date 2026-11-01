@@ -1,16 +1,18 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { ExerciseBuilder } from '@/components/admin/ExerciseBuilder';
 
 export const metadata: Metadata = {
-  title: 'Studio Builder — Creador Avanzado de Ejercicios Multicompás | SoundLab',
-  description: 'Editor interactivo profesional para la creación y publicación de ejercicios de varios compases para bajo, guitarra y batería.',
+  title: 'Studio Builder — Creador Avanzado & Ruta Técnica | SoundLab',
+  description: 'Editor interactivo profesional para la creación y publicación de ejercicios para bajo, guitarra, piano y batería.',
 };
 
 export default function BuilderPage() {
   return (
     <main className="w-full min-h-[calc(100vh-4rem)] flex flex-col justify-start">
-      <ExerciseBuilder />
+      <Suspense fallback={<div className="p-8 text-center text-xs font-mono text-slate-500">Cargando Studio Builder...</div>}>
+        <ExerciseBuilder />
+      </Suspense>
     </main>
   );
 }
