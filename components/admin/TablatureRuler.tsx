@@ -1,4 +1,5 @@
 import React from 'react';
+export { getStepLabel, getStepsPerBeat, isStepMainBeat, isStepBeatEnd } from './PianoRollBuilder';
 
 /**
  * Retorna la etiqueta rítmica y si es pulso a tierra (beat)

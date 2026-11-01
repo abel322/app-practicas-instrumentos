@@ -39,9 +39,9 @@ import {
 } from 'lucide-react';
 import { getStepRhythmLabel } from './TablatureRuler';
 import { AVAILABLE_FRETS } from './NoteSelectorModal';
-import { PianoRollBuilder } from './PianoRollBuilder';
+import { PianoRollBuilder, getStepLabel } from './PianoRollBuilder';
 
-export { getStepRhythmLabel, AVAILABLE_FRETS };
+export { getStepRhythmLabel, getStepLabel, AVAILABLE_FRETS };
 
 
 type InstrumentCategory = 'drums' | 'bass' | 'guitar' | 'piano';
@@ -1415,6 +1415,7 @@ export const ExerciseBuilder: React.FC = () => {
           isPlaying={isPlaying}
           playbackActiveStep={playbackActiveStep}
           measureStartStep={activeMeasureStart}
+          timeSignature={timeSignature}
         />
       ) : (
       <div 

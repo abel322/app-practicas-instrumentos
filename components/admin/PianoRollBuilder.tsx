@@ -12,6 +12,153 @@ export interface PianoNoteStep {
   durationSteps?: number;
 }
 
+/**
+ * Retorna la cantidad de pasos rítmicos que componen un pulso según la subdivisión.
+ */
+export function getStepsPerBeat(
+  subdivision: string,
+  timeSignature: string = '4/4',
+  totalSteps: number = 16
+): number {
+  if (subdivision === '1/4') return 1;
+  if (subdivision === '1/8') {
+    if (timeSignature === '6/8') return 3; // En 6/8, el pulso es negra con puntillo (3 corcheas)
+    return 2;
+  }
+  if (subdivision === '1/8T') return 3;
+  if (subdivision === '1/16') return 4;
+  if (subdivision === 'quintillo') return 5;
+  if (subdivision === '1/16T') return 6;
+  if (subdivision === 'septillo') return 7;
+  if (subdivision === '1/32') return 8;
+
+  const beats = parseInt(timeSignature.split('/')[0], 10) || 4;
+  return Math.max(1, Math.round(totalSteps / beats));
+}
+
+/**
+ * Función auxiliar de etiquetado rítmico dinámico para las cabeceras de columnas
+ * del Piano Roll y secuenciadores basada en la métrica (Time Signature) y la subdivisión activa.
+ *
+ * Convenciones:
+ * - 1/16 (Semicorcheas, 4/4): 4 pasos por pulso -> '1', 'e', '&', 'a', '2', 'e', '&', 'a'...
+ * - 1/8 (Corcheas): 2 pasos por pulso -> '1', '&', '2', '&', '3', '&', '4', '&'
+ * - 1/8T (Tresillos de corchea): 3 pasos por pulso -> '1', 't', 'a', '2', 't', 'a'...
+ * - 1/4 (Negras): 1 paso por pulso -> '1', '2', '3', '4'
+ * - 1/16T (Tresillos de semicorchea): 6 pasos por pulso -> '1', 't', 'e', '&', 't', 'a'
+ * - Quintillos: 5 pasos por pulso -> '1', '2', '3', '4', '5'
+ * - Septillos: 7 pasos por pulso -> '1', '2', '3', '4', '5', '6', '7'
+ * - 1/32 (Fusas): 8 pasos por pulso -> '1', '·', 'e', '·', '&', '·', 'a', '·'
+ */
+export function getStepLabel(
+  stepIndex: number,
+  subdivision: string,
+  beatsPerBar: number = 4
+): string {
+  // Manejo especial para métricas compuestas con subdivisión en corcheas
+  if (beatsPerBar === 6 && subdivision === '1/8') {
+    return (stepIndex + 1).toString();
+  }
+  if (beatsPerBar === 7 && subdivision === '1/8') {
+    return (stepIndex + 1).toString();
+  }
+
+  // 1/16 (Semicorcheas): 4 pasos por pulso (1, e, &, a)
+  if (subdivision === '1/16') {
+    const beatNumber = Math.floor(stepIndex / 4) + 1;
+    const sub = stepIndex % 4;
+    const subLabels = [beatNumber.toString(), 'e', '&', 'a'];
+    return subLabels[sub];
+  }
+
+  // 1/8 (Corcheas): 2 pasos por pulso (1, &)
+  if (subdivision === '1/8') {
+    const beatNumber = Math.floor(stepIndex / 2) + 1;
+    const sub = stepIndex % 2;
+    return sub === 0 ? beatNumber.toString() : '&';
+  }
+
+  // 1/8T (Tresillos de corchea): 3 pasos por pulso (1, t, a)
+  if (subdivision === '1/8T') {
+    const beatNumber = Math.floor(stepIndex / 3) + 1;
+    const sub = stepIndex % 3;
+    const subLabels = [beatNumber.toString(), 't', 'a'];
+    return subLabels[sub];
+  }
+
+  // 1/4 (Negras): 1 paso por pulso (1, 2, 3, 4)
+  if (subdivision === '1/4') {
+    return (stepIndex + 1).toString();
+  }
+
+  // 1/16T (Tresillos de semicorchea): 6 pasos por pulso (1, t, e, &, t, a)
+  if (subdivision === '1/16T') {
+    const beatNumber = Math.floor(stepIndex / 6) + 1;
+    const sub = stepIndex % 6;
+    const subLabels = [beatNumber.toString(), 't', 'e', '&', 't', 'a'];
+    return subLabels[sub];
+  }
+
+  // Quintillos: 5 pasos por pulso
+  if (subdivision === 'quintillo') {
+    const beatNumber = Math.floor(stepIndex / 5) + 1;
+    const sub = stepIndex % 5;
+    return sub === 0 ? beatNumber.toString() : (sub + 1).toString();
+  }
+
+  // Septillos: 7 pasos por pulso
+  if (subdivision === 'septillo') {
+    const beatNumber = Math.floor(stepIndex / 7) + 1;
+    const sub = stepIndex % 7;
+    return sub === 0 ? beatNumber.toString() : (sub + 1).toString();
+  }
+
+  // 1/32 (Fusas): 8 pasos por pulso
+  if (subdivision === '1/32') {
+    const beatNumber = Math.floor(stepIndex / 8) + 1;
+    const sub = stepIndex % 8;
+    if (sub === 0) return beatNumber.toString();
+    if (sub === 4) return '&';
+    if (sub === 2) return 'e';
+    if (sub === 6) return 'a';
+    return '·';
+  }
+
+  return (stepIndex + 1).toString();
+}
+
+/**
+ * Determina si el paso corresponde al inicio de un pulso/tiempo (Downbeat).
+ */
+export function isStepMainBeat(
+  stepIndex: number,
+  subdivision: string,
+  timeSignature: string = '4/4',
+  totalSteps: number = 16
+): boolean {
+  if (timeSignature === '6/8' && subdivision === '1/8') {
+    return stepIndex % 3 === 0;
+  }
+  const stepsPerBeat = getStepsPerBeat(subdivision, timeSignature, totalSteps);
+  return stepIndex % stepsPerBeat === 0;
+}
+
+/**
+ * Determina si el paso es el último de un pulso/tiempo (para ubicar la línea divisoria vertical).
+ */
+export function isStepBeatEnd(
+  stepIndex: number,
+  subdivision: string,
+  timeSignature: string = '4/4',
+  totalSteps: number = 16
+): boolean {
+  if (timeSignature === '6/8' && subdivision === '1/8') {
+    return (stepIndex + 1) % 3 === 0;
+  }
+  const stepsPerBeat = getStepsPerBeat(subdivision, timeSignature, totalSteps);
+  return (stepIndex + 1) % stepsPerBeat === 0;
+}
+
 interface PianoRollBuilderProps {
   currentMeasure: number;
   totalSteps: number; // Pasos en este compás (ej: 4, 8, 12, 16, 20, 24, 28, 32)
@@ -21,6 +168,7 @@ interface PianoRollBuilderProps {
   isPlaying?: boolean;
   playbackActiveStep?: number;
   measureStartStep: number;
+  timeSignature?: string;
 }
 
 // Rango de 4 octavas útiles: C2 (36) a C6 (84) -> 49 teclas ordenadas de agudo a grave
@@ -37,6 +185,7 @@ export function PianoRollBuilder({
   isPlaying = false,
   playbackActiveStep = 0,
   measureStartStep = 0,
+  timeSignature = '4/4',
 }: PianoRollBuilderProps) {
   const [activeMidiDevice, setActiveMidiDevice] = useState<string | null>(null);
   const [activeStepInput, setActiveStepInput] = useState<number>(0);
@@ -84,6 +233,10 @@ export function PianoRollBuilder({
     }
   }, [totalSteps, activeStepInput]);
 
+  const timeSignatureNumerator = useMemo(() => {
+    return parseInt(timeSignature.split('/')[0], 10) || 4;
+  }, [timeSignature]);
+
   const playbackStepInMeasure = isPlaying ? playbackActiveStep - measureStartStep : -1;
 
   // Total de notas en el compás actual
@@ -119,7 +272,10 @@ export function PianoRollBuilder({
           {/* Badge del Paso Activo de Grabación */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-cyan-900/50 text-cyan-300 font-mono text-xs">
             <span className="text-slate-400 font-sans text-[11px]">Paso activo:</span>
-            <strong className="text-cyan-400 font-black">#{activeStepInput + 1}</strong>
+            <strong className="text-cyan-400 font-black">
+              #{activeStepInput + 1}{' '}
+              <span className="text-amber-400">({getStepLabel(activeStepInput, activeSubdivision, timeSignatureNumerator)})</span>
+            </strong>
             <span className="text-[10px] text-slate-500">/ {totalSteps}</span>
           </div>
 
@@ -155,35 +311,32 @@ export function PianoRollBuilder({
             {Array.from({ length: totalSteps }).map((_, stepIdx) => {
               const isSelectedForRecording = activeStepInput === stepIdx;
               const isCurrentlyPlaying = isPlaying && playbackStepInMeasure === stepIdx;
-              const isBeat =
-                totalSteps === 12
-                  ? stepIdx % 3 === 0
-                  : totalSteps === 20
-                  ? stepIdx % 5 === 0
-                  : totalSteps === 24
-                  ? stepIdx % 6 === 0
-                  : totalSteps === 28
-                  ? stepIdx % 7 === 0
-                  : stepIdx % 4 === 0;
+              const isMainBeat = isStepMainBeat(stepIdx, activeSubdivision, timeSignature, totalSteps);
+              const isBeatEnd = isStepBeatEnd(stepIdx, activeSubdivision, timeSignature, totalSteps);
+              const stepLabel = getStepLabel(stepIdx, activeSubdivision, timeSignatureNumerator);
 
               return (
                 <div
                   key={stepIdx}
                   onClick={() => setActiveStepInput(stepIdx)}
-                  className={`w-8 sm:w-9 text-center py-1.5 text-[10px] font-mono font-bold cursor-pointer border-r border-slate-800/80 transition-all select-none relative ${
+                  className={`w-8 sm:w-9 text-center py-1.5 text-[10px] font-mono cursor-pointer transition-all select-none relative ${
+                    isBeatEnd ? 'border-r-2 border-r-slate-600/90' : 'border-r border-slate-800/80'
+                  } ${
                     isCurrentlyPlaying
                       ? 'bg-cyan-500 text-slate-950 font-black shadow-[0_0_10px_rgba(34,211,238,0.8)] scale-105 z-20'
                       : isSelectedForRecording
                       ? 'bg-cyan-950 text-cyan-300 ring-2 ring-cyan-400 font-black z-10'
-                      : isBeat
-                      ? 'bg-slate-800/90 text-amber-300 hover:bg-slate-700'
-                      : 'text-slate-500 hover:bg-slate-800/60'
+                      : isMainBeat
+                      ? 'font-bold text-amber-400 bg-amber-400/10 hover:bg-amber-400/20'
+                      : 'text-slate-400 hover:bg-slate-800/60'
                   }`}
-                  title={`Paso ${stepIdx + 1} (Clic para seleccionar como destino de grabación)`}
+                  title={`Paso ${stepIdx + 1} (${stepLabel}) - Clic para seleccionar como destino de grabación`}
                 >
-                  {stepIdx + 1}
-                  {isBeat && (
+                  <span className="block leading-tight">{stepLabel}</span>
+                  {isMainBeat ? (
                     <span className="w-1 h-1 rounded-full bg-amber-400/80 mx-auto block mt-0.5" />
+                  ) : (
+                    <span className="w-1 h-1 mx-auto block mt-0.5 opacity-0" />
                   )}
                 </div>
               );
@@ -236,16 +389,8 @@ export function PianoRollBuilder({
                     );
                     const isSelectedStep = activeStepInput === stepIdx;
                     const isPlayingStep = isPlaying && playbackStepInMeasure === stepIdx;
-                    const isBeat =
-                      totalSteps === 12
-                        ? stepIdx % 3 === 0
-                        : totalSteps === 20
-                        ? stepIdx % 5 === 0
-                        : totalSteps === 24
-                        ? stepIdx % 6 === 0
-                        : totalSteps === 28
-                        ? stepIdx % 7 === 0
-                        : stepIdx % 4 === 0;
+                    const isMainBeat = isStepMainBeat(stepIdx, activeSubdivision, timeSignature, totalSteps);
+                    const isBeatEnd = isStepBeatEnd(stepIdx, activeSubdivision, timeSignature, totalSteps);
 
                     return (
                       <div
@@ -257,15 +402,17 @@ export function PianoRollBuilder({
                           }
                           onToggleNote(stepIdx, midi, 100);
                         }}
-                        className={`w-8 sm:w-9 h-full border-r border-slate-900/40 cursor-pointer transition-all relative flex items-center justify-center ${
+                        className={`w-8 sm:w-9 h-full cursor-pointer transition-all relative flex items-center justify-center ${
+                          isBeatEnd ? 'border-r-2 border-r-slate-600/90' : 'border-r border-slate-900/40'
+                        } ${
                           hasNote
                             ? 'bg-amber-400 border-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.5)] z-10'
                             : isPlayingStep
                             ? 'bg-cyan-500/25 ring-1 ring-cyan-400/40'
                             : isSelectedStep
                             ? 'bg-cyan-950/30 hover:bg-cyan-900/40'
-                            : isBeat
-                            ? 'bg-slate-900/40 hover:bg-slate-800/60'
+                            : isMainBeat
+                            ? 'bg-slate-900/45 hover:bg-slate-800/60'
                             : black
                             ? 'bg-[#121319]/90 hover:bg-slate-800/40'
                             : 'bg-slate-900/20 hover:bg-slate-800/40'
