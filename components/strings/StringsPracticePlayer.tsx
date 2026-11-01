@@ -7,7 +7,7 @@ import { getStringsAudioEngine } from '@/lib/stringsAudioEngine';
 import { TablatureRunway } from './TablatureRunway';
 import { TransportBar } from '@/components/practice/TransportBar';
 import { StringsLegend } from './StringsLegend';
-import { ArrowLeft, Keyboard, Music } from 'lucide-react';
+import { ArrowLeft, Keyboard, Maximize2, Minimize2 } from 'lucide-react';
 
 interface StringsPracticePlayerProps {
   exercise: StringExerciseData;
@@ -19,6 +19,11 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
   const [metronomeEnabled, setMetronomeEnabled] = useState<boolean>(true);
   const [activeStep, setActiveStep] = useState<number>(0);
   const [progress, setProgress] = useState<number>(0);
+
+  // Estado de Pantalla Completa y Orientación Horizontal Forzada
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [isForceLandscapeCSS, setIsForceLandscapeCSS] = useState<boolean>(false);
+  const tabScrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   const isPlayingRef = useRef<boolean>(false);
   const bpmRef = useRef<number>(exercise.bpmDefault);
@@ -177,6 +182,126 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
     getStringsAudioEngine().setMetronomeEnabled(nextState);
   }, [metronomeEnabled]);
 
+  // Funciones de Pantalla Completa y Bloqueo de Orientación Horizontal
+  const enterFullscreenLandscape = useCallback(async () => {
+    const elem = document.documentElement as any;
+
+    try {
+      if (elem.requestFullscreen) {
+        await elem.requestFullscreen();
+      } else if (elem.webkitRequestFullscreen) {
+        await elem.webkitRequestFullscreen();
+      }
+    } catch (err) {
+      console.warn('Fullscreen no disponible o bloqueado:', err);
+    }
+
+    let orientationLocked = false;
+    try {
+      const orientation =
+        ((screen as any)?.orientation ||
+          (screen as any)?.mozOrientation ||
+          (screen as any)?.msOrientation) as any;
+      if (orientation && typeof orientation.lock === 'function') {
+        await orientation.lock('landscape');
+        orientationLocked = true;
+      }
+    } catch (err) {
+      console.warn('Orientación nativa bloqueada por el sistema:', err);
+    }
+
+    const isPortrait = window.innerHeight > window.innerWidth;
+    setIsForceLandscapeCSS(!orientationLocked && isPortrait);
+    setIsFullscreen(true);
+  }, []);
+
+  const exitFullscreenLandscape = useCallback(async () => {
+    try {
+      const orientation =
+        ((screen as any)?.orientation ||
+          (screen as any)?.mozOrientation ||
+          (screen as any)?.msOrientation) as any;
+      if (orientation && typeof orientation.unlock === 'function') {
+        orientation.unlock();
+      }
+    } catch (err) {}
+
+    try {
+      if (document.exitFullscreen && document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else if ((document as any).webkitExitFullscreen) {
+        await (document as any).webkitExitFullscreen();
+      }
+    } catch (err) {}
+
+    setIsForceLandscapeCSS(false);
+    setIsFullscreen(false);
+  }, []);
+
+  // Monitoreo de eventos de pantalla y giros físicos
+  useEffect(() => {
+    const handleResize = () => {
+      if (isFullscreen) {
+        setIsForceLandscapeCSS(window.innerHeight > window.innerWidth);
+      }
+    };
+
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
+        setIsFullscreen(false);
+        setIsForceLandscapeCSS(false);
+        const orientation =
+          ((screen as any)?.orientation ||
+            (screen as any)?.mozOrientation ||
+            (screen as any)?.msOrientation) as any;
+        if (orientation && typeof orientation.unlock === 'function') {
+          try {
+            orientation.unlock();
+          } catch (e) {}
+        }
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, [isFullscreen]);
+
+  // Auto-Scroll suave sincronizado con el paso activo de la tablatura
+  useEffect(() => {
+    if (isPlaying && tabScrollContainerRef.current) {
+      const container = tabScrollContainerRef.current;
+      const activeElement = container.querySelector(
+        `[data-step-index="${activeStep}"]`
+      ) as HTMLElement | null;
+
+      if (activeElement) {
+        const containerWidth = container.clientWidth;
+        const elementLeft = activeElement.offsetLeft;
+        const elementWidth = activeElement.clientWidth;
+
+        // Centrar el compás / paso activo en pantalla para visibilidad fluida
+        const targetScrollLeft = elementLeft - containerWidth / 2 + elementWidth / 2;
+
+        container.scrollTo({
+          left: Math.max(0, targetScrollLeft),
+          behavior: 'smooth',
+        });
+      }
+    } else if (!isPlaying && activeStep === 0 && tabScrollContainerRef.current) {
+      tabScrollContainerRef.current.scrollTo({
+        left: 0,
+        behavior: 'smooth',
+      });
+    }
+  }, [activeStep, isPlaying]);
+
   // Atajos de teclado
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -187,7 +312,11 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
         handlePlayPause();
       } else if (e.code === 'Escape') {
         e.preventDefault();
-        handleStop();
+        if (isFullscreen) {
+          exitFullscreenLandscape();
+        } else {
+          handleStop();
+        }
       } else if (e.code === 'KeyM') {
         e.preventDefault();
         handleToggleMetronome();
@@ -202,7 +331,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handlePlayPause, handleStop, handleToggleMetronome]);
+  }, [handlePlayPause, handleStop, handleToggleMetronome, isFullscreen, exitFullscreenLandscape]);
 
   // Limpieza al desmontar
   useEffect(() => {
@@ -213,9 +342,13 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
     };
   }, []);
 
+  const stepsPerMeasure = exercise.timeSignature === '6/8' ? 12 : 16;
+  const currentMeasureNumber = Math.floor(activeStep / stepsPerMeasure) + 1;
+  const totalMeasures = Math.max(1, Math.ceil(exercise.totalSteps / stepsPerMeasure));
+
   return (
     <div className="w-full flex flex-col gap-6 max-w-5xl mx-auto">
-      {/* 1. Header del Ejercicio */}
+      {/* 1. Header del Ejercicio (Modo estándar) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
         <div className="flex items-center gap-3">
           <Link
@@ -253,24 +386,120 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-center">
+          <button
+            type="button"
+            onClick={enterFullscreenLandscape}
+            className="p-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all active:scale-95"
+            title="Práctica en Pantalla Completa Horizontal"
+          >
+            <Maximize2 className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden sm:inline text-[11px]">Pantalla Completa</span>
+          </button>
           <span className="text-xs px-3 py-1 rounded-full font-semibold border bg-white/5 border-white/10 text-zinc-300">
             {exercise.difficulty}
           </span>
         </div>
       </div>
 
-      {/* 2. Visualizador de Tablatura Profesional con Runway */}
-      <div className="w-full">
-        <TablatureRunway
-          instrument={exercise.instrument}
-          tuning={exercise.tuning}
-          totalSteps={exercise.totalSteps}
-          timeSignature={exercise.timeSignature}
-          tabData={exercise.tabData}
-          progress={progress}
-          activeStep={activeStep}
-          isPlaying={isPlaying}
-        />
+      {/* 2. Visualizador de Tablatura Profesional con Runway y Pantalla Completa Adaptativa */}
+      <div
+        className={`transition-all duration-200 ${
+          isFullscreen
+            ? isForceLandscapeCSS
+              ? 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100vh] h-[100vw] rotate-90 z-50 bg-[#0d0f14] flex flex-col justify-between p-2 sm:p-3 overflow-hidden select-none'
+              : 'fixed inset-0 z-50 bg-[#0d0f14] flex flex-col justify-between p-2 sm:p-3 overflow-hidden w-screen h-screen select-none'
+            : 'relative w-full'
+        }`}
+      >
+        {/* Cabecera de controles compactos en Pantalla Completa */}
+        {isFullscreen && (
+          <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-slate-900/95 border border-slate-800 rounded-xl mb-1 shrink-0 text-xs">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+              <span className="font-black text-cyan-400 text-xs truncate max-w-[150px] sm:max-w-xs">
+                {exercise.title}
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                Compás {currentMeasureNumber} de {totalMeasures} • Paso {activeStep + 1} / {exercise.totalSteps}
+              </span>
+              <div className="flex items-center gap-1 pl-2 font-mono text-[11px] text-amber-300 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setBpm((prev) => Math.max(40, prev - 5))}
+                  className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center font-bold transition-all active:scale-95"
+                  title="Disminuir tempo (BPM)"
+                >
+                  -
+                </button>
+                <span>{bpm} BPM</span>
+                <button
+                  type="button"
+                  onClick={() => setBpm((prev) => Math.min(240, prev + 5))}
+                  className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center font-bold transition-all active:scale-95"
+                  title="Aumentar tempo (BPM)"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handlePlayPause}
+                className={`px-3 py-1 rounded-lg font-bold text-xs flex items-center gap-1 transition-all ${
+                  isPlaying
+                    ? 'bg-amber-400 text-slate-950 font-black animate-pulse shadow-[0_0_12px_rgba(251,191,36,0.5)]'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                }`}
+              >
+                <span>{isPlaying ? '⏸ Pausar' : '▶ Iniciar'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={exitFullscreenLandscape}
+                className="px-2.5 py-1 bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/70 text-xs font-bold rounded-lg flex items-center gap-1 transition-all active:scale-95"
+                title="Salir de Pantalla Completa"
+              >
+                <Minimize2 className="w-3.5 h-3.5" />
+                <span>✕ Salir</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Contenedor con Scroll Horizontal Automático de la Tablatura */}
+        <div
+          ref={tabScrollContainerRef}
+          className={`w-full overflow-x-auto overflow-y-hidden flex items-center relative no-scrollbar ${
+            isFullscreen
+              ? 'flex-1 min-h-0 bg-[#13161f] rounded-2xl border border-slate-800 p-2 sm:p-4'
+              : 'rounded-2xl glass-panel p-2 sm:p-5 border border-white/10 shadow-2xl'
+          }`}
+        >
+          <TablatureRunway
+            instrument={exercise.instrument}
+            tuning={exercise.tuning}
+            totalSteps={exercise.totalSteps}
+            timeSignature={exercise.timeSignature}
+            tabData={exercise.tabData}
+            progress={progress}
+            activeStep={activeStep}
+            isPlaying={isPlaying}
+            isFullscreen={isFullscreen}
+          />
+        </div>
+
+        {/* Barra inferior de estado discreta (Pantalla Completa) */}
+        {isFullscreen && (
+          <footer className="w-full h-5 px-3 flex items-center justify-between text-[10px] text-slate-400 bg-slate-950/90 border-t border-slate-900 shrink-0 mt-1 font-mono">
+            <span className="flex items-center gap-1 text-emerald-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Auto-Scroll: Sincronizado
+            </span>
+            <span>Afinación: {exercise.tuning}</span>
+          </footer>
+        )}
       </div>
 
       {/* 3. Barra de Transporte */}
@@ -303,7 +532,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
           <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 font-mono text-[10px]">Espacio</kbd>
           <span>Play/Pausa</span>
           <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 font-mono text-[10px]">Esc</kbd>
-          <span>Stop</span>
+          <span>Stop / Salir</span>
           <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 font-mono text-[10px]">M</kbd>
           <span>Metrónomo</span>
           <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 font-mono text-[10px]">↑/↓</kbd>
