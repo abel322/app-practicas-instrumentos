@@ -60,7 +60,6 @@ import {
 } from '@/lib/music-theory/scaleSystems';
 import {
   THREE_TO_TWO_PATTERNS,
-  getThreeToTwoChordVoicing,
   getThreeToTwoPattern,
 } from '@/lib/music-theory/threeToTwoSystem';
 import { ScaleSystemControls } from '@/components/fretboard/ScaleSystemControls';
@@ -97,9 +96,7 @@ export default function FretboardPage() {
   const [displayMode, setDisplayMode] = useState<NoteDisplayMode>('notes');
   const [fretboardViewMode, setFretboardViewMode] = useState<'scroll' | 'fit'>('scroll');
 
-  // Estado Modo 1: Laboratorio de Armonía Diatónica (CAGED vs 3-2)
-  const [chordSystem, setChordSystem] = useState<'caged' | 'three_to_two'>('caged');
-  const [selectedThreeToTwoPattern, setSelectedThreeToTwoPattern] = useState<string>('32_p1');
+  // Estado Modo 1: Laboratorio de Armonía Diatónica CAGED
   const [tonalityMode, setTonalityMode] = useState<TonalityMode>('ionian');
   const [activeCagedBoxId, setActiveCagedBoxId] = useState<number>(1);
   const [activeChordDegreeIndex, setActiveChordDegreeIndex] = useState<number>(0);
@@ -140,6 +137,7 @@ export default function FretboardPage() {
   const [bpm, setBpm] = useState<number>(85);
   const [improvMode, setImprovMode] = useState<ImprovDisplayMode>('both');
   const [progressionSystem, setProgressionSystem] = useState<'all' | 'caged' | '3nps' | 'three_to_two'>('three_to_two');
+  const [selectedThreeToTwoPattern, setSelectedThreeToTwoPattern] = useState<string>('32_p1');
   const [customProgressions, setCustomProgressions] = useState<ProgressionDef[]>([]);
   const [isCreateProgModalOpen, setIsCreateProgModalOpen] = useState<boolean>(false);
   const [stepResourceOverrides, setStepResourceOverrides] = useState<Record<string, string>>({});
@@ -269,17 +267,6 @@ export default function FretboardPage() {
   }, [activeVariation, activeExtensionFamily, tonalityMode]);
 
   const activeCagedChord: CagedChordVoicing | undefined = useMemo(() => {
-    if (chordSystem === 'three_to_two') {
-      return getThreeToTwoChordVoicing(
-        rootNote,
-        tonalityMode,
-        activeChordDegreeIndex,
-        activeExtensionFamily,
-        selectedThreeToTwoPattern,
-        instrument
-      );
-    }
-
     const baseChord = cagedChords[activeChordDegreeIndex] || cagedChords[0];
     if (!baseChord) return undefined;
     if (customChordNotes !== null) {
@@ -305,8 +292,6 @@ export default function FretboardPage() {
     }
     return baseChord;
   }, [
-    chordSystem,
-    selectedThreeToTwoPattern,
     tonalityMode,
     activeExtensionFamily,
     cagedChords,
@@ -1319,22 +1304,6 @@ export default function FretboardPage() {
       return scaleResult ? scaleResult.fretRange : [0, 12];
     }
     if (studyMode === 'chords') {
-      if (chordSystem === 'three_to_two') {
-        const pat = getThreeToTwoPattern(selectedThreeToTwoPattern);
-        const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
-        const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
-        const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
-        let minF = pat.baseMinFret + shift;
-        let maxF = pat.baseMaxFret + shift;
-        if (maxF > config.totalFrets) {
-          minF -= 12;
-          maxF -= 12;
-        } else if (minF < 0) {
-          minF += 12;
-          maxF += 12;
-        }
-        return [Math.max(0, minF), Math.min(config.totalFrets, maxF)];
-      }
       return getCagedBoxFretRange(activeCagedBoxId, rootNote);
     }
     if (studyMode === 'progressions') {
@@ -1392,7 +1361,6 @@ export default function FretboardPage() {
     studyMode,
     scaleViewMode,
     activeCagedBoxId,
-    chordSystem,
     progressionSystem,
     selectedThreeToTwoPattern,
     threeToTwoLayout,
@@ -1624,10 +1592,6 @@ export default function FretboardPage() {
             }}
             activeCagedBoxId={activeCagedBoxId}
             onSelectCagedBoxId={setActiveCagedBoxId}
-            chordSystem={chordSystem}
-            onChordSystemChange={setChordSystem}
-            selectedThreeToTwoPattern={selectedThreeToTwoPattern}
-            onSelectThreeToTwoPattern={setSelectedThreeToTwoPattern}
             activeChordDegreeIndex={activeChordDegreeIndex}
             onSelectChordDegreeIndex={(degIdx) => {
               setActiveChordDegreeIndex(degIdx);
