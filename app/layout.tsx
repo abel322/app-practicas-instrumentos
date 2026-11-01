@@ -15,7 +15,25 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es" suppressHydrationWarning className="dark">
-      <body className="min-h-screen bg-[#e5e9f0] dark:bg-slate-950 text-slate-800 dark:text-slate-100 antialiased selection:bg-[#0891b2]/30 selection:text-slate-950 dark:selection:bg-cyan-500/30 dark:selection:text-cyan-200 transition-colors duration-200">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                var t = localStorage.getItem('soundlab_theme');
+                if (t === 'light') {
+                  document.documentElement.classList.remove('dark');
+                  document.documentElement.classList.add('light');
+                } else if (t === 'dark') {
+                  document.documentElement.classList.add('dark');
+                  document.documentElement.classList.remove('light');
+                }
+              } catch (_) {}
+            `,
+          }}
+        />
+      </head>
+      <body className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased selection:bg-[#0891b2]/30 selection:text-slate-950 dark:selection:bg-cyan-500/30 dark:selection:text-cyan-200 transition-colors duration-200">
         <ThemeProvider>
           <div className="relative min-h-screen flex flex-col justify-between">
             {/* Subtle Ambient Radial Glow */}

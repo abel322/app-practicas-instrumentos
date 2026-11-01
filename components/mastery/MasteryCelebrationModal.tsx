@@ -3,7 +3,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { MasterySkillNode } from '@/types/mastery';
-import { Trophy, Sparkles, ArrowRight, CheckCircle2, ShieldCheck, Flame } from 'lucide-react';
+import { Trophy, Sparkles, ArrowRight, CheckCircle2, ShieldCheck } from 'lucide-react';
 
 interface MasteryCelebrationModalProps {
   skill: MasterySkillNode;
@@ -23,13 +23,13 @@ export const MasteryCelebrationModal: React.FC<MasteryCelebrationModalProps> = (
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 dark:bg-black/85 backdrop-blur-md select-none">
       <motion.div
         initial={{ opacity: 0, scale: 0.85, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.85, y: 20 }}
         transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-        className="relative w-full max-w-lg rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-2 border-amber-500/50 shadow-[0_0_50px_rgba(245,158,11,0.25)] p-6 sm:p-8 text-center flex flex-col items-center gap-6 overflow-hidden"
+        className="relative w-full max-w-lg rounded-3xl bg-white dark:bg-gradient-to-b dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 border-2 border-amber-500/50 shadow-2xl p-6 sm:p-8 text-center flex flex-col items-center gap-6 overflow-hidden text-slate-900 dark:text-slate-100 transition-colors"
       >
         {/* Glow de fondo animado */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-72 h-44 bg-amber-500/20 blur-3xl pointer-events-none rounded-full" />
@@ -51,42 +51,42 @@ export const MasteryCelebrationModal: React.FC<MasteryCelebrationModalProps> = (
 
         {/* Textos de Celebración */}
         <div className="space-y-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono text-xs font-bold uppercase tracking-wider">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-700 dark:text-amber-300 font-mono text-xs font-bold uppercase tracking-wider">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>¡Nivel 0{skill.level} Conquistado!</span>
+            <span>¡Nivel {skill.level} Conquistado!</span>
           </div>
 
-          <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
             {skill.technique}
           </h2>
 
-          <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-md mx-auto leading-relaxed">
             Has demostrado control métrico y fluidez anatómica al tempo meta de{' '}
-            <strong className="text-amber-300 font-mono">{skill.targetBpm} BPM</strong> con{' '}
-            <strong className="text-white">3 repeticiones limpias consecutivas</strong>.
+            <strong className="text-amber-600 dark:text-amber-300 font-mono">{skill.targetBpm} BPM</strong> con{' '}
+            <strong className="text-slate-900 dark:text-white">3 repeticiones limpias consecutivas</strong>.
           </p>
         </div>
 
-        {/* Tarjeta de Reconocimiento & Beneficios */}
-        <div className="w-full p-4 rounded-2xl bg-slate-950/80 border border-slate-800 text-left space-y-2.5">
-          <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-300 uppercase">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+        {/* Tarjeta de Reconocimiento */}
+        <div className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 text-left space-y-2.5">
+          <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-700 dark:text-slate-300 uppercase">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             <span>Desbloqueos Automáticos:</span>
           </div>
 
-          <ul className="text-xs text-slate-400 space-y-1.5">
+          <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1.5">
             <li className="flex items-start gap-2">
-              <span className="text-emerald-400 font-bold">&bull;</span>
+              <span className="text-emerald-500 font-bold">&bull;</span>
               <span>
                 <strong>Modo Calentamiento Activo:</strong> Esta técnica se ha incorporado a tu barra de{' '}
-                <span className="text-amber-300">Mantenimiento Diario (2 min)</span>.
+                <span className="text-amber-600 dark:text-amber-300 font-semibold">Mantenimiento Diario (2 min)</span>.
               </span>
             </li>
             {hasNextLevel && (
               <li className="flex items-start gap-2">
-                <span className="text-cyan-400 font-bold">&bull;</span>
+                <span className="text-cyan-500 font-bold">&bull;</span>
                 <span>
-                  <strong>Nivel 0{skill.level + 1} Desbloqueado:</strong> Tu ruta continúa hacia el siguiente escalón de maestría técnica.
+                  <strong>Nivel {skill.level + 1} Desbloqueado:</strong> Tu ruta continúa hacia el siguiente escalón de maestría técnica.
                 </span>
               </li>
             )}
@@ -97,7 +97,7 @@ export const MasteryCelebrationModal: React.FC<MasteryCelebrationModalProps> = (
         <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
           <button
             onClick={onClose}
-            className="w-full sm:flex-1 py-3 px-4 rounded-xl text-xs font-bold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700/80 transition-colors"
+            className="w-full sm:flex-1 py-3 px-4 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors"
           >
             Ver Ruta Completa
           </button>
@@ -110,7 +110,7 @@ export const MasteryCelebrationModal: React.FC<MasteryCelebrationModalProps> = (
               }}
               className="w-full sm:flex-1 py-3 px-4 rounded-xl text-xs font-black bg-gradient-to-r from-cyan-400 to-teal-300 text-slate-950 hover:brightness-110 shadow-[0_0_20px_rgba(34,211,238,0.4)] flex items-center justify-center gap-2 transition-all hover:scale-[1.02]"
             >
-              <span>Avanzar al Nivel 0{skill.level + 1}</span>
+              <span>Avanzar al Nivel {skill.level + 1}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           )}
@@ -119,4 +119,3 @@ export const MasteryCelebrationModal: React.FC<MasteryCelebrationModalProps> = (
     </div>
   );
 };
-

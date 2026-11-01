@@ -93,7 +93,7 @@ export function useMasteryProgress() {
       const completed = new Set(instData.completedLevels);
       completed.add(level);
 
-      const nextLevel = Math.min(5, level + 1);
+      const nextLevel = Math.min(10, level + 1);
 
       const nextState: MasteryProgressState = {
         ...progress,

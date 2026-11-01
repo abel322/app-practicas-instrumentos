@@ -37,12 +37,17 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const applyTheme = (newTheme: Theme) => {
+    if (typeof document === 'undefined') return;
     const root = document.documentElement;
     if (newTheme === 'dark') {
       root.classList.add('dark');
+      root.classList.remove('light');
     } else {
       root.classList.remove('dark');
+      root.classList.add('light');
     }
+    root.setAttribute('data-theme', newTheme);
+    root.style.colorScheme = newTheme;
   };
 
   const setTheme = (newTheme: Theme) => {

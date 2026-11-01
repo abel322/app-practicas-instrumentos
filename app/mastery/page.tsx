@@ -58,7 +58,7 @@ export default function MasteryPage() {
   };
 
   return (
-    <main className="w-full min-h-[calc(100vh-4rem)] bg-[#0B131F] text-slate-100 flex flex-col justify-between">
+    <main className="w-full min-h-[calc(100vh-4rem)] bg-slate-100 text-slate-900 dark:bg-[#080d16] dark:text-slate-100 flex flex-col justify-between transition-colors duration-200">
       {/* Contenedor Central */}
       <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex flex-col gap-8">
         {/* Cabecera & Selector de Instrumentos */}
@@ -79,7 +79,7 @@ export default function MasteryPage() {
           />
         </section>
 
-        {/* Árbol de Habilidades Secuencial (Nivel 1 al 5) */}
+        {/* Árbol de Habilidades Secuencial (10 Niveles) */}
         <section>
           <SkillTreePath
             skills={currentSkills}
@@ -90,7 +90,7 @@ export default function MasteryPage() {
         </section>
       </div>
 
-      {/* Modal de Entorno de Práctica (15 min + Metrónomo + Criterio) */}
+      {/* Modal de Entorno de Práctica (15 min + Visor Interactivo + Metrónomo + Validación) */}
       {activePracticeSkill && (
         <PracticeExecutionModal
           skill={activePracticeSkill}
@@ -111,7 +111,7 @@ export default function MasteryPage() {
           isOpen={!!celebrationSkill}
           onClose={() => setCelebrationSkill(null)}
           onContinueNextLevel={handleContinueNextLevel}
-          hasNextLevel={celebrationSkill.level < 5}
+          hasNextLevel={celebrationSkill.level < 10}
         />
       )}
 
@@ -125,9 +125,9 @@ export default function MasteryPage() {
       )}
 
       {/* Footer Minimalista */}
-      <footer className="mt-12 py-6 border-t border-slate-800/80 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between max-w-6xl mx-auto px-4 w-full gap-2 select-none">
-        <p>SoundLab Studio &bull; Ruta Técnica por Niveles (Mastery Path)</p>
-        <div className="flex items-center gap-3 font-mono text-[11px] text-slate-400">
+      <footer className="mt-12 py-6 border-t border-slate-300 dark:border-slate-800/80 text-xs text-slate-500 dark:text-slate-400 flex flex-col sm:flex-row items-center justify-between max-w-6xl mx-auto px-4 w-full gap-2 select-none transition-colors">
+        <p>SoundLab Studio &bull; Ruta Técnica por Niveles (Mastery Path 10 Niveles)</p>
+        <div className="flex items-center gap-3 font-mono text-[11px] text-slate-600 dark:text-slate-400">
           <span>Web Audio Clock Preciso</span>
           <span>&bull;</span>
           <span>15 Min Session Box</span>
@@ -138,4 +138,3 @@ export default function MasteryPage() {
     </main>
   );
 }
-

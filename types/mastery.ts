@@ -1,6 +1,16 @@
 export type MasteryInstrument = 'guitar' | 'piano' | 'bass' | 'drums';
 
-export type MasteryLevel = 1 | 2 | 3 | 4 | 5;
+export type MasteryLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+
+export interface InteractiveNoteStep {
+  step: number;
+  label: string;
+  stringOrHand?: string;
+  fretOrKey?: number | string;
+  finger?: string;
+  pickDirection?: 'down' | 'up' | 'legato' | 'tap';
+  accent?: boolean;
+}
 
 export interface MicroExerciseSpec {
   title: string;
@@ -9,6 +19,7 @@ export interface MicroExerciseSpec {
   fingering?: string;
   techniqueKey: string;
   instructions: string[];
+  interactiveSteps?: InteractiveNoteStep[];
 }
 
 export interface MasterySkillNode {
@@ -18,7 +29,13 @@ export interface MasterySkillNode {
   title: string;
   technique: string;
   category: string;
-  difficultyLabel: 'Fundamentos' | 'Básico-Medio' | 'Intermedio' | 'Avanzado' | 'Virtuoso / Maestría';
+  difficultyLabel:
+    | 'Fundamentos'
+    | 'Básico-Medio'
+    | 'Intermedio'
+    | 'Intermedio-Alto'
+    | 'Avanzado'
+    | 'Virtuoso / Maestría';
   badgeColor: string;
   initialBpm: number;
   targetBpm: number;
@@ -42,4 +59,3 @@ export interface MasteryInstrumentProgress {
 }
 
 export type MasteryProgressState = Record<MasteryInstrument, MasteryInstrumentProgress>;
-
