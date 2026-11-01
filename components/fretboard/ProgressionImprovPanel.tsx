@@ -7,6 +7,7 @@ import {
   getImprovOptionsForChord,
   findImprovResourceById,
 } from '@/lib/music-theory/chordImprovOptions';
+import { THREE_TO_TWO_PATTERNS } from '@/lib/music-theory/threeToTwoSystem';
 
 export type ImprovDisplayMode = 'chord_tones' | 'scale_mode' | 'both';
 
@@ -16,6 +17,10 @@ interface ProgressionImprovPanelProps {
   onImprovModeChange: (mode: ImprovDisplayMode) => void;
   selectedResourceId?: string;
   onResourceIdChange?: (resourceId: string) => void;
+  progressionSystem?: 'all' | 'caged' | '3nps' | 'three_to_two';
+  onProgressionSystemChange?: (sys: 'all' | 'caged' | '3nps' | 'three_to_two') => void;
+  selectedThreeToTwoPattern?: string;
+  onSelectThreeToTwoPattern?: (id: string) => void;
 }
 
 export function ProgressionImprovPanel({
@@ -24,6 +29,10 @@ export function ProgressionImprovPanel({
   onImprovModeChange,
   selectedResourceId = 'default',
   onResourceIdChange,
+  progressionSystem = 'three_to_two',
+  onProgressionSystemChange,
+  selectedThreeToTwoPattern = '32_p1',
+  onSelectThreeToTwoPattern,
 }: ProgressionImprovPanelProps) {
   if (!currentChord) return null;
 
@@ -69,8 +78,60 @@ export function ProgressionImprovPanel({
           )}
         </div>
 
-        {/* Selector de visualización en el diapasón */}
-        <div className="inline-flex p-0.5 bg-slate-950 rounded-xl border border-slate-800 text-[11px] flex-wrap">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Selector de Sistema de Digitación (CAGED / 3NPS / 3 a 2 / Todo el Mástil) */}
+          {onProgressionSystemChange && (
+            <div className="inline-flex p-0.5 bg-slate-950 rounded-xl border border-slate-800 text-[11px] items-center">
+              <span className="text-[10px] font-mono uppercase font-bold text-slate-500 px-2">Sistema:</span>
+              <button
+                type="button"
+                onClick={() => onProgressionSystemChange('all')}
+                className={`px-2 py-0.5 rounded-lg font-bold transition-all ${
+                  progressionSystem === 'all'
+                    ? 'bg-slate-700 text-white font-black shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Mástil
+              </button>
+              <button
+                type="button"
+                onClick={() => onProgressionSystemChange('caged')}
+                className={`px-2 py-0.5 rounded-lg font-bold transition-all ${
+                  progressionSystem === 'caged'
+                    ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                CAGED
+              </button>
+              <button
+                type="button"
+                onClick={() => onProgressionSystemChange('3nps')}
+                className={`px-2 py-0.5 rounded-lg font-bold transition-all ${
+                  progressionSystem === '3nps'
+                    ? 'bg-purple-600 text-white font-black shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                3NPS
+              </button>
+              <button
+                type="button"
+                onClick={() => onProgressionSystemChange('three_to_two')}
+                className={`px-2 py-0.5 rounded-lg font-bold transition-all flex items-center gap-1 ${
+                  progressionSystem === 'three_to_two'
+                    ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                    : 'text-amber-400/80 hover:text-amber-300'
+                }`}
+              >
+                <span>⚡ 3 a 2</span>
+              </button>
+            </div>
+          )}
+
+          {/* Selector de visualización en el diapasón */}
+          <div className="inline-flex p-0.5 bg-slate-950 rounded-xl border border-slate-800 text-[11px] flex-wrap">
           <button
             type="button"
             onClick={() => onImprovModeChange('chord_tones')}
@@ -111,6 +172,36 @@ export function ProgressionImprovPanel({
           </button>
         </div>
       </div>
+    </div>
+
+      {/* Selector de Patrones 3 a 2 si el sistema activo es 3 a 2 */}
+      {progressionSystem === 'three_to_two' && onSelectThreeToTwoPattern && (
+        <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-slate-800/80">
+          <span className="text-[10px] font-mono text-amber-400 font-bold uppercase tracking-wider shrink-0">
+            Patrón 3 a 2:
+          </span>
+          <div className="flex flex-wrap items-center gap-1">
+            {THREE_TO_TWO_PATTERNS.map((p) => {
+              const isSelected = (selectedThreeToTwoPattern || '32_p1') === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => onSelectThreeToTwoPattern(p.id)}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                    isSelected
+                      ? 'bg-amber-400 text-slate-950 font-black shadow-sm ring-1 ring-amber-300'
+                      : 'bg-slate-950/90 text-amber-300/80 hover:bg-slate-800 border border-amber-900/40 hover:text-white'
+                  }`}
+                  title={`${p.name}: ${p.description} (Distribución: ${p.stringDistribution.join('-')})`}
+                >
+                  {p.shortLabel}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Franja de Notas Diana del acorde activo */}
       <div className="flex flex-wrap items-center gap-2 pt-0.5 text-xs">

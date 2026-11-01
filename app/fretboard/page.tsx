@@ -52,8 +52,16 @@ import {
   calculateFullNeckScaleNotes,
   getScalePositionZones,
   CAGED_BOXES,
+  CAGED_BASE_BOXES,
   THREE_NPS_PATTERNS,
+  THREE_NPS_BASE_PATTERNS,
+  assignFingersToString,
 } from '@/lib/music-theory/scaleSystems';
+import {
+  THREE_TO_TWO_PATTERNS,
+  getThreeToTwoChordVoicing,
+  getThreeToTwoPattern,
+} from '@/lib/music-theory/threeToTwoSystem';
 import { ScaleSystemControls } from '@/components/fretboard/ScaleSystemControls';
 import { ScalePatternExportBar } from '@/components/fretboard/ScalePatternExportBar';
 import { getImprovisationGuide } from '@/lib/music-theory/progressionImprovisationCatalog';
@@ -88,7 +96,9 @@ export default function FretboardPage() {
   const [displayMode, setDisplayMode] = useState<NoteDisplayMode>('notes');
   const [fretboardViewMode, setFretboardViewMode] = useState<'scroll' | 'fit'>('scroll');
 
-  // Estado Modo 1: Laboratorio de Armonía Diatónica CAGED (7 Acordes por Forma)
+  // Estado Modo 1: Laboratorio de Armonía Diatónica (CAGED vs 3-2)
+  const [chordSystem, setChordSystem] = useState<'caged' | 'three_to_two'>('caged');
+  const [selectedThreeToTwoPattern, setSelectedThreeToTwoPattern] = useState<string>('32_p1');
   const [tonalityMode, setTonalityMode] = useState<TonalityMode>('ionian');
   const [activeCagedBoxId, setActiveCagedBoxId] = useState<number>(1);
   const [activeChordDegreeIndex, setActiveChordDegreeIndex] = useState<number>(0);
@@ -127,6 +137,7 @@ export default function FretboardPage() {
   const [currentProgressionStepIndex, setCurrentProgressionStepIndex] = useState<number>(0);
   const [bpm, setBpm] = useState<number>(85);
   const [improvMode, setImprovMode] = useState<ImprovDisplayMode>('both');
+  const [progressionSystem, setProgressionSystem] = useState<'all' | 'caged' | '3nps' | 'three_to_two'>('three_to_two');
   const [customProgressions, setCustomProgressions] = useState<ProgressionDef[]>([]);
   const [isCreateProgModalOpen, setIsCreateProgModalOpen] = useState<boolean>(false);
   const [stepResourceOverrides, setStepResourceOverrides] = useState<Record<string, string>>({});
@@ -256,6 +267,17 @@ export default function FretboardPage() {
   }, [activeVariation, activeExtensionFamily, tonalityMode]);
 
   const activeCagedChord: CagedChordVoicing | undefined = useMemo(() => {
+    if (chordSystem === 'three_to_two') {
+      return getThreeToTwoChordVoicing(
+        rootNote,
+        tonalityMode,
+        activeChordDegreeIndex,
+        activeExtensionFamily,
+        selectedThreeToTwoPattern,
+        instrument
+      );
+    }
+
     const baseChord = cagedChords[activeChordDegreeIndex] || cagedChords[0];
     if (!baseChord) return undefined;
     if (customChordNotes !== null) {
@@ -281,6 +303,10 @@ export default function FretboardPage() {
     }
     return baseChord;
   }, [
+    chordSystem,
+    selectedThreeToTwoPattern,
+    tonalityMode,
+    activeExtensionFamily,
     cagedChords,
     activeChordDegreeIndex,
     customChordNotes,
@@ -1081,66 +1107,176 @@ export default function FretboardPage() {
 
       const notes: ActiveFretNote[] = [];
 
+      // Determinar límites de trastes y distribución de cuerdas según progressionSystem
+      let minFret = 0;
+      let maxFret = config.totalFrets;
+      let boxBaseFret = 1;
+      let stringDistribution: (2 | 3)[] | null = null;
+
+      if (progressionSystem === 'three_to_two') {
+        const pat = getThreeToTwoPattern(selectedThreeToTwoPattern);
+        stringDistribution = pat.stringDistribution;
+        const targetRootIdx = CHROMATIC_NOTES.indexOf(currentStep.rootNote as ChromaticNote);
+        const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
+        const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+
+        minFret = pat.baseMinFret + shift;
+        maxFret = pat.baseMaxFret + shift;
+        if (maxFret > config.totalFrets) {
+          minFret -= 12;
+          maxFret -= 12;
+        } else if (minFret < 0) {
+          minFret += 12;
+          maxFret += 12;
+        }
+        minFret = Math.max(0, minFret);
+        maxFret = Math.min(config.totalFrets, maxFret);
+        boxBaseFret = minFret === 0 ? 1 : minFret + pat.baseFretOffset;
+      } else if (progressionSystem === 'caged') {
+        const cagedBox = CAGED_BASE_BOXES.find((b) => b.id === activeCagedBoxId) || CAGED_BASE_BOXES[0];
+        const targetRootIdx = CHROMATIC_NOTES.indexOf(currentStep.rootNote as ChromaticNote);
+        const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
+        const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+
+        minFret = cagedBox.baseMinFret + shift;
+        maxFret = cagedBox.baseMaxFret + shift;
+        if (maxFret > config.totalFrets) {
+          minFret -= 12;
+          maxFret -= 12;
+        } else if (minFret < 0) {
+          minFret += 12;
+          maxFret += 12;
+        }
+        minFret = Math.max(0, minFret);
+        maxFret = Math.min(config.totalFrets, maxFret);
+        boxBaseFret = minFret === 0 ? 1 : minFret + cagedBox.baseFretOffset;
+      } else if (progressionSystem === '3nps') {
+        const npsBox = THREE_NPS_BASE_PATTERNS[0];
+        const targetRootIdx = CHROMATIC_NOTES.indexOf(currentStep.rootNote as ChromaticNote);
+        const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
+        const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+
+        minFret = npsBox.baseMinFret + shift;
+        maxFret = npsBox.baseMaxFret + shift;
+        if (maxFret > config.totalFrets) {
+          minFret -= 12;
+          maxFret -= 12;
+        } else if (minFret < 0) {
+          minFret += 12;
+          maxFret += 12;
+        }
+        minFret = Math.max(0, minFret);
+        maxFret = Math.min(config.totalFrets, maxFret);
+        boxBaseFret = minFret === 0 ? 1 : minFret;
+      }
+
       config.strings.forEach((str, sIdx) => {
-        for (let fret = 0; fret <= config.totalFrets; fret++) {
+        const stringCandidates: {
+          fret: number;
+          fn: { note: string; midi: number };
+          chordMatch?: { interval: string; role: NoteRole };
+          scaleMatch?: { interval: string; role: NoteRole };
+          isTargetTone: boolean;
+          isDimmed: boolean;
+          interval: string;
+          role: NoteRole;
+        }[] = [];
+
+        for (let fret = minFret; fret <= maxFret; fret++) {
           const fn = getFretNote(str.midi, fret);
           const chordMatch = chordNoteMap.get(fn.note);
           const scaleMatch = scaleNoteMap.get(fn.note);
 
           if (improvMode === 'chord_tones' || (customResource && customResource.type === 'arpeggio' && improvMode !== 'both')) {
             if (chordMatch) {
-              notes.push({
-                stringIndex: sIdx,
+              stringCandidates.push({
                 fret,
-                note: fn.note,
-                interval: chordMatch.interval,
-                role: chordMatch.role,
+                fn,
+                chordMatch,
                 isTargetTone: true,
                 isDimmed: false,
-                fingerAssignment: { finger: 0, isStretch: false },
-                midi: fn.midi,
+                interval: chordMatch.interval,
+                role: chordMatch.role,
               });
             }
           } else if (improvMode === 'both') {
             if (chordMatch) {
-              notes.push({
-                stringIndex: sIdx,
+              stringCandidates.push({
                 fret,
-                note: fn.note,
-                interval: chordMatch.interval,
-                role: chordMatch.role,
+                fn,
+                chordMatch,
                 isTargetTone: true,
                 isDimmed: false,
-                fingerAssignment: { finger: 0, isStretch: false },
-                midi: fn.midi,
+                interval: chordMatch.interval,
+                role: chordMatch.role,
               });
             } else if (scaleMatch) {
-              notes.push({
-                stringIndex: sIdx,
+              stringCandidates.push({
                 fret,
-                note: fn.note,
-                interval: scaleMatch.interval,
-                role: 'other',
+                fn,
+                scaleMatch,
                 isTargetTone: false,
                 isDimmed: true,
-                fingerAssignment: { finger: 0, isStretch: false },
-                midi: fn.midi,
+                interval: scaleMatch.interval,
+                role: 'other',
               });
             }
           } else if (scaleMatch) {
-            notes.push({
-              stringIndex: sIdx,
+            stringCandidates.push({
               fret,
-              note: fn.note,
-              interval: scaleMatch.interval,
-              role: scaleMatch.role,
+              fn,
+              scaleMatch,
               isTargetTone: scaleMatch.role === 'root',
               isDimmed: false,
-              fingerAssignment: { finger: 0, isStretch: false },
-              midi: fn.midi,
+              interval: scaleMatch.interval,
+              role: scaleMatch.role,
             });
           }
         }
+
+        // Si estamos en sistema 3 a 2, aplicamos la distribución de 2 o 3 notas por cuerda
+        let chosenCandidates = stringCandidates;
+        if (stringDistribution) {
+          const distIdx = (config.strings.length - 1) - sIdx;
+          const targetCount = stringDistribution[distIdx % stringDistribution.length] || 2;
+
+          if (stringCandidates.length > targetCount) {
+            const scored = stringCandidates.map((cand) => {
+              const priority = cand.isTargetTone ? 0 : 1;
+              const distFromBase = Math.abs(cand.fret - (boxBaseFret + 1.5));
+              return { cand, score: priority * 100 + distFromBase };
+            });
+            scored.sort((a, b) => a.score - b.score);
+            chosenCandidates = scored
+              .slice(0, targetCount)
+              .map((s) => s.cand)
+              .sort((a, b) => a.fret - b.fret);
+          }
+        }
+
+        // Asignar digitaciones ergonómicas
+        const frets = chosenCandidates.map((c) => c.fret);
+        const fingerMap = assignFingersToString(
+          frets,
+          boxBaseFret,
+          progressionSystem === '3nps' ? '3nps' : 'caged'
+        );
+
+        chosenCandidates.forEach((cand) => {
+          const fa = fingerMap.get(cand.fret) || { finger: 0, isStretch: false };
+          notes.push({
+            stringIndex: sIdx,
+            fret: cand.fret,
+            note: cand.fn.note,
+            interval: cand.interval,
+            role: cand.role,
+            isTargetTone: cand.isTargetTone,
+            isDimmed: cand.isDimmed,
+            finger: fa.finger > 0 ? String(fa.finger) : undefined,
+            fingerAssignment: fa,
+            midi: cand.fn.midi,
+          });
+        });
       });
 
       return notes;
@@ -1162,6 +1298,9 @@ export default function FretboardPage() {
     currentProgressionStepIndex,
     improvMode,
     activeStepResourceId,
+    progressionSystem,
+    selectedThreeToTwoPattern,
+    activeCagedBoxId,
   ]);
 
   // Rango de trastes enfocado
@@ -1177,7 +1316,48 @@ export default function FretboardPage() {
       return scaleResult ? scaleResult.fretRange : [0, 12];
     }
     if (studyMode === 'chords') {
+      if (chordSystem === 'three_to_two') {
+        const pat = getThreeToTwoPattern(selectedThreeToTwoPattern);
+        const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
+        const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
+        const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+        let minF = pat.baseMinFret + shift;
+        let maxF = pat.baseMaxFret + shift;
+        if (maxF > config.totalFrets) {
+          minF -= 12;
+          maxF -= 12;
+        } else if (minF < 0) {
+          minF += 12;
+          maxF += 12;
+        }
+        return [Math.max(0, minF), Math.min(config.totalFrets, maxF)];
+      }
       return getCagedBoxFretRange(activeCagedBoxId, rootNote);
+    }
+    if (studyMode === 'progressions') {
+      if (progressionSystem === 'three_to_two') {
+        const resolved = resolveProgressionChords(activeProgression, rootNote);
+        const currentStep = resolved[currentProgressionStepIndex] || resolved[0];
+        const chordRoot = currentStep ? currentStep.rootNote : rootNote;
+        const targetRootIdx = CHROMATIC_NOTES.indexOf(chordRoot as ChromaticNote);
+        const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
+        const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+        const pat = getThreeToTwoPattern(selectedThreeToTwoPattern);
+        let minF = pat.baseMinFret + shift;
+        let maxF = pat.baseMaxFret + shift;
+        if (maxF > config.totalFrets) {
+          minF -= 12;
+          maxF -= 12;
+        } else if (minF < 0) {
+          minF += 12;
+          maxF += 12;
+        }
+        return [Math.max(0, minF), Math.min(config.totalFrets, maxF)];
+      }
+      if (progressionSystem === 'caged') {
+        return getCagedBoxFretRange(activeCagedBoxId, rootNote);
+      }
+      return null;
     }
     if (studyMode === 'scales') {
       if (scaleViewMode === 'full_neck_map') {
@@ -1209,6 +1389,11 @@ export default function FretboardPage() {
     studyMode,
     scaleViewMode,
     activeCagedBoxId,
+    chordSystem,
+    progressionSystem,
+    selectedThreeToTwoPattern,
+    activeProgression,
+    currentProgressionStepIndex,
     scaleResult,
     rootNote,
     config.totalFrets,
@@ -1415,6 +1600,10 @@ export default function FretboardPage() {
             onResourceIdChange={(resId) =>
               handleStepImprovResourceChange(currentProgressionStepIndex, resId)
             }
+            progressionSystem={progressionSystem}
+            onProgressionSystemChange={setProgressionSystem}
+            selectedThreeToTwoPattern={selectedThreeToTwoPattern}
+            onSelectThreeToTwoPattern={setSelectedThreeToTwoPattern}
           />
         )}
 
@@ -1430,6 +1619,10 @@ export default function FretboardPage() {
             }}
             activeCagedBoxId={activeCagedBoxId}
             onSelectCagedBoxId={setActiveCagedBoxId}
+            chordSystem={chordSystem}
+            onChordSystemChange={setChordSystem}
+            selectedThreeToTwoPattern={selectedThreeToTwoPattern}
+            onSelectThreeToTwoPattern={setSelectedThreeToTwoPattern}
             activeChordDegreeIndex={activeChordDegreeIndex}
             onSelectChordDegreeIndex={(degIdx) => {
               setActiveChordDegreeIndex(degIdx);

@@ -5,7 +5,8 @@ import {
   ScaleSystemType, 
   NoteDisplayMode, 
   CAGED_BOXES, 
-  THREE_NPS_PATTERNS 
+  THREE_NPS_PATTERNS,
+  THREE_TO_TWO_SYSTEM_PATTERNS
 } from '@/lib/music-theory/scaleSystems';
 
 export interface ScaleSystemControlsProps {
@@ -29,7 +30,12 @@ export function ScaleSystemControls({
   scaleViewMode = 'single_box',
   onScaleViewModeChange,
 }: ScaleSystemControlsProps) {
-  const patterns = system === 'caged' ? CAGED_BOXES : THREE_NPS_PATTERNS;
+  const patterns =
+    system === 'caged'
+      ? CAGED_BOXES
+      : system === '3nps'
+      ? THREE_NPS_PATTERNS
+      : THREE_TO_TWO_SYSTEM_PATTERNS;
 
   return (
     <div className="flex flex-col gap-2.5 w-full my-3 px-1 sm:px-0">
@@ -66,6 +72,20 @@ export function ScaleSystemControls({
             }`}
           >
             ⚡ 3 Notas x Cuerda (7 Patrones)
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onSystemChange('three_to_two');
+              onSelectPatternId(1);
+            }}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1 ${
+              system === 'three_to_two'
+                ? 'bg-amber-400 text-slate-950 font-black shadow-md ring-2 ring-amber-400/40'
+                : 'text-amber-300/80 hover:text-amber-300'
+            }`}
+          >
+            <span>⚡ Sistema 3 a 2 (7 Patrones)</span>
           </button>
         </div>
 
@@ -147,7 +167,9 @@ export function ScaleSystemControls({
                   isSelected
                     ? system === 'caged'
                       ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 ring-2 ring-cyan-400/30 shadow-sm'
-                      : 'bg-purple-600/30 border-purple-400 text-purple-200 ring-2 ring-purple-400/30 shadow-sm'
+                      : system === '3nps'
+                      ? 'bg-purple-600/30 border-purple-400 text-purple-200 ring-2 ring-purple-400/30 shadow-sm'
+                      : 'bg-amber-400/25 border-amber-400 text-amber-300 ring-2 ring-amber-400/30 shadow-sm'
                     : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border-slate-700/70'
                 }`}
               >

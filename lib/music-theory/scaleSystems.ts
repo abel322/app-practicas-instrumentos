@@ -10,8 +10,14 @@ import {
 import { ActiveFretNote } from '@/components/fretboard/InteractiveFretboard';
 import { PositionZone } from '@/components/fretboard/PositionMapBrackets';
 import { ALL_SCALES_CATALOG, ScaleFormula } from './scaleDefinitions';
+import {
+  THREE_TO_TWO_PATTERNS,
+  THREE_TO_TWO_SYSTEM_PATTERNS,
+  calculateThreeToTwoNotes,
+} from './threeToTwoSystem';
 
-export type ScaleSystemType = 'caged' | '3nps';
+export { THREE_TO_TWO_PATTERNS, THREE_TO_TWO_SYSTEM_PATTERNS };
+export type ScaleSystemType = 'caged' | '3nps' | 'three_to_two';
 export type NoteDisplayMode = 'notes' | 'degrees' | 'fingers';
 
 export interface BoxFretNote {
@@ -432,6 +438,10 @@ export function calculateScaleSystemNotes(
   system: ScaleSystemType,
   patternId: number
 ): ScaleCalculationResult {
+  if (system === 'three_to_two') {
+    return calculateThreeToTwoNotes(instrument, rootNote, scaleKey, patternId);
+  }
+
   const config = INSTRUMENTS[instrument];
   const totalFrets = config.totalFrets; // 24 trastes
 
@@ -612,6 +622,41 @@ export function getScalePositionZones(
           id: b.id,
           label: `${b.shortLabel} (8va)`,
           shortLabel: `${b.shortLabel} 8va`,
+          startFret: octStart,
+          endFret: Math.min(totalFrets, octEnd),
+          isOctaveUp: true,
+        });
+      }
+    });
+  } else if (system === 'three_to_two') {
+    // 3 a 2 (7 Patrones Ergonómicos)
+    THREE_TO_TWO_PATTERNS.forEach((p) => {
+      let startF = p.baseMinFret + shift;
+      let endF = p.baseMaxFret + shift;
+
+      if (endF > totalFrets) {
+        startF -= 12;
+        endF -= 12;
+      } else if (startF < 0) {
+        startF += 12;
+        endF += 12;
+      }
+
+      zones.push({
+        id: p.patternIndex,
+        label: p.name,
+        shortLabel: p.shortLabel,
+        startFret: Math.max(0, startF),
+        endFret: Math.min(totalFrets, endF),
+      });
+
+      const octStart = startF + 12;
+      const octEnd = endF + 12;
+      if (octStart <= totalFrets) {
+        zones.push({
+          id: p.patternIndex,
+          label: `${p.shortLabel} (8va)`,
+          shortLabel: `${p.shortLabel} 8va`,
           startFret: octStart,
           endFret: Math.min(totalFrets, octEnd),
           isOctaveUp: true,

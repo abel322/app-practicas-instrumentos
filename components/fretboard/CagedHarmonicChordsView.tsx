@@ -19,6 +19,7 @@ import {
   getVariationsForDegree,
 } from '@/lib/music-theory/chordVariationsCatalog';
 import { ChordVariationChips } from './ChordVariationChips';
+import { THREE_TO_TWO_PATTERNS } from '@/lib/music-theory/threeToTwoSystem';
 
 interface CagedHarmonicChordsViewProps {
   selectedKeyRoot: string;
@@ -36,6 +37,11 @@ interface CagedHarmonicChordsViewProps {
   displayMode: NoteDisplayMode | 'intervals';
   onDisplayModeChange: (mode: NoteDisplayMode) => void;
   instrumentType?: 'guitar_6' | 'bass_4' | 'bass_5';
+  // Enfoque de digitaciones: CAGED vs 3 a 2
+  chordSystem?: 'caged' | 'three_to_two';
+  onChordSystemChange?: (sys: 'caged' | 'three_to_two') => void;
+  selectedThreeToTwoPattern?: string;
+  onSelectThreeToTwoPattern?: (patternId: string) => void;
   // Props de Edición y Persistencia en BD
   isEditing?: boolean;
   onToggleEditing?: () => void;
@@ -65,6 +71,10 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
   displayMode,
   onDisplayModeChange,
   instrumentType = 'guitar_6',
+  chordSystem: controlledChordSystem,
+  onChordSystemChange,
+  selectedThreeToTwoPattern: controlled32Pattern,
+  onSelectThreeToTwoPattern,
   isEditing = false,
   onToggleEditing,
   onSaveToDB,
@@ -75,6 +85,20 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
   onSelectVariation,
   activeChordOverride,
 }) => {
+  const [internalChordSystem, setInternalChordSystem] = useState<'caged' | 'three_to_two'>('caged');
+  const chordSystem = controlledChordSystem ?? internalChordSystem;
+  const setChordSystem = (sys: 'caged' | 'three_to_two') => {
+    if (onChordSystemChange) onChordSystemChange(sys);
+    else setInternalChordSystem(sys);
+  };
+
+  const [internal32Pattern, setInternal32Pattern] = useState<string>('32_p1');
+  const selectedThreeToTwoPattern = controlled32Pattern ?? internal32Pattern;
+  const setSelectedThreeToTwoPattern = (patId: string) => {
+    if (onSelectThreeToTwoPattern) onSelectThreeToTwoPattern(patId);
+    else setInternal32Pattern(patId);
+  };
+
   const [internalTonalityMode, setInternalTonalityMode] = useState<TonalityMode>('ionian');
   const tonalityMode = controlledTonalityMode ?? internalTonalityMode;
   const setTonalityMode = (mode: TonalityMode) => {
@@ -148,36 +172,98 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
           </div>
         </div>
 
-        {/* Selector de Cajas CAGED (1 al 5) */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1.5 min-w-0">
-          <span className="text-[10px] font-mono uppercase font-bold text-slate-500 dark:text-slate-400 shrink-0 flex items-center gap-1">
-            <Layers className="w-3 h-3 text-purple-600 dark:text-purple-400" />
-            <span>Forma CAGED:</span>
-          </span>
-          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar w-full sm:w-auto py-0.5">
-            {CAGED_BOX_DEFINITIONS.map((box) => {
-              const isSelected = activeCagedBoxId === box.id;
-              return (
-                <button
-                  key={box.id}
-                  onClick={() => onSelectCagedBoxId(box.id)}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all border shrink-0 flex items-center gap-1.5 active:scale-95 ${
-                    isSelected
-                      ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-md shadow-cyan-500/20 ring-2 ring-cyan-400/30'
-                      : 'bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                  title={`${box.name}: ${box.description}`}
-                >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      isSelected ? 'bg-slate-950' : 'bg-cyan-500'
-                    }`}
-                  />
-                  <span>{box.shortLabel}</span>
-                </button>
-              );
-            })}
+        {/* Selector de Enfoque (CAGED vs 3-2) y Formas / Patrones */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 min-w-0">
+          {/* Selector de Enfoque */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] font-mono uppercase font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
+              <Layers className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+              <span>Enfoque:</span>
+            </span>
+            <div className="inline-flex p-0.5 bg-slate-950 rounded-lg border border-slate-800 text-[11px]">
+              <button
+                type="button"
+                onClick={() => setChordSystem('caged')}
+                className={`px-2 py-0.5 rounded font-bold transition-all ${
+                  chordSystem === 'caged'
+                    ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                CAGED
+              </button>
+              <button
+                type="button"
+                onClick={() => setChordSystem('three_to_two')}
+                className={`px-2 py-0.5 rounded font-bold transition-all ${
+                  chordSystem === 'three_to_two'
+                    ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                ⚡ Sistema 3-2
+              </button>
+            </div>
           </div>
+
+          {/* Si está en CAGED: Botones Forma C a D */}
+          {chordSystem === 'caged' ? (
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar w-full sm:w-auto py-0.5">
+              {CAGED_BOX_DEFINITIONS.map((box) => {
+                const isSelected = activeCagedBoxId === box.id;
+                return (
+                  <button
+                    key={box.id}
+                    type="button"
+                    onClick={() => onSelectCagedBoxId(box.id)}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all border shrink-0 flex items-center gap-1.5 active:scale-95 ${
+                      isSelected
+                        ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-md shadow-cyan-500/20 ring-2 ring-cyan-400/30'
+                        : 'bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                    title={`${box.name}: ${box.description}`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        isSelected ? 'bg-slate-950' : 'bg-cyan-500'
+                      }`}
+                    />
+                    <span>{box.shortLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            /* Si está en 3 a 2: Botones de Patrones 3-2 */
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar w-full sm:w-auto py-0.5">
+              {THREE_TO_TWO_PATTERNS.slice(0, 5).map((p) => {
+                const isSelected = selectedThreeToTwoPattern === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedThreeToTwoPattern(p.id);
+                      onSelectCagedBoxId(p.patternIndex);
+                    }}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all border shrink-0 flex items-center gap-1.5 active:scale-95 ${
+                      isSelected
+                        ? 'bg-amber-400 text-slate-950 border-amber-300 font-black shadow-md shadow-amber-400/20 ring-2 ring-amber-400/30'
+                        : 'bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                    title={`${p.name}: ${p.description}`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        isSelected ? 'bg-slate-950' : 'bg-amber-400'
+                      }`}
+                    />
+                    <span>{p.shortLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
