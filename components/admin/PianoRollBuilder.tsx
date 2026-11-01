@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { midiInputService } from '@/lib/audio/midiInputService';
 import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
-import { Radio, Music2, Info, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { Radio, Music2, Info, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
 
 export interface PianoNoteStep {
-  step: number;
+  step?: number;
+  stepIndex?: number;
   midiNumber?: number;
   velocity?: number;
   durationSteps?: number;
@@ -159,15 +160,17 @@ export function isStepBeatEnd(
   return (stepIndex + 1) % stepsPerBeat === 0;
 }
 
-interface PianoRollBuilderProps {
-  currentMeasure: number;
+export interface PianoRollBuilderProps {
+  currentMeasure?: number;
   totalSteps: number; // Pasos en este compás (ej: 4, 8, 12, 16, 20, 24, 28, 32)
-  activeSubdivision: string;
+  activeSubdivision?: string;
   notes: PianoNoteStep[];
-  onToggleNote: (stepInMeasure: number, midiNumber: number, velocity?: number) => void;
+  onToggleNote?: (stepInMeasure: number, midiNumber: number, velocity?: number) => void;
+  onToggleSingleNote?: (stepInMeasure: number, midiNumber: number, velocity?: number) => void;
+  onAddChordToStep?: (stepInMeasure: number, midiNumbers: number[], velocity?: number) => void;
   isPlaying?: boolean;
   playbackActiveStep?: number;
-  measureStartStep: number;
+  measureStartStep?: number;
   timeSignature?: string;
 }
 
@@ -177,11 +180,13 @@ const PIANO_KEYS = Array.from({ length: 49 }, (_, i) => 84 - i);
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
 export function PianoRollBuilder({
-  currentMeasure,
+  currentMeasure = 0,
   totalSteps,
-  activeSubdivision,
+  activeSubdivision = '1/16',
   notes,
   onToggleNote,
+  onToggleSingleNote,
+  onAddChordToStep,
   isPlaying = false,
   playbackActiveStep = 0,
   measureStartStep = 0,
@@ -189,8 +194,48 @@ export function PianoRollBuilder({
 }: PianoRollBuilderProps) {
   const [activeMidiDevice, setActiveMidiDevice] = useState<string | null>(null);
   const [activeStepInput, setActiveStepInput] = useState<number>(0);
+  const [autoAdvance, setAutoAdvance] = useState<boolean>(true);
   const [pressedMidiKeys, setPressedMidiKeys] = useState<Set<number>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Buffer para capturar acordes antes de avanzar el paso
+  const chordBufferRef = useRef<Set<number>>(new Set());
+  const releaseTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Referencias actualizadas para evitar re-suscripciones innecesarias en el stream MIDI
+  const activeStepInputRef = useRef(activeStepInput);
+  activeStepInputRef.current = activeStepInput;
+
+  const autoAdvanceRef = useRef(autoAdvance);
+  autoAdvanceRef.current = autoAdvance;
+
+  const onAddChordRef = useRef(onAddChordToStep);
+  onAddChordRef.current = onAddChordToStep;
+
+  const onToggleNoteRef = useRef(onToggleSingleNote || onToggleNote);
+  onToggleNoteRef.current = onToggleSingleNote || onToggleNote;
+
+  const totalStepsRef = useRef(totalSteps);
+  totalStepsRef.current = totalSteps;
+
+  // Función para registrar notas acumuladas (acorde o nota individual) en el paso activo
+  const commitChord = useCallback(() => {
+    if (chordBufferRef.current.size > 0) {
+      const notesToRecord = Array.from(chordBufferRef.current);
+      chordBufferRef.current.clear();
+      const currentStep = activeStepInputRef.current;
+
+      if (onAddChordRef.current) {
+        onAddChordRef.current(currentStep, notesToRecord, 100);
+      } else if (onToggleNoteRef.current) {
+        notesToRecord.forEach((m) => onToggleNoteRef.current!(currentStep, m, 100));
+      }
+
+      if (autoAdvanceRef.current) {
+        setActiveStepInput((prev) => (prev + 1 < totalStepsRef.current ? prev + 1 : prev));
+      }
+    }
+  }, []);
 
   // Inicialización de Web MIDI API y detección reactiva de teclado USB
   useEffect(() => {
@@ -202,27 +247,50 @@ export function PianoRollBuilder({
       setActiveMidiDevice(deviceName);
     });
 
-    const unsubNotes = midiInputService.subscribe((midiNum, noteName, vel, isNoteOn) => {
-      setPressedMidiKeys((prev) => {
-        const next = new Set(prev);
-        if (isNoteOn) next.add(midiNum);
-        else next.delete(midiNum);
-        return next;
-      });
+    const unsubNotes = midiInputService.subscribe((heldKeys, lastNote) => {
+      setPressedMidiKeys(new Set(heldKeys));
 
-      if (isNoteOn) {
+      if (lastNote.isNoteOn) {
+        // Si había notas pendientes del acorde anterior listas para comitear, comitearlas primero
+        if (releaseTimerRef.current) {
+          clearTimeout(releaseTimerRef.current);
+          releaseTimerRef.current = null;
+          commitChord();
+        }
+
         // Reproducir sonido inmediato con el motor polifónico
-        getPianoAudioEngine().triggerNote(midiNum, 0, 0.8, vel / 127);
-        // Estampar nota en el paso rítmico seleccionado
-        onToggleNote(activeStepInput, midiNum, vel);
+        getPianoAudioEngine().triggerNote(
+          lastNote.noteNumber,
+          0,
+          0.8,
+          (lastNote.velocity || 100) / 127
+        );
+
+        // Acumular la tecla en el buffer del acorde
+        chordBufferRef.current.add(lastNote.noteNumber);
+      } else {
+        // Al soltar teclas (Note OFF)
+        if (releaseTimerRef.current) {
+          clearTimeout(releaseTimerRef.current);
+          releaseTimerRef.current = null;
+        }
+
+        // Si se han liberado todas las teclas físicas del teclado controlador
+        if (heldKeys.size === 0 && chordBufferRef.current.size > 0) {
+          releaseTimerRef.current = setTimeout(() => {
+            commitChord();
+            releaseTimerRef.current = null;
+          }, 50); // Debounce de 50ms para capturar acordes completos con liberación natural
+        }
       }
     });
 
     return () => {
       unsubDevice();
       unsubNotes();
+      if (releaseTimerRef.current) clearTimeout(releaseTimerRef.current);
     };
-  }, [activeStepInput, onToggleNote]);
+  }, [commitChord]);
 
   const isBlackKey = (midi: number) => [1, 3, 6, 8, 10].includes(midi % 12);
 
@@ -242,13 +310,18 @@ export function PianoRollBuilder({
   // Total de notas en el compás actual
   const currentMeasureNotesCount = useMemo(() => {
     return notes.filter(
-      (n) => n.step >= measureStartStep && n.step < measureStartStep + totalSteps && n.midiNumber !== undefined
+      (n: any) => {
+        const stepNum = n.step !== undefined ? n.step : n.stepIndex;
+        return stepNum >= measureStartStep && stepNum < measureStartStep + totalSteps && n.midiNumber !== undefined;
+      }
     ).length;
   }, [notes, measureStartStep, totalSteps]);
 
+  const toggleHandler = onToggleSingleNote || onToggleNote;
+
   return (
     <div className="w-full flex flex-col bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl select-none">
-      {/* 1. Barra Superior de Estado MIDI y Asistente de Grabación */}
+      {/* 1. Barra Superior de Estado MIDI y Asistente de Grabación Paso a Paso */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-3 sm:px-4 py-2.5 bg-slate-900 border-b border-slate-800 text-xs">
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Indicador de Conexión MIDI USB */}
@@ -264,14 +337,43 @@ export function PianoRollBuilder({
                 activeMidiDevice ? 'text-emerald-400 animate-pulse' : 'text-slate-600'
               }`}
             />
-            <span className="font-mono text-xs font-bold truncate max-w-[220px] sm:max-w-[280px]">
+            <span className="font-mono text-xs font-bold truncate max-w-[190px] sm:max-w-[260px]">
               {activeMidiDevice ? `🟢 MIDI: ${activeMidiDevice}` : 'MIDI no detectado (Conecta tu teclado USB)'}
             </span>
           </div>
 
+          {/* Interruptor Auto-Avance Inteligente */}
+          <button
+            type="button"
+            onClick={() => setAutoAdvance(!autoAdvance)}
+            className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all text-xs border ${
+              autoAdvance
+                ? 'bg-amber-400 border-amber-300 text-slate-950 font-black shadow-[0_0_12px_rgba(251,191,36,0.35)]'
+                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+            }`}
+            title="Al estar activo (ON), tocar un acorde o nota en el teclado MIDI avanzará automáticamente al siguiente paso al soltar las teclas"
+          >
+            <Zap className={`w-3.5 h-3.5 ${autoAdvance ? 'fill-slate-950 text-slate-950' : 'text-slate-400'}`} />
+            <span>Auto-Avance {autoAdvance ? 'ON' : 'OFF'}</span>
+          </button>
+        </div>
+
+        {/* Navegación manual de Pasos */}
+        <div className="flex items-center gap-2 font-mono">
+          <button
+            type="button"
+            onClick={() => setActiveStepInput((prev) => Math.max(0, prev - 1))}
+            disabled={activeStepInput === 0}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed text-xs transition-colors border border-slate-700"
+            title="Paso Anterior (⌫)"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span className="hidden sm:inline font-sans font-medium text-[11px]">Anterior</span>
+          </button>
+
           {/* Badge del Paso Activo de Grabación */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-cyan-900/50 text-cyan-300 font-mono text-xs">
-            <span className="text-slate-400 font-sans text-[11px]">Paso activo:</span>
+            <span className="text-slate-400 font-sans text-[11px]">Paso:</span>
             <strong className="text-cyan-400 font-black">
               #{activeStepInput + 1}{' '}
               <span className="text-amber-400">({getStepLabel(activeStepInput, activeSubdivision, timeSignatureNumerator)})</span>
@@ -279,17 +381,21 @@ export function PianoRollBuilder({
             <span className="text-[10px] text-slate-500">/ {totalSteps}</span>
           </div>
 
-          <span className="hidden md:inline-flex items-center gap-1 text-[11px] text-slate-400">
+          <button
+            type="button"
+            onClick={() => setActiveStepInput((prev) => Math.min(totalSteps - 1, prev + 1))}
+            disabled={activeStepInput >= totalSteps - 1}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed text-xs transition-colors border border-slate-700"
+            title="Paso Siguiente (⏭)"
+          >
+            <span className="hidden sm:inline font-sans font-medium text-[11px]">Siguiente</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
+
+          <span className="hidden lg:inline-flex items-center gap-1 text-[11px] text-slate-400 ml-2">
             <span>Compás {currentMeasure + 1}</span>
             <span className="text-amber-400 font-bold">({currentMeasureNotesCount} notas)</span>
           </span>
-        </div>
-
-        {/* Guía rápida de uso */}
-        <div className="flex items-center gap-2 text-[11px] text-slate-400">
-          <Info className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-          <span className="hidden sm:inline">Haz clic en la cuadrícula o toca teclas en tu teclado MIDI físico</span>
-          <span className="sm:hidden">Toca o usa MIDI</span>
         </div>
       </div>
 
@@ -298,7 +404,7 @@ export function PianoRollBuilder({
         ref={containerRef}
         className="w-full max-h-[460px] overflow-y-auto overflow-x-auto flex flex-col no-scrollbar bg-[#0f1117]"
       >
-        {/* Cabecera pegajosa con números de pasos rítmicos */}
+        {/* Cabecera pegajosa con etiquetas rítmicas dinámicas */}
         <div className="flex sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 min-w-max shadow-md">
           {/* Esquina superior izquierda fija */}
           <div className="w-20 sm:w-24 shrink-0 bg-slate-950 p-2 text-[10px] font-bold text-slate-400 border-r border-slate-800 flex items-center justify-between">
@@ -363,7 +469,7 @@ export function PianoRollBuilder({
                 <div
                   onClick={() => {
                     getPianoAudioEngine().triggerNote(midi, 0, 0.8, 0.85);
-                    onToggleNote(activeStepInput, midi, 100);
+                    if (toggleHandler) toggleHandler(activeStepInput, midi, 100);
                   }}
                   className={`w-20 sm:w-24 shrink-0 px-2 h-full flex items-center justify-between text-[10px] font-mono border-r border-slate-800 cursor-pointer transition-all select-none ${
                     isPressed
@@ -385,7 +491,9 @@ export function PianoRollBuilder({
                   {Array.from({ length: totalSteps }).map((_, stepIdx) => {
                     const globalStep = measureStartStep + stepIdx;
                     const hasNote = notes.some(
-                      (n) => n.step === globalStep && n.midiNumber === midi
+                      (n: any) =>
+                        (n.step === globalStep || (n.stepIndex !== undefined && n.stepIndex === stepIdx)) &&
+                        n.midiNumber === midi
                     );
                     const isSelectedStep = activeStepInput === stepIdx;
                     const isPlayingStep = isPlaying && playbackStepInMeasure === stepIdx;
@@ -400,7 +508,7 @@ export function PianoRollBuilder({
                           if (!hasNote) {
                             getPianoAudioEngine().triggerNote(midi, 0, 0.8, 0.85);
                           }
-                          onToggleNote(stepIdx, midi, 100);
+                          if (toggleHandler) toggleHandler(stepIdx, midi, 100);
                         }}
                         className={`w-8 sm:w-9 h-full cursor-pointer transition-all relative flex items-center justify-center ${
                           isBeatEnd ? 'border-r-2 border-r-slate-600/90' : 'border-r border-slate-900/40'
@@ -439,4 +547,3 @@ export function PianoRollBuilder({
 }
 
 export default PianoRollBuilder;
-

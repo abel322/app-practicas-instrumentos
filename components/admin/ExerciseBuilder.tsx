@@ -503,6 +503,25 @@ export const ExerciseBuilder: React.FC = () => {
     [currentMeasure, stepsPerMeasure]
   );
 
+  const handleAddChordToPianoStep = useCallback(
+    (stepInMeasure: number, midiNumbers: number[], velocity: number = 100) => {
+      const globalStep = currentMeasure * stepsPerMeasure + stepInMeasure;
+      setNotes((prev) => {
+        const filtered = prev.filter(
+          (n) => !(n.step === globalStep && midiNumbers.includes(n.midiNumber || -1))
+        );
+        const newNotes: EditorNote[] = midiNumbers.map((midiNumber) => ({
+          step: globalStep,
+          midiNumber,
+          velocity,
+          durationSteps: 1,
+        }));
+        return [...filtered, ...newNotes];
+      });
+    },
+    [currentMeasure, stepsPerMeasure]
+  );
+
   // ============================================================================
   // PREVISUALIZACIÓN DE AUDIO & RUNWAY EN TIEMPO REAL
   // ============================================================================
@@ -1412,6 +1431,8 @@ export const ExerciseBuilder: React.FC = () => {
           activeSubdivision={subdivision}
           notes={notes}
           onToggleNote={handleTogglePianoNote}
+          onToggleSingleNote={handleTogglePianoNote}
+          onAddChordToStep={handleAddChordToPianoStep}
           isPlaying={isPlaying}
           playbackActiveStep={playbackActiveStep}
           measureStartStep={activeMeasureStart}
