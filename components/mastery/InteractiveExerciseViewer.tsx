@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { MasterySkillNode, InteractiveNoteStep } from '@/types/mastery';
-import { Eye, Code2, Music, Guitar, Play, Sparkles } from 'lucide-react';
+import { Eye, Code2, Music, Guitar, Play, Sparkles, KeyboardMusic } from 'lucide-react';
 
 interface InteractiveExerciseViewerProps {
   skill: MasterySkillNode;
@@ -91,14 +92,14 @@ export const InteractiveExerciseViewer: React.FC<InteractiveExerciseViewerProps>
                     {step.label}
                   </div>
 
-                  {/* Digitación y Dirección de púa */}
+                  {/* Digitación y Dirección de púa (para cuerdas) o Dedo (para piano) */}
                   <div className="flex items-center gap-1.5 text-[10px] font-mono">
                     {step.finger && (
                       <span className="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold">
-                        {step.finger}
+                        {skill.instrument === 'piano' ? `d${step.finger}` : step.finger}
                       </span>
                     )}
-                    {step.pickDirection && (
+                    {skill.instrument !== 'piano' && step.pickDirection && (
                       <span
                         className={`font-black ${
                           step.pickDirection === 'down'
@@ -130,9 +131,21 @@ export const InteractiveExerciseViewer: React.FC<InteractiveExerciseViewerProps>
             })}
           </div>
 
-          <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 text-center">
-            El cursor visual se desplaza en sincronía con el metrónomo en cada tiempo de subdivisión.
-          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-1 border-t border-slate-200/60 dark:border-slate-800/60">
+            <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 text-center sm:text-left">
+              El cursor visual se desplaza en sincronía con el metrónomo en cada tiempo de subdivisión.
+            </p>
+
+            {skill.instrument === 'piano' && (
+              <Link
+                href="/piano"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-[11px] font-mono font-bold hover:bg-amber-500/25 transition-colors"
+              >
+                <KeyboardMusic className="w-3.5 h-3.5" />
+                <span>Abrir en Keys Lab Runway &rarr;</span>
+              </Link>
+            )}
+          </div>
         </div>
       ) : (
         /* Modo Tablatura / Partitura Clásica */

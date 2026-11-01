@@ -177,8 +177,8 @@ export const ExerciseBuilder: React.FC = () => {
               sticking: h.sticking || 'R',
               velocity: h.velocity ?? 0.8,
             }));
-          } else if (detectedInst === 'piano' && Array.isArray(exerciseData.tabData || exerciseData.data)) {
-            const pNotes = exerciseData.tabData || exerciseData.data;
+          } else if (detectedInst === 'piano' && Array.isArray(exerciseData.notesData || exerciseData.tabData || exerciseData.data)) {
+            const pNotes = exerciseData.notesData || exerciseData.tabData || exerciseData.data;
             loadedNotes = pNotes.map((p: any) => ({
               step: p.step,
               midiNumber: p.midiNumber,
@@ -722,12 +722,15 @@ export const ExerciseBuilder: React.FC = () => {
         .map((n) => {
           const midi = n.midiNumber!;
           const noteName = `${NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
+          const hand = midi < 60 ? 'left' : 'right';
           return {
             step: n.step,
             midiNumber: midi,
             noteName,
             velocity: n.velocity ?? 100,
             durationSteps: n.durationSteps ?? 1,
+            hand,
+            finger: n.finger ? parseInt(n.finger, 10) : undefined,
           };
         });
     } else {
@@ -831,7 +834,15 @@ export const ExerciseBuilder: React.FC = () => {
         }
       }
 
-      setSaveResult(res);
+      const practiceUrl =
+        res.url ||
+        (instrument === 'piano'
+          ? `/piano/practice/${res.slug}`
+          : instrument === 'drums'
+          ? `/practice/${res.slug}`
+          : `/strings/practice/${res.slug}`);
+
+      setSaveResult({ ...res, url: practiceUrl });
     } catch (e: any) {
       setSaveResult({ success: false, error: e?.message || 'Error inesperado' });
     } finally {

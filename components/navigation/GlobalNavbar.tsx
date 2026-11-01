@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Drum, Music, Menu, X, Sparkles, AudioWaveform, Plus, Target } from 'lucide-react';
+import { Drum, Music, Menu, X, Sparkles, AudioWaveform, Plus, Target, KeyboardMusic } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 
 export const GlobalNavbar: React.FC = () => {
@@ -14,9 +14,10 @@ export const GlobalNavbar: React.FC = () => {
   // Determinar pestaña activa
   const isDrumsActive = pathname === '/' || pathname.startsWith('/drums') || pathname.startsWith('/practice');
   const isStringsActive = pathname.startsWith('/strings');
+  const isPianoActive = pathname.startsWith('/piano') || pathname.startsWith('/keys');
   const isFretboardActive = pathname.startsWith('/fretboard') || pathname.startsWith('/harmonics');
   const isMasteryActive = pathname.startsWith('/mastery');
-  const isBuilderActive = pathname.startsWith('/admin');
+  const isBuilderActive = pathname.startsWith('/admin') || pathname.startsWith('/studio-builder');
 
   const navLinks = [
     {
@@ -34,6 +35,14 @@ export const GlobalNavbar: React.FC = () => {
       active: isStringsActive,
       badge: 'Tablatura',
       badgeClass: 'bg-slate-200/80 text-slate-700 dark:bg-white/10 dark:text-zinc-400',
+    },
+    {
+      name: 'Teclas (Piano Lab)',
+      href: '/piano',
+      icon: KeyboardMusic,
+      active: isPianoActive,
+      badge: 'RUNWAY',
+      badgeClass: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.2)]',
     },
     {
       name: '🎸 Diapasón & Armonía',

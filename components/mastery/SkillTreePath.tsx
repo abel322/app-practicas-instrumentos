@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { MasterySkillNode } from '@/types/mastery';
 import {
@@ -15,6 +16,7 @@ import {
   Pencil,
   Trash2,
   Sparkles,
+  KeyboardMusic,
 } from 'lucide-react';
 
 interface SkillTreePathProps {
@@ -251,9 +253,21 @@ export const SkillTreePath: React.FC<SkillTreePathProps> = ({
                     </button>
 
                     <div className="flex items-center justify-between w-full text-[10px] font-mono text-slate-500 dark:text-slate-400">
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-cyan-500 dark:text-cyan-400" />
-                        <span>Sesión 15m</span>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-cyan-500 dark:text-cyan-400" />
+                          <span>Sesión 15m</span>
+                        </div>
+                        {skill.instrument === 'piano' && (
+                          <Link
+                            href="/piano"
+                            title="Abrir en Keys Lab Runway"
+                            className="flex items-center gap-1 text-amber-600 dark:text-amber-400 hover:underline font-bold"
+                          >
+                            <KeyboardMusic className="w-3 h-3" />
+                            <span>Keys Runway</span>
+                          </Link>
+                        )}
                       </div>
 
                       {/* Acciones de Gestión de Nivel (Nivel 1 en adelante) */}

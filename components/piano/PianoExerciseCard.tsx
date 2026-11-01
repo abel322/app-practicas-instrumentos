@@ -1,0 +1,187 @@
+'use client';
+
+import React from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { motion } from 'framer-motion';
+import { PianoExerciseData } from '@/types/piano';
+import { Play, Activity, Clock, Pencil, Trash2, KeyboardMusic } from 'lucide-react';
+
+interface PianoExerciseCardProps {
+  exercise: PianoExerciseData;
+  index: number;
+  onEdit?: (exercise: PianoExerciseData) => void;
+  onRequestDelete?: (exercise: PianoExerciseData) => void;
+}
+
+export const PianoExerciseCard: React.FC<PianoExerciseCardProps> = ({
+  exercise,
+  index,
+  onEdit,
+  onRequestDelete,
+}) => {
+  const router = useRouter();
+
+  const getDifficultyBadge = (difficulty: string) => {
+    switch (difficulty) {
+      case 'Básico':
+        return 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-500/30';
+      case 'Intermedio':
+        return 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-500/30';
+      case 'Avanzado':
+        return 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-500/30';
+      default:
+        return 'bg-cyan-100 text-cyan-800 border-cyan-300 dark:bg-cyan-950/50 dark:text-cyan-300 dark:border-cyan-500/30';
+    }
+  };
+
+  const handleEdit = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onEdit) {
+      onEdit(exercise);
+    } else {
+      try {
+        sessionStorage.setItem(
+          'soundlab_editing_exercise',
+          JSON.stringify({ ...exercise, instrumentType: 'piano' })
+        );
+      } catch (_) {}
+      router.push(`/admin/builder?editSlug=${exercise.slug}&instrument=piano`);
+    }
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onRequestDelete) {
+      onRequestDelete(exercise);
+    }
+  };
+
+  // Extraer las primeras notas para vista previa
+  const previewNotes = (exercise.notesData || []).slice(0, 10);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: index * 0.05, ease: [0.16, 1, 0.3, 1] }}
+      whileHover={{ y: -4, transition: { duration: 0.2 } }}
+      className="group relative flex flex-col justify-between rounded-2xl bg-[#f8fafc] dark:bg-slate-900/80 p-6 border border-slate-300/80 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-slate-400 dark:hover:border-slate-700 transition-all duration-200 overflow-hidden"
+    >
+      {/* Resplandor decorativo */}
+      <div className="absolute top-0 right-0 -mr-16 -mt-16 w-36 h-36 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-all duration-500 pointer-events-none" />
+
+      <div>
+        {/* Cabecera: Instrumento, Dificultad y Acciones CRUD */}
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full border bg-amber-500/15 border-amber-500/30 text-amber-700 dark:text-amber-300 flex items-center gap-1">
+              <KeyboardMusic className="w-3 h-3" />
+              <span>Piano / Teclas</span>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span
+              className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${getDifficultyBadge(
+                exercise.difficulty
+              )}`}
+            >
+              {exercise.difficulty}
+            </span>
+
+            {/* Acciones CRUD */}
+            <div className="flex items-center gap-1 ml-1 opacity-70 group-hover:opacity-100 transition-opacity">
+              <button
+                type="button"
+                onClick={handleEdit}
+                title="Editar en Studio Builder"
+                className="p-1 rounded-lg text-slate-500 hover:text-amber-600 dark:text-zinc-400 dark:hover:text-amber-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                title="Eliminar ejercicio de piano"
+                className="p-1 rounded-lg text-slate-500 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950/40 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Categoría */}
+        <div className="text-[11px] uppercase tracking-wider font-bold text-slate-600 dark:text-zinc-400 mb-1">
+          {exercise.category}
+        </div>
+
+        {/* Título */}
+        <h3 className="text-lg font-extrabold text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors mb-2">
+          {exercise.title}
+        </h3>
+
+        {/* Descripción */}
+        {exercise.description && (
+          <p className="text-xs text-slate-600 dark:text-slate-400 font-medium line-clamp-2 leading-relaxed mb-4">
+            {exercise.description}
+          </p>
+        )}
+
+        {/* Mini Preview de Notas / Teclas */}
+        {previewNotes.length > 0 && (
+          <div className="mb-4 p-2.5 rounded-xl bg-slate-200/80 dark:bg-zinc-900/60 border border-slate-300/70 dark:border-white/5 font-mono">
+            <div className="text-[10px] text-slate-600 dark:text-zinc-500 uppercase mb-1.5 flex items-center justify-between">
+              <span>Fraseo &amp; Digitación</span>
+              <span>{exercise.totalSteps} Pasos</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5 items-center">
+              {previewNotes.map((note, i) => {
+                const isLeft = note.hand === 'left' || (!note.hand && note.midiNumber < 60);
+                return (
+                  <span
+                    key={`preview-${i}`}
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                      isLeft
+                        ? 'bg-blue-500/10 border-blue-500/30 text-blue-700 dark:text-blue-300'
+                        : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-700 dark:text-cyan-300'
+                    }`}
+                  >
+                    <span>{note.noteName}</span>
+                    <span className="text-[9px] opacity-70">({isLeft ? 'MI' : 'MD'})</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Pie de la Tarjeta */}
+      <div className="pt-4 border-t border-slate-300/70 dark:border-slate-800 flex items-center justify-between">
+        <div className="flex items-center gap-3 text-xs text-slate-600 dark:text-zinc-400 font-mono">
+          <div className="flex items-center gap-1.5" title="Tempo predeterminado">
+            <Activity className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
+            <span>{exercise.bpmDefault} BPM</span>
+          </div>
+          <div className="flex items-center gap-1.5" title="Métrica">
+            <Clock className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-500" />
+            <span>{exercise.timeSignature}</span>
+          </div>
+        </div>
+
+        <Link
+          href={`/piano/practice/${exercise.slug}`}
+          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-sm transition-all duration-200"
+        >
+          <span>Estudiar</span>
+          <Play className="w-3 h-3 fill-current" />
+        </Link>
+      </div>
+    </motion.div>
+  );
+};
+

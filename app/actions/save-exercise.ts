@@ -139,15 +139,25 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
             },
           });
 
+          const isPiano = formData.instrumentType === 'piano';
+          const targetPracticeUrl = isPiano
+            ? `/piano/practice/${updated.slug}`
+            : `/strings/practice/${updated.slug}`;
+
           revalidatePath('/');
-          revalidatePath('/strings');
-          revalidatePath(`/strings/practice/${updated.slug}`);
+          if (isPiano) {
+            revalidatePath('/piano');
+            revalidatePath(`/piano/practice/${updated.slug}`);
+          } else {
+            revalidatePath('/strings');
+            revalidatePath(`/strings/practice/${updated.slug}`);
+          }
 
           return {
             success: true,
             slug: updated.slug,
             instrument: formData.instrumentType,
-            url: `/strings/practice/${updated.slug}`,
+            url: targetPracticeUrl,
             isUpdate: true,
           };
         }
@@ -175,15 +185,25 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
       });
 
       // Revalidar rutas
+      const isPiano = formData.instrumentType === 'piano';
+      const targetPracticeUrl = isPiano
+        ? `/piano/practice/${exercise.slug}`
+        : `/strings/practice/${exercise.slug}`;
+
       revalidatePath('/');
-      revalidatePath('/strings');
-      revalidatePath(`/strings/practice/${exercise.slug}`);
+      if (isPiano) {
+        revalidatePath('/piano');
+        revalidatePath(`/piano/practice/${exercise.slug}`);
+      } else {
+        revalidatePath('/strings');
+        revalidatePath(`/strings/practice/${exercise.slug}`);
+      }
 
       return {
         success: true,
         slug: exercise.slug,
         instrument: formData.instrumentType,
-        url: `/strings/practice/${exercise.slug}`,
+        url: targetPracticeUrl,
         isUpdate: false,
       };
     }
@@ -215,10 +235,14 @@ export async function deleteExerciseAction(
       return { success: true };
     } else {
       await prisma.stringExercise.delete({ where: { slug } }).catch((err) => {
-        console.warn('Prisma string delete info (probablemente ya eliminado o en memoria):', err?.message || err);
+        console.warn('Prisma string/piano delete info (probablemente ya eliminado o en memoria):', err?.message || err);
       });
       revalidatePath('/');
-      revalidatePath('/strings');
+      if (instrumentType === 'piano') {
+        revalidatePath('/piano');
+      } else {
+        revalidatePath('/strings');
+      }
       return { success: true };
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

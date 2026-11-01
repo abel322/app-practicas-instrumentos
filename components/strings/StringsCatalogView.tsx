@@ -45,7 +45,11 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
     try {
       const deletedSlugs = getDeletedExerciseSlugs();
       const localCustom = getLocalExercises().filter(
-        (ex) => ex.instrumentType !== 'drums' && (ex.tabData || ex.instrument)
+        (ex) =>
+          ex.instrumentType !== 'drums' &&
+          ex.instrumentType !== 'piano' &&
+          ex.instrument !== 'piano' &&
+          (ex.tabData || ex.instrument)
       );
 
       setExercises((prev) => {

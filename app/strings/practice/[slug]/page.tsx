@@ -1,5 +1,5 @@
 import React from 'react';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { getStringExercises, getStringExerciseBySlug } from '@/lib/prisma';
 import { StringsPracticePlayer } from '@/components/strings/StringsPracticePlayer';
@@ -38,6 +38,10 @@ export default async function StringsPracticePage({ params }: StringsPracticePag
 
   if (!exercise) {
     notFound();
+  }
+
+  if (exercise.instrument === ('piano' as any)) {
+    redirect(`/piano/practice/${exercise.slug}`);
   }
 
   return (
