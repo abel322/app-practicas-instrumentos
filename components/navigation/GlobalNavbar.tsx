@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Drum, Music, Menu, X, Sparkles, AudioWaveform, Plus } from 'lucide-react';
+import { Drum, Music, Menu, X, Sparkles, AudioWaveform, Plus, Target } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 
 export const GlobalNavbar: React.FC = () => {
@@ -15,6 +15,7 @@ export const GlobalNavbar: React.FC = () => {
   const isDrumsActive = pathname === '/' || pathname.startsWith('/drums') || pathname.startsWith('/practice');
   const isStringsActive = pathname.startsWith('/strings');
   const isFretboardActive = pathname.startsWith('/fretboard') || pathname.startsWith('/harmonics');
+  const isMasteryActive = pathname.startsWith('/mastery');
   const isBuilderActive = pathname.startsWith('/admin');
 
   const navLinks = [
@@ -41,6 +42,14 @@ export const GlobalNavbar: React.FC = () => {
       active: isFretboardActive,
       badge: 'EXPLORADOR',
       badgeClass: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.2)]',
+    },
+    {
+      name: '🎯 Ruta Técnica',
+      href: '/mastery',
+      icon: Target,
+      active: isMasteryActive,
+      badge: 'NIVELES',
+      badgeClass: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.2)]',
     },
     {
       name: 'Studio Builder',

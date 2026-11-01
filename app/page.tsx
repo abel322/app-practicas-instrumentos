@@ -1,7 +1,8 @@
 import React from 'react';
+import Link from 'next/link';
 import { getExercises } from '@/lib/prisma';
 import { CatalogView } from '@/components/catalog/CatalogView';
-import { Drum, Sparkles, Music, Activity } from 'lucide-react';
+import { Drum, Sparkles, Music, Activity, Target, ArrowRight } from 'lucide-react';
 
 export const revalidate = 60; // Regenerar cada 60s si es aplicable
 
@@ -46,6 +47,37 @@ export default async function HomePage() {
           </div>
         </div>
       </header>
+
+      {/* Banner Destacado: Ruta Técnica por Niveles (Mastery Path) */}
+      <div className="w-full p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-slate-900/95 via-[#0B131F] to-slate-900/95 border border-amber-500/30 shadow-[0_0_30px_rgba(245,158,11,0.1)] flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-950 font-bold shadow-[0_0_20px_rgba(245,158,11,0.4)] shrink-0">
+            <Target className="w-6 h-6 stroke-[2.5]" />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                Nuevo Módulo
+              </span>
+              <span className="text-xs font-mono text-slate-400">Guitarra &bull; Piano &bull; Bajo &bull; Batería</span>
+            </div>
+            <h3 className="text-base sm:text-lg font-extrabold text-white tracking-tight">
+              Ruta Técnica por Niveles &bull; Mastery Path
+            </h3>
+            <p className="text-xs text-slate-400 leading-relaxed max-w-xl">
+              Rutinas acotadas de 15 a 20 minutos con metrónomo Web Audio, criterios de pase medibles y desbloqueo secuencial de 5 niveles por instrumento.
+            </p>
+          </div>
+        </div>
+
+        <Link
+          href="/mastery"
+          className="w-full md:w-auto px-5 py-3 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(245,158,11,0.3)] transition-all hover:scale-105 shrink-0"
+        >
+          <span>Explorar Árbol de Niveles</span>
+          <ArrowRight className="w-4 h-4" />
+        </Link>
+      </div>
 
       {/* Catálogo Interactivo con Filtros */}
       <section className="w-full">
