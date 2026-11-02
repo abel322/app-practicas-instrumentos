@@ -47,7 +47,7 @@ export const StringExerciseCard: React.FC<StringExerciseCardProps> = ({
       try {
         sessionStorage.setItem(
           'soundlab_editing_exercise',
-          JSON.stringify({ ...exercise, instrumentType: instType })
+          JSON.stringify({ ...exercise, instrumentType: instType, subdivision: exercise.subdivision || (exercise.totalSteps === 8 ? '1/8' : '1/16') })
         );
       } catch (_) {}
       router.push(`/admin/builder?editSlug=${exercise.slug}&instrument=${instType}`);

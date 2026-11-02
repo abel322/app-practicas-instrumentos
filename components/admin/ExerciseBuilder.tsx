@@ -40,6 +40,7 @@ import {
 import { getStepRhythmLabel } from './TablatureRuler';
 import { AVAILABLE_FRETS } from './NoteSelectorModal';
 import { PianoRollBuilder, getStepLabel } from './PianoRollBuilder';
+import { normalizeSubdivisionKey, getStepsForSubdivision } from '@/lib/music-theory/rhythmSubdivisions';
 
 export { getStepRhythmLabel, getStepLabel, AVAILABLE_FRETS };
 
@@ -129,84 +130,112 @@ export const ExerciseBuilder: React.FC = () => {
 
     if (editSlug) {
       setEditingSlug(editSlug);
-      try {
-        let exerciseData: any = null;
-        const sessionRaw = sessionStorage.getItem('soundlab_editing_exercise');
-        if (sessionRaw) {
-          const parsed = JSON.parse(sessionRaw);
-          if (parsed.slug === editSlug) {
-            exerciseData = parsed;
+
+      const loadExerciseData = async () => {
+        try {
+          let exerciseData: any = null;
+          const sessionRaw = sessionStorage.getItem('soundlab_editing_exercise');
+          if (sessionRaw) {
+            const parsed = JSON.parse(sessionRaw);
+            if (parsed.slug === editSlug) {
+              exerciseData = parsed;
+            }
           }
+          if (!exerciseData) {
+            const localList = getLocalExercises();
+            const found = localList.find((e: any) => e.slug === editSlug);
+            if (found) exerciseData = found;
+          }
+
+          // Consultar a la API para asegurar hidratación de metadatos más completos
+          try {
+            const res = await fetch(`/api/exercises/${editSlug}`);
+            if (res.ok) {
+              const apiRes = await res.json();
+              if (apiRes.success && apiRes.exercise) {
+                exerciseData = { ...exerciseData, ...apiRes.exercise };
+              }
+            }
+          } catch (apiErr) {
+            console.warn('API fetch fallback en builder:', apiErr);
+          }
+
+          if (exerciseData) {
+            if (exerciseData.title) setTitle(exerciseData.title);
+            if (exerciseData.category) setCategory(exerciseData.category);
+            if (exerciseData.difficulty) setDifficulty(exerciseData.difficulty);
+            if (exerciseData.bpmDefault || exerciseData.bpm) {
+              setBpm(Number(exerciseData.bpmDefault || exerciseData.bpm));
+            }
+            const loadedTimeSig = exerciseData.timeSignature || '4/4';
+            if (exerciseData.timeSignature) setTimeSignature(exerciseData.timeSignature);
+
+            // Cargar y forzar la subdivisión exacta guardada (normalizada)
+            const loadedSubKey = normalizeSubdivisionKey(
+              exerciseData.subdivision ||
+              (exerciseData.totalSteps === 8 ? '1/8' : exerciseData.totalSteps === 4 ? '1/4' : exerciseData.totalSteps === 12 && loadedTimeSig === '4/4' ? '1/8T' : '1/16')
+            );
+            setSubdivision(loadedSubKey as SubdivisionType);
+
+            const stepsInLoadedMeasure = getStepsForSubdivision(loadedSubKey, loadedTimeSig);
+
+            let detectedInst: InstrumentCategory = 'bass';
+            if (exerciseData.instrumentType) {
+              detectedInst = exerciseData.instrumentType;
+            } else if (exerciseData.instrument === 'piano') {
+              detectedInst = 'piano';
+            } else if (exerciseData.instrument === 'bass_4') {
+              detectedInst = 'bass';
+            } else if (exerciseData.instrument === 'guitar_6') {
+              detectedInst = 'guitar';
+            } else if (exerciseData.hitsData) {
+              detectedInst = 'drums';
+            }
+            setInstrument(detectedInst);
+
+            let loadedNotes: EditorNote[] = [];
+            if (detectedInst === 'drums' && Array.isArray(exerciseData.hitsData || exerciseData.data)) {
+              const hits = exerciseData.hitsData || exerciseData.data;
+              loadedNotes = hits.map((h: any) => ({
+                step: h.step,
+                drumVoice: h.instrument,
+                accent: !!h.accent,
+                sticking: h.sticking || 'R',
+                velocity: h.velocity ?? 0.8,
+              }));
+            } else if (detectedInst === 'piano' && Array.isArray(exerciseData.notesData || exerciseData.tabData || exerciseData.data)) {
+              const pNotes = exerciseData.notesData || exerciseData.tabData || exerciseData.data;
+              loadedNotes = pNotes.map((p: any) => ({
+                step: p.step,
+                midiNumber: p.midiNumber,
+                velocity: p.velocity ?? 100,
+                durationSteps: p.durationSteps || 1,
+              }));
+            } else if (Array.isArray(exerciseData.tabData || exerciseData.data)) {
+              const sNotes = exerciseData.tabData || exerciseData.data;
+              loadedNotes = sNotes.map((s: any) => ({
+                step: s.step,
+                string: s.string,
+                fret: s.fret,
+                technique: s.technique || 'normal',
+                finger: s.finger || '1',
+                velocity: s.velocity ?? 0.85,
+              }));
+            }
+
+            if (loadedNotes.length > 0) {
+              setNotes(loadedNotes);
+              const maxStep = Math.max(...loadedNotes.map((n) => n.step), 0);
+              const calculatedMeasures = Math.max(1, Math.ceil((maxStep + 1) / stepsInLoadedMeasure));
+              setTotalMeasures(Math.min(8, calculatedMeasures));
+            }
+          }
+        } catch (err) {
+          console.warn('Error loading exercise for editing:', err);
         }
-        if (!exerciseData) {
-          const localList = getLocalExercises();
-          const found = localList.find((e: any) => e.slug === editSlug);
-          if (found) exerciseData = found;
-        }
+      };
 
-        if (exerciseData) {
-          if (exerciseData.title) setTitle(exerciseData.title);
-          if (exerciseData.category) setCategory(exerciseData.category);
-          if (exerciseData.difficulty) setDifficulty(exerciseData.difficulty);
-          if (exerciseData.bpmDefault || exerciseData.bpm) {
-            setBpm(Number(exerciseData.bpmDefault || exerciseData.bpm));
-          }
-          if (exerciseData.timeSignature) setTimeSignature(exerciseData.timeSignature);
-
-          let detectedInst: InstrumentCategory = 'bass';
-          if (exerciseData.instrumentType) {
-            detectedInst = exerciseData.instrumentType;
-          } else if (exerciseData.instrument === 'piano') {
-            detectedInst = 'piano';
-          } else if (exerciseData.instrument === 'bass_4') {
-            detectedInst = 'bass';
-          } else if (exerciseData.instrument === 'guitar_6') {
-            detectedInst = 'guitar';
-          } else if (exerciseData.hitsData) {
-            detectedInst = 'drums';
-          }
-          setInstrument(detectedInst);
-
-          let loadedNotes: EditorNote[] = [];
-          if (detectedInst === 'drums' && Array.isArray(exerciseData.hitsData || exerciseData.data)) {
-            const hits = exerciseData.hitsData || exerciseData.data;
-            loadedNotes = hits.map((h: any) => ({
-              step: h.step,
-              drumVoice: h.instrument,
-              accent: !!h.accent,
-              sticking: h.sticking || 'R',
-              velocity: h.velocity ?? 0.8,
-            }));
-          } else if (detectedInst === 'piano' && Array.isArray(exerciseData.notesData || exerciseData.tabData || exerciseData.data)) {
-            const pNotes = exerciseData.notesData || exerciseData.tabData || exerciseData.data;
-            loadedNotes = pNotes.map((p: any) => ({
-              step: p.step,
-              midiNumber: p.midiNumber,
-              velocity: p.velocity ?? 100,
-              durationSteps: p.durationSteps || 1,
-            }));
-          } else if (Array.isArray(exerciseData.tabData || exerciseData.data)) {
-            const sNotes = exerciseData.tabData || exerciseData.data;
-            loadedNotes = sNotes.map((s: any) => ({
-              step: s.step,
-              string: s.string,
-              fret: s.fret,
-              technique: s.technique || 'normal',
-              finger: s.finger || '1',
-              velocity: s.velocity ?? 0.85,
-            }));
-          }
-
-          if (loadedNotes.length > 0) {
-            setNotes(loadedNotes);
-            const maxStep = Math.max(...loadedNotes.map((n) => n.step), 0);
-            const calculatedMeasures = Math.max(1, Math.ceil((maxStep + 1) / 16));
-            setTotalMeasures(Math.min(8, calculatedMeasures));
-          }
-        }
-      } catch (err) {
-        console.warn('Error loading exercise for editing:', err);
-      }
+      loadExerciseData();
     }
   }, [searchParams]);
 
@@ -244,37 +273,9 @@ export const ExerciseBuilder: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<{ success: boolean; url?: string; error?: string } | null>(null);
 
-  // Pasos por compás según compás y subdivisión
+  // Pasos por compás según compás y subdivisión normalizada
   const stepsPerMeasure = useMemo(() => {
-    if (timeSignature === '6/8') {
-      if (subdivision === '1/8') return 6;
-      if (subdivision === '1/32') return 24;
-      return 12;
-    }
-    if (timeSignature === '7/8') {
-      return subdivision === '1/8' ? 7 : 14;
-    }
-    // 4/4
-    switch (subdivision) {
-      case '1/4':
-        return 4;
-      case '1/8':
-        return 8;
-      case '1/8T':
-        return 12;
-      case '1/16':
-        return 16;
-      case '1/16T':
-        return 24;
-      case 'quintillo':
-        return 20;
-      case 'septillo':
-        return 28;
-      case '1/32':
-        return 32;
-      default:
-        return 16;
-    }
+    return getStepsForSubdivision(subdivision, timeSignature);
   }, [timeSignature, subdivision]);
 
   const totalSteps = totalMeasures * stepsPerMeasure;
@@ -796,6 +797,7 @@ export const ExerciseBuilder: React.FC = () => {
         });
 
         // Intentar guardar también en BD
+        const normalizedSub = normalizeSubdivisionKey(subdivision);
         saveExerciseAction({
           instrumentType: instrument,
           title,
@@ -805,7 +807,7 @@ export const ExerciseBuilder: React.FC = () => {
           timeSignature,
           totalMeasures,
           stepsPerMeasure,
-          subdivision,
+          subdivision: normalizedSub,
           data: formattedData,
         }).catch(() => {});
  
@@ -816,6 +818,7 @@ export const ExerciseBuilder: React.FC = () => {
         return;
       }
 
+      const normalizedSub = normalizeSubdivisionKey(subdivision);
       const res = await saveExerciseAction({
         slug: editingSlug || undefined,
         instrumentType: instrument,
@@ -826,7 +829,7 @@ export const ExerciseBuilder: React.FC = () => {
         timeSignature,
         totalMeasures,
         stepsPerMeasure,
-        subdivision,
+        subdivision: normalizedSub,
         data: formattedData,
       });
 
@@ -840,7 +843,7 @@ export const ExerciseBuilder: React.FC = () => {
           bpmDefault: bpm,
           bpm,
           timeSignature,
-          subdivision,
+          subdivision: normalizedSub,
           totalSteps,
           totalMeasures,
           stepsPerMeasure,
@@ -1070,8 +1073,8 @@ export const ExerciseBuilder: React.FC = () => {
         <div>
           <label className="text-[10px] text-slate-500 dark:text-zinc-400 uppercase font-semibold block mb-1">Subdivisión</label>
           <select
-            value={subdivision}
-            onChange={(e) => setSubdivision(e.target.value as any)}
+            value={normalizeSubdivisionKey(subdivision)}
+            onChange={(e) => setSubdivision(normalizeSubdivisionKey(e.target.value) as any)}
             className="w-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-white/10 rounded-xl px-2.5 py-1.5 text-slate-900 dark:text-white font-mono focus:border-cyan-500 focus:outline-none"
           >
             <optgroup label="── SUBDIVISIONES REGULARES ──" className="bg-slate-950 text-slate-400 font-bold">

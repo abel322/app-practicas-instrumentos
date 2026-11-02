@@ -110,7 +110,7 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
     try {
       sessionStorage.setItem(
         'soundlab_editing_exercise',
-        JSON.stringify({ ...ex, instrumentType: instType })
+        JSON.stringify({ ...ex, instrumentType: instType, subdivision: ex.subdivision || (ex.totalSteps === 8 ? '1/8' : '1/16') })
       );
     } catch (_) {}
     router.push(`/admin/builder?editSlug=${ex.slug}&instrument=${instType}`);
