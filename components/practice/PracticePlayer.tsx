@@ -4,10 +4,15 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import Link from 'next/link';
 import { DrumExerciseData, DrumHit } from '@/types/drum';
 import { getAudioEngine } from '@/lib/drumAudioEngine';
-import { DrumStaffScore, DrumMeasureRenderer } from './DrumStaffScore';
+import { DrumScoreRenderer } from './DrumScoreSVG';
 import { TransportBar } from './TransportBar';
 import { StickingLegend } from './StickingLegend';
-import { getSubdivisionConfig, normalizeSubdivisionKey } from '@/lib/music-theory/rhythmSubdivisions';
+import { getLocalExercises } from '@/lib/exercises/customExercisesStorage';
+import {
+  normalizeSubdivisionKey,
+  getStepsForSubdivision,
+  getSubdivisionConfig,
+} from '@/lib/music-theory/rhythmSubdivisions';
 import { ArrowLeft, Drum, Sparkles, Keyboard, Maximize2, Minimize2 } from 'lucide-react';
 
 interface PracticePlayerProps {
@@ -15,8 +20,34 @@ interface PracticePlayerProps {
 }
 
 export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
+  // Estado local del ejercicio con hidratación reactiva si existe una versión actualizada en localStorage
+  const [activeExercise, setActiveExercise] = useState<DrumExerciseData>(exercise);
+
+  useEffect(() => {
+    try {
+      // 1. Revisar si hay datos en sessionStorage de una sesión reciente de edición
+      const sessionRaw = sessionStorage.getItem('soundlab_editing_exercise');
+      if (sessionRaw) {
+        const parsed = JSON.parse(sessionRaw);
+        if (parsed.slug === exercise.slug) {
+          setActiveExercise((prev) => ({ ...prev, ...parsed }));
+          return;
+        }
+      }
+
+      // 2. Revisar si el ejercicio fue guardado en localStorage
+      const localList = getLocalExercises();
+      const found = localList.find((e: any) => e.slug === exercise.slug);
+      if (found) {
+        setActiveExercise((prev) => ({ ...prev, ...found }));
+      }
+    } catch (e) {
+      console.warn('Error sincronizando ejercicio local en PracticePlayer:', e);
+    }
+  }, [exercise.slug]);
+
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [bpm, setBpm] = useState<number>(exercise.bpmDefault);
+  const [bpm, setBpm] = useState<number>(activeExercise.bpmDefault || 100);
   const [metronomeEnabled, setMetronomeEnabled] = useState<boolean>(true);
   const [activeStep, setActiveStep] = useState<number>(0);
   const [progress, setProgress] = useState<number>(0);
@@ -28,7 +59,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
 
   // Referencias para el scheduler de Web Audio API (Chris Wilson lookahead pattern)
   const isPlayingRef = useRef<boolean>(false);
-  const bpmRef = useRef<number>(exercise.bpmDefault);
+  const bpmRef = useRef<number>(activeExercise.bpmDefault || 100);
   const nextNoteTimeRef = useRef<number>(0);
   const currentStepRef = useRef<number>(0);
   const timerIdRef = useRef<number | null>(null);
@@ -43,46 +74,58 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
 
-  // Subdivisión rítmica dinámica (ej. 1/8 Corcheas, 1/16 Semicorcheas, 1/8T Tresillos)
-  const subdivisionKey =
-    exercise.subdivision ||
-    (exercise.totalSteps === 8
+  // ==============================================================
+  // 1. LECTURA DINÁMICA DE SUBDIVISIÓN Y PASOS POR COMPÁS
+  // ==============================================================
+  const rawSubdivision =
+    activeExercise?.subdivision ||
+    (activeExercise?.totalSteps === 8
       ? '1/8'
-      : exercise.totalSteps === 4
+      : activeExercise?.totalSteps === 4
       ? '1/4'
-      : exercise.totalSteps === 12 && exercise.timeSignature === '4/4'
+      : activeExercise?.totalSteps === 12 && activeExercise?.timeSignature === '4/4'
       ? '1/8T'
       : '1/16');
 
-  const subConfig = useMemo(() => {
-    return getSubdivisionConfig(subdivisionKey, exercise.timeSignature, exercise.stepsPerMeasure);
-  }, [subdivisionKey, exercise.timeSignature, exercise.stepsPerMeasure]);
+  const normalizedSub = normalizeSubdivisionKey(rawSubdivision);
+  const stepsPerMeasure =
+    activeExercise?.stepsPerMeasure ||
+    getStepsForSubdivision(normalizedSub, activeExercise?.timeSignature); // 8 para 1/8, 16 para 1/16
 
-  const stepsPerMeasure = exercise.stepsPerMeasure || subConfig.stepsPerMeasure;
-  const totalMeasures = (exercise as any).measures?.length || Math.max(1, Math.ceil(exercise.totalSteps / stepsPerMeasure));
+  const subConfig = useMemo(() => {
+    return getSubdivisionConfig(normalizedSub, activeExercise?.timeSignature, stepsPerMeasure);
+  }, [normalizedSub, activeExercise?.timeSignature, stepsPerMeasure]);
+
+  const totalMeasures =
+    (activeExercise as any).measures?.length ||
+    Math.max(1, Math.ceil((activeExercise?.totalSteps || stepsPerMeasure) / stepsPerMeasure));
+  const totalSteps = totalMeasures * stepsPerMeasure;
+
   const activeMeasureIndex = Math.min(totalMeasures - 1, Math.floor(activeStep / stepsPerMeasure));
   const stepInMeasure = activeStep % stepsPerMeasure;
-  const scannerPercent = ((stepInMeasure + 0.5) / stepsPerMeasure) * 100;
-  const subdivisionLabel = subConfig.name;
-  const subdivisionLabels = subConfig.stepLabels.slice(0, stepsPerMeasure);
 
   // Pulsos por compás y pasos por pulso según métrica
   const beatsPerMeasure =
-    exercise.timeSignature === '6/8' ? 2 : exercise.timeSignature === '3/4' ? 3 : 4;
+    activeExercise.timeSignature === '6/8' ? 2 : activeExercise.timeSignature === '3/4' ? 3 : 4;
   const stepsPerBeat = Math.max(1, Math.round(stepsPerMeasure / beatsPerMeasure));
 
-  // Duración de un paso según BPM, subdivisión y métrica
+  // ==============================================================
+  // 2. SINCRONIZACIÓN DE TIEMPO DEL SECUENCIADOR WEB AUDIO
+  // ==============================================================
   const getSecondsPerStep = useCallback(
     (currentBpm: number) => {
-      if (exercise.timeSignature === '6/8') {
+      if (activeExercise.timeSignature === '6/8') {
         const beatDuration = (60 / currentBpm) * 1.5;
         const stepsInBeat = stepsPerMeasure === 6 ? 3 : 6;
         return beatDuration / stepsInBeat;
       }
+      // En 1/8 (Corcheas): cada paso dura (60 / BPM) / 2 segundos
+      // En 1/16 (Semicorcheas): cada paso dura (60 / BPM) / 4 segundos
+      // En 1/4 (Negras): cada paso dura (60 / BPM) / 1 segundos
       const beatDuration = 60 / currentBpm;
       return beatDuration / stepsPerBeat;
     },
-    [exercise.timeSignature, stepsPerMeasure, stepsPerBeat]
+    [activeExercise.timeSignature, stepsPerMeasure, stepsPerBeat]
   );
 
   const getMeasureDuration = useCallback(
@@ -92,20 +135,28 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     [getSecondsPerStep, stepsPerMeasure]
   );
 
-  // Indexar hits por paso para acceso instantáneo O(1)
+  // Indexar hits por paso temporal para acceso instantáneo O(1)
   const hitsByStep = useRef<Map<number, DrumHit[]>>(new Map());
   useEffect(() => {
     const map = new Map<number, DrumHit[]>();
-    for (let i = 0; i < exercise.totalSteps; i++) {
+    for (let i = 0; i < totalSteps; i++) {
       map.set(i, []);
     }
-    exercise.hitsData.forEach((hit) => {
-      if (hit.step >= 0 && hit.step < exercise.totalSteps) {
-        map.get(hit.step)?.push(hit);
+    const hits = activeExercise.hitsData || (activeExercise as any).data || [];
+    hits.forEach((hit: any) => {
+      const step = hit.step !== undefined ? hit.step : hit.stepIndex !== undefined ? hit.stepIndex : 0;
+      if (step >= 0 && step < totalSteps) {
+        map.get(step)?.push({
+          step,
+          instrument: hit.instrument || hit.drumType || hit.instrumentKey || 'snare',
+          accent: !!hit.accent,
+          sticking: hit.sticking || 'R',
+          velocity: hit.velocity ?? 0.8,
+        });
       }
     });
     hitsByStep.current = map;
-  }, [exercise]);
+  }, [activeExercise, totalSteps]);
 
   // Planificador (Scheduler) de notas de Web Audio API
   const scheduleNote = useCallback(
@@ -118,7 +169,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
         engine.trigger(hit.instrument, time, hit.velocity ?? 0.8, !!hit.accent);
       });
 
-      // 2. Metrónomo sincronizado en los tiempos fuertes
+      // 2. Metrónomo sincronizado en los tiempos de negra/pulso fuerte
       if (metronomeEnabled && stepNumber % stepsPerBeat === 0) {
         const isDownbeat = stepNumber % stepsPerMeasure === 0;
         engine.playMetronome(time, isDownbeat);
@@ -142,7 +193,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       nextNoteTimeRef.current += stepDuration;
 
       currentStepRef.current += 1;
-      if (currentStepRef.current >= exercise.totalSteps) {
+      if (currentStepRef.current >= totalSteps) {
         currentStepRef.current = 0;
         measureStartTimeRef.current = nextNoteTimeRef.current;
       }
@@ -151,7 +202,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     if (isPlayingRef.current) {
       timerIdRef.current = window.setTimeout(scheduler, 25);
     }
-  }, [exercise.totalSteps, getSecondsPerStep, scheduleNote]);
+  }, [totalSteps, getSecondsPerStep, scheduleNote]);
 
   // Bucle de animación visual a 60/120 FPS
   const updateVisualProgress = useCallback(() => {
@@ -167,11 +218,11 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       const normalizedProgress = Math.max(0, Math.min(1, elapsedInMeasure / measureDuration));
 
       setProgress(normalizedProgress);
-      setActiveStep(currentStepRef.current % exercise.totalSteps);
+      setActiveStep(currentStepRef.current % totalSteps);
     }
 
     rafIdRef.current = requestAnimationFrame(updateVisualProgress);
-  }, [exercise.totalSteps, getMeasureDuration]);
+  }, [totalSteps, getMeasureDuration]);
 
   // Play / Pause
   const handlePlayPause = useCallback(() => {
@@ -217,7 +268,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     getAudioEngine().setMetronomeEnabled(nextState);
   }, [metronomeEnabled]);
 
-  // Control Unificado de Pantalla Completa
+  // Control de Pantalla Completa
   const handleToggleFullscreen = useCallback(async () => {
     if (!isFullscreen) {
       const elem = drumFullscreenRef.current;
@@ -310,7 +361,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     };
   }, [isFullscreen]);
 
-  // Atajos de teclado para bateristas
+  // Atajos de teclado
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
@@ -354,6 +405,27 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     };
   }, []);
 
+  // Hits filtrados y normalizados para el compás activo (0 a stepsPerMeasure - 1)
+  const activeMeasureHits = useMemo(() => {
+    const start = activeMeasureIndex * stepsPerMeasure;
+    const end = start + stepsPerMeasure;
+    const hits = activeExercise.hitsData || (activeExercise as any).data || [];
+    return hits
+      .map((h: any) => ({
+        step: h.step !== undefined ? h.step : h.stepIndex !== undefined ? h.stepIndex : 0,
+        instrument: h.instrument || h.drumType || h.instrumentKey || 'snare',
+        accent: !!h.accent,
+        sticking: h.sticking || 'R',
+        velocity: h.velocity ?? 0.8,
+      }))
+      .filter((h: any) => h.step >= start && h.step < end)
+      .map((h: any) => ({
+        ...h,
+        step: h.step - start,
+        stepIndex: h.step - start,
+      }));
+  }, [activeExercise, activeMeasureIndex, stepsPerMeasure]);
+
   return (
     <div
       ref={drumFullscreenRef}
@@ -366,7 +438,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       }`}
     >
       {/* ============================================================== */}
-      {/* 1. MODO PANTALLA COMPLETA: CABECERA, LIENZO FIJO Y FOOTER       */}
+      {/* 1. MODO PANTALLA COMPLETA                                       */}
       {/* ============================================================== */}
       {isFullscreen ? (
         <>
@@ -374,10 +446,10 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
           <header className="w-full h-12 px-3 bg-slate-900/90 border border-slate-800 rounded-2xl flex items-center justify-between gap-3 shrink-0 shadow-lg select-none">
             <div className="flex items-center gap-2">
               <span className="text-xs sm:text-sm font-black text-cyan-400 truncate max-w-[200px] sm:max-w-md">
-                {exercise.title}
+                {activeExercise.title}
               </span>
               <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
-                Compás {activeMeasureIndex + 1} de {totalMeasures} • {subdivisionLabel}
+                Compás {activeMeasureIndex + 1} de {totalMeasures} • {subConfig.name} ({stepsPerMeasure} pasos)
               </span>
             </div>
 
@@ -395,22 +467,13 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
           {/* Lienzo del Compás de Batería Fijo (Sin scroll, 100% visible) */}
           <main className="w-full flex-1 min-h-0 flex flex-col justify-center items-stretch bg-[#10131c] rounded-2xl border border-slate-800/80 overflow-hidden shadow-2xl my-2 p-2 sm:p-4 relative">
             <div className="w-full h-full relative flex flex-col justify-center">
-              {/* Pentagrama Formal y Sticking del Compás Activo */}
-              <div className="w-full flex-1 min-h-0 flex items-center justify-center relative">
-                <DrumMeasureRenderer
-                  timeSignature={exercise.timeSignature}
-                  totalSteps={exercise.totalSteps}
-                  hitsData={exercise.hitsData}
-                  progress={progress}
-                  activeStep={activeStep}
-                  isPlaying={isPlaying}
-                  activeMeasureIndex={activeMeasureIndex}
-                  totalMeasures={totalMeasures}
-                  stepsPerMeasure={stepsPerMeasure}
-                  subdivision={subdivisionKey}
-                  isFullscreen={true}
-                />
-              </div>
+              <DrumScoreRenderer
+                hits={activeMeasureHits}
+                stepsPerMeasure={stepsPerMeasure}
+                currentStepInMeasure={stepInMeasure}
+                timeSignature={activeExercise.timeSignature}
+                isPlaying={isPlaying}
+              />
             </div>
           </main>
 
@@ -455,14 +518,14 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
         </>
       ) : (
         /* ============================================================== */
-        /* 2. MODO NORMAL (ESTÁNDAR): VISTA COMPLETA CON BOTÓN FULLSCREEN  */
+        /* 2. MODO NORMAL (ESTÁNDAR)                                       */
         /* ============================================================== */
         <>
           {/* Header Superior del Ejercicio */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
             <div className="flex items-center gap-3">
               <Link
-                href="/"
+                href="/drums"
                 className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-400 hover:text-white transition-colors"
                 title="Volver al catálogo"
               >
@@ -472,17 +535,17 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-[11px] uppercase tracking-wider font-semibold text-cyan-400">
-                    {exercise.category}
+                    {activeExercise.category}
                   </span>
                   <span className="text-zinc-600">•</span>
-                  <span className="text-[11px] text-zinc-400 font-mono">{exercise.timeSignature}</span>
+                  <span className="text-[11px] text-zinc-400 font-mono">{activeExercise.timeSignature}</span>
                   <span className="text-zinc-600">•</span>
                   <span className="text-[11px] text-zinc-400 font-mono">
-                    Compás {activeMeasureIndex + 1} de {totalMeasures} ({subdivisionLabel})
+                    Compás {activeMeasureIndex + 1} de {totalMeasures} • {subConfig.name} ({stepsPerMeasure} pasos)
                   </span>
                 </div>
                 <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-                  {exercise.title}
+                  {activeExercise.title}
                 </h1>
               </div>
             </div>
@@ -500,26 +563,38 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
               </button>
 
               <span className="text-xs px-3 py-1 rounded-full font-semibold border bg-white/5 border-white/10 text-zinc-300">
-                {exercise.difficulty}
+                {activeExercise.difficulty}
               </span>
             </div>
           </div>
 
-          {/* Pentagrama Formal y Runway Cursor con Paginación Fija (Zero-Jerk Flip) */}
-          <div className="w-full">
-            <DrumStaffScore
-              timeSignature={exercise.timeSignature}
-              totalSteps={exercise.totalSteps}
-              hitsData={exercise.hitsData}
-              progress={progress}
-              activeStep={activeStep}
-              isPlaying={isPlaying}
-              activeMeasureIndex={activeMeasureIndex}
-              totalMeasures={totalMeasures}
+          {/* Pentagrama SVG de Batería con Paginación Fija (Zero-Jerk Flip) */}
+          <div className="w-full relative overflow-hidden rounded-2xl glass-panel p-3 sm:p-5 border border-white/10 shadow-2xl">
+            <DrumScoreRenderer
+              hits={activeMeasureHits}
               stepsPerMeasure={stepsPerMeasure}
-              subdivision={subdivisionKey}
-              isFullscreen={false}
+              currentStepInMeasure={stepInMeasure}
+              timeSignature={activeExercise.timeSignature}
+              isPlaying={isPlaying}
             />
+
+            {/* Indicador de posición visual y estado del compás */}
+            <div className="w-full mt-3 flex items-center justify-between px-2 text-xs text-zinc-500 font-mono border-t border-white/5 pt-2">
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                <span>RUNWAY SCANNER:</span>
+                <span className="text-zinc-300 font-medium">
+                  {isPlaying
+                    ? `Paso ${stepInMeasure + 1} / ${stepsPerMeasure} (Compás ${activeMeasureIndex + 1}/${totalMeasures})`
+                    : 'En pausa'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span>SUBDIVISIÓN: {subConfig.name}</span>
+                <span className="text-zinc-400 font-semibold">{bpm} BPM</span>
+              </div>
+            </div>
           </div>
 
           {/* Barra de Transporte (Play, Stop, BPM, Metrónomo) */}
@@ -532,8 +607,8 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
               onStop={handleStop}
               onBpmChange={setBpm}
               onToggleMetronome={handleToggleMetronome}
-              onResetBpm={() => setBpm(exercise.bpmDefault)}
-              defaultBpm={exercise.bpmDefault}
+              onResetBpm={() => setBpm(activeExercise.bpmDefault || 100)}
+              defaultBpm={activeExercise.bpmDefault || 100}
             />
           </div>
 
@@ -557,9 +632,9 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
               <span>BPM</span>
             </div>
 
-            {exercise.description && (
+            {activeExercise.description && (
               <p className="text-zinc-400 text-center sm:text-right italic max-w-md">
-                "{exercise.description}"
+                "{activeExercise.description}"
               </p>
             )}
           </div>

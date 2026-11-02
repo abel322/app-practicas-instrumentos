@@ -5,6 +5,7 @@ import { PianoExerciseData } from '@/types/piano';
 import { INITIAL_EXERCISES } from './seedData';
 import { STRINGS_INITIAL_EXERCISES } from './stringsSeedData';
 import { PIANO_INITIAL_EXERCISES } from './pianoSeedData';
+import { normalizeSubdivisionKey, getStepsForSubdivision } from '@/lib/music-theory/rhythmSubdivisions';
 
 const prismaClientSingleton = () => {
   return new PrismaClient({
@@ -49,6 +50,8 @@ export async function getExercises(): Promise<DrumExerciseData[]> {
         bpmDefault: ex.bpmDefault,
         timeSignature: ex.timeSignature as any,
         totalSteps: ex.totalSteps,
+        subdivision: normalizeSubdivisionKey((ex as any).subdivision || (ex.totalSteps === 8 ? '1/8' : '1/16')),
+        stepsPerMeasure: (ex as any).stepsPerMeasure || getStepsForSubdivision((ex as any).subdivision || (ex.totalSteps === 8 ? '1/8' : '1/16'), ex.timeSignature),
         hitsData: (Array.isArray(ex.hitsData) ? ex.hitsData : []) as any,
         createdAt: ex.createdAt,
       }));
@@ -79,6 +82,8 @@ export async function getExerciseBySlug(slug: string): Promise<DrumExerciseData 
         bpmDefault: dbEx.bpmDefault,
         timeSignature: dbEx.timeSignature as any,
         totalSteps: dbEx.totalSteps,
+        subdivision: normalizeSubdivisionKey((dbEx as any).subdivision || (dbEx.totalSteps === 8 ? '1/8' : '1/16')),
+        stepsPerMeasure: (dbEx as any).stepsPerMeasure || getStepsForSubdivision((dbEx as any).subdivision || (dbEx.totalSteps === 8 ? '1/8' : '1/16'), dbEx.timeSignature),
         hitsData: (Array.isArray(dbEx.hitsData) ? dbEx.hitsData : []) as any,
         createdAt: dbEx.createdAt,
       };
@@ -194,6 +199,8 @@ export async function getPianoExercises(): Promise<PianoExerciseData[]> {
         bpmDefault: ex.bpmDefault,
         timeSignature: ex.timeSignature as any,
         totalSteps: ex.totalSteps,
+        subdivision: normalizeSubdivisionKey((ex as any).subdivision || (ex.totalSteps === 8 ? '1/8' : '1/16')),
+        stepsPerMeasure: (ex as any).stepsPerMeasure || getStepsForSubdivision((ex as any).subdivision || (ex.totalSteps === 8 ? '1/8' : '1/16'), ex.timeSignature),
         notesData: (Array.isArray(ex.tabData) ? ex.tabData : []) as any,
         description: `Ejercicio de piano: ${ex.title}`,
         createdAt: ex.createdAt,
@@ -226,6 +233,8 @@ export async function getPianoExerciseBySlug(slug: string): Promise<PianoExercis
         bpmDefault: dbEx.bpmDefault,
         timeSignature: dbEx.timeSignature as any,
         totalSteps: dbEx.totalSteps,
+        subdivision: normalizeSubdivisionKey((dbEx as any).subdivision || (dbEx.totalSteps === 8 ? '1/8' : '1/16')),
+        stepsPerMeasure: (dbEx as any).stepsPerMeasure || getStepsForSubdivision((dbEx as any).subdivision || (dbEx.totalSteps === 8 ? '1/8' : '1/16'), dbEx.timeSignature),
         notesData: (Array.isArray(dbEx.tabData) ? dbEx.tabData : []) as any,
         description: `Ejercicio de piano: ${dbEx.title}`,
         createdAt: dbEx.createdAt,
