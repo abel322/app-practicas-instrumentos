@@ -298,13 +298,9 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
       ) as HTMLElement | null;
 
       if (measureElement) {
-        const measureLeft = measureElement.offsetLeft;
-
-        // Margen izquierdo de 48px para anticipar la lectura y ver la cejuela previa
-        const targetScroll = measureLeft - 48;
-
+        // Paginación por compás limpio: cada compás abarca el 100% del contenedor visible
         container.scrollTo({
-          left: Math.max(0, targetScroll),
+          left: measureElement.offsetLeft,
           behavior: 'smooth',
         });
       }
