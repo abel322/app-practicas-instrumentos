@@ -41,6 +41,7 @@ import { getStepRhythmLabel } from './TablatureRuler';
 import { AVAILABLE_FRETS } from './NoteSelectorModal';
 import { PianoRollBuilder, getStepLabel } from './PianoRollBuilder';
 import { normalizeSubdivisionKey, getStepsForSubdivision } from '@/lib/music-theory/rhythmSubdivisions';
+import { normalizeInstrumentKey } from '@/lib/music-theory/instrumentUtils';
 
 export { getStepRhythmLabel, getStepLabel, AVAILABLE_FRETS };
 
@@ -114,15 +115,16 @@ export const ExerciseBuilder: React.FC = () => {
   useEffect(() => {
     if (!searchParams) return;
     const target = searchParams.get('target');
-    const inst = searchParams.get('instrument');
+    const queryInst = searchParams.get('instrument');
     const lvl = searchParams.get('level');
-    const editSlug = searchParams.get('editSlug');
+    const editSlug = searchParams.get('editSlug') || searchParams.get('id') || searchParams.get('slug');
 
     if (target === 'mastery') {
       setDestination('mastery');
     }
-    if (inst && ['drums', 'bass', 'guitar', 'piano'].includes(inst)) {
-      setInstrument(inst as InstrumentCategory);
+    if (queryInst) {
+      const normalizedInitialInst = normalizeInstrumentKey(queryInst);
+      setInstrument(normalizedInitialInst as InstrumentCategory);
     }
     if (lvl) {
       setMasteryLevel(parseInt(lvl) || 11);
@@ -137,23 +139,26 @@ export const ExerciseBuilder: React.FC = () => {
           const sessionRaw = sessionStorage.getItem('soundlab_editing_exercise');
           if (sessionRaw) {
             const parsed = JSON.parse(sessionRaw);
-            if (parsed.slug === editSlug) {
+            if (parsed.slug === editSlug || parsed.id === editSlug) {
               exerciseData = parsed;
             }
           }
           if (!exerciseData) {
             const localList = getLocalExercises();
-            const found = localList.find((e: any) => e.slug === editSlug);
+            const found = localList.find((e: any) => e.slug === editSlug || e.id === editSlug);
             if (found) exerciseData = found;
           }
 
-          // Consultar a la API para asegurar hidratación de metadatos más completos
+          // Consultar a la API pasando el hint de instrumento si está presente
           try {
-            const res = await fetch(`/api/exercises/${editSlug}`);
-            if (res.ok) {
-              const apiRes = await res.json();
-              if (apiRes.success && apiRes.exercise) {
-                exerciseData = { ...exerciseData, ...apiRes.exercise };
+            const paramInst = searchParams.get('instrument');
+            const apiRes = await fetch(
+              `/api/exercises/${editSlug}${paramInst ? `?instrument=${paramInst}` : ''}`
+            );
+            if (apiRes.ok) {
+              const json = await apiRes.json();
+              if (json.success && json.exercise) {
+                exerciseData = { ...exerciseData, ...json.exercise };
               }
             }
           } catch (apiErr) {
@@ -179,34 +184,30 @@ export const ExerciseBuilder: React.FC = () => {
 
             const stepsInLoadedMeasure = getStepsForSubdivision(loadedSubKey, loadedTimeSig);
 
-            let detectedInst: InstrumentCategory = 'bass';
-            if (exerciseData.instrumentType) {
-              detectedInst = exerciseData.instrumentType;
-            } else if (exerciseData.instrument === 'piano') {
-              detectedInst = 'piano';
-            } else if (exerciseData.instrument === 'bass_4') {
-              detectedInst = 'bass';
-            } else if (exerciseData.instrument === 'guitar_6') {
-              detectedInst = 'guitar';
-            } else if (exerciseData.hitsData) {
-              detectedInst = 'drums';
-            }
-            setInstrument(detectedInst);
+            // 1. Resolver el instrumento con prioridad absoluta a la URL y normalización
+            const queryParamInstrument = searchParams.get('instrument');
+            const resolvedInstrument = normalizeInstrumentKey(
+              queryParamInstrument ||
+              exerciseData.instrumentType ||
+              exerciseData.instrument ||
+              (exerciseData.category === 'Rudimentos' || exerciseData.category === 'Grooves' || exerciseData.hitsData ? 'drums' : 'bass')
+            );
+            setInstrument(resolvedInstrument as InstrumentCategory);
 
             let loadedNotes: EditorNote[] = [];
-            if (detectedInst === 'drums' && Array.isArray(exerciseData.hitsData || exerciseData.data)) {
+            if (resolvedInstrument === 'drums' && Array.isArray(exerciseData.hitsData || exerciseData.data)) {
               const hits = exerciseData.hitsData || exerciseData.data;
               loadedNotes = hits.map((h: any) => ({
-                step: h.step,
-                drumVoice: h.instrument,
+                step: h.step !== undefined ? h.step : h.stepIndex !== undefined ? h.stepIndex : 0,
+                drumVoice: h.instrument || h.drumType || h.instrumentKey || 'snare',
                 accent: !!h.accent,
                 sticking: h.sticking || 'R',
                 velocity: h.velocity ?? 0.8,
               }));
-            } else if (detectedInst === 'piano' && Array.isArray(exerciseData.notesData || exerciseData.tabData || exerciseData.data)) {
+            } else if (resolvedInstrument === 'piano' && Array.isArray(exerciseData.notesData || exerciseData.tabData || exerciseData.data)) {
               const pNotes = exerciseData.notesData || exerciseData.tabData || exerciseData.data;
               loadedNotes = pNotes.map((p: any) => ({
-                step: p.step,
+                step: p.step !== undefined ? p.step : p.stepIndex !== undefined ? p.stepIndex : 0,
                 midiNumber: p.midiNumber,
                 velocity: p.velocity ?? 100,
                 durationSteps: p.durationSteps || 1,
@@ -214,7 +215,7 @@ export const ExerciseBuilder: React.FC = () => {
             } else if (Array.isArray(exerciseData.tabData || exerciseData.data)) {
               const sNotes = exerciseData.tabData || exerciseData.data;
               loadedNotes = sNotes.map((s: any) => ({
-                step: s.step,
+                step: s.step !== undefined ? s.step : s.stepIndex !== undefined ? s.stepIndex : 0,
                 string: s.string,
                 fret: s.fret,
                 technique: s.technique || 'normal',
@@ -849,7 +850,7 @@ export const ExerciseBuilder: React.FC = () => {
           stepsPerMeasure,
           hitsData: instrument === 'drums' ? formattedData : undefined,
           tabData: instrument !== 'drums' ? formattedData : undefined,
-          instrument: instrument === 'bass' ? 'bass_4' : instrument === 'piano' ? 'piano' : 'guitar_6',
+          instrument: instrument === 'drums' ? 'drums' : instrument === 'bass' ? 'bass_4' : instrument === 'piano' ? 'piano' : 'guitar_6',
         });
 
         if (editingSlug) {
@@ -864,7 +865,7 @@ export const ExerciseBuilder: React.FC = () => {
         (instrument === 'piano'
           ? `/piano/practice/${res.slug}`
           : instrument === 'drums'
-          ? `/practice/${res.slug}`
+          ? `/drums/practice/${res.slug}`
           : `/strings/practice/${res.slug}`);
 
       setSaveResult({ ...res, url: practiceUrl });

@@ -45,10 +45,15 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       try {
         sessionStorage.setItem(
           'soundlab_editing_exercise',
-          JSON.stringify({ ...exercise, instrumentType: 'drums', subdivision: exercise.subdivision || (exercise.totalSteps === 8 ? '1/8' : '1/16') })
+          JSON.stringify({
+            ...exercise,
+            instrument: 'drums',
+            instrumentType: 'drums',
+            subdivision: exercise.subdivision || (exercise.totalSteps === 8 ? '1/8' : '1/16'),
+          })
         );
       } catch (_) {}
-      router.push(`/admin/builder?editSlug=${exercise.slug}&instrument=drums`);
+      router.push(`/admin/builder?id=${exercise.id}&editSlug=${exercise.slug}&instrument=drums`);
     }
   };
 
