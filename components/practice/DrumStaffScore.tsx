@@ -2,14 +2,22 @@
 
 import React, { useMemo } from 'react';
 import { DrumHit, DrumVoice, StickingType } from '@/types/drum';
+import { getSubdivisionConfig } from '@/lib/music-theory/rhythmSubdivisions';
 
-interface DrumStaffScoreProps {
-  timeSignature: '4/4' | '6/8' | '3/4';
-  totalSteps: number;
-  hitsData: DrumHit[];
-  progress: number; // 0.0 to 1.0 (recorrido exacto del compás)
-  activeStep: number; // 0 to totalSteps - 1
-  isPlaying: boolean;
+export interface DrumStaffScoreProps {
+  timeSignature?: '4/4' | '6/8' | '3/4';
+  totalSteps?: number;
+  hitsData?: DrumHit[];
+  progress?: number; // 0.0 to 1.0 (recorrido exacto del compás)
+  activeStep?: number; // 0 to totalSteps - 1
+  isPlaying?: boolean;
+  // Soporte de Paginación Fija por Compás (Zero-Jerk Page Flip)
+  activeMeasureIndex?: number;
+  totalMeasures?: number;
+  stepsPerMeasure?: number;
+  subdivision?: string;
+  isFullscreen?: boolean;
+  measure?: { hits?: DrumHit[]; measureIndex?: number } | DrumHit[];
 }
 
 // Dimensiones del pentagrama SVG
@@ -53,64 +61,89 @@ function getNoteY(voice: DrumVoice): number {
 }
 
 export const DrumStaffScore: React.FC<DrumStaffScoreProps> = ({
-  timeSignature,
-  totalSteps,
-  hitsData,
-  progress,
-  activeStep,
-  isPlaying,
+  timeSignature = '4/4',
+  totalSteps = 16,
+  hitsData = [],
+  progress = 0,
+  activeStep = 0,
+  isPlaying = false,
+  activeMeasureIndex,
+  totalMeasures,
+  stepsPerMeasure,
+  subdivision,
+  isFullscreen = false,
+  measure,
 }) => {
-  const stepWidth = SCORE_WIDTH / totalSteps;
+  // Configuración de subdivisión rítmica dinámica
+  const subConfig = useMemo(() => {
+    return getSubdivisionConfig(
+      subdivision,
+      timeSignature,
+      stepsPerMeasure || (totalSteps ? Math.min(16, totalSteps) : undefined)
+    );
+  }, [subdivision, timeSignature, stepsPerMeasure, totalSteps]);
+
+  // Pasos por compás y compases totales
+  const effectiveStepsPerMeasure = stepsPerMeasure || subConfig.stepsPerMeasure;
+  const effectiveTotalMeasures =
+    totalMeasures || Math.max(1, Math.ceil(totalSteps / effectiveStepsPerMeasure));
+
+  const effectiveActiveMeasure =
+    activeMeasureIndex !== undefined
+      ? Math.min(effectiveTotalMeasures - 1, Math.max(0, activeMeasureIndex))
+      : Math.min(effectiveTotalMeasures - 1, Math.floor(activeStep / effectiveStepsPerMeasure));
+
+  const stepInMeasure = activeStep % effectiveStepsPerMeasure;
+  const stepWidth = SCORE_WIDTH / effectiveStepsPerMeasure;
 
   // Coordenada X del cabezal de escaneo Runway en tiempo real
-  const runwayX = START_X + Math.min(Math.max(progress, 0), 1) * SCORE_WIDTH;
+  // Si progress está provisto continuamente, usarlo; de lo contrario, usar stepInMeasure centrado
+  const runwayProgress =
+    progress !== undefined && progress > 0
+      ? progress
+      : (stepInMeasure + 0.5) / effectiveStepsPerMeasure;
+  const runwayX = START_X + Math.min(Math.max(runwayProgress, 0), 1) * SCORE_WIDTH;
+
+  // Hits normalizados para el compás activo (0 a effectiveStepsPerMeasure - 1)
+  const activeHits = useMemo(() => {
+    // Si se pasa directamente un compás
+    if (measure) {
+      if (Array.isArray(measure)) return measure;
+      if (Array.isArray(measure.hits)) return measure.hits;
+    }
+    const startStep = effectiveActiveMeasure * effectiveStepsPerMeasure;
+    const endStep = startStep + effectiveStepsPerMeasure;
+    return hitsData
+      .filter((h) => h.step >= startStep && h.step < endStep)
+      .map((h) => ({
+        ...h,
+        step: h.step - startStep,
+      }));
+  }, [hitsData, measure, effectiveActiveMeasure, effectiveStepsPerMeasure]);
 
   // Agrupamiento de hits por paso para dibujar plicas y articular
   const hitsByStep = useMemo(() => {
     const map = new Map<number, DrumHit[]>();
-    for (let i = 0; i < totalSteps; i++) {
+    for (let i = 0; i < effectiveStepsPerMeasure; i++) {
       map.set(i, []);
     }
-    hitsData.forEach((hit) => {
-      if (hit.step >= 0 && hit.step < totalSteps) {
+    activeHits.forEach((hit) => {
+      if (hit.step >= 0 && hit.step < effectiveStepsPerMeasure) {
         map.get(hit.step)?.push(hit);
       }
     });
     return map;
-  }, [hitsData, totalSteps]);
+  }, [activeHits, effectiveStepsPerMeasure]);
 
-  // Subdivisión de tiempo y etiquetas de conteo (1 e & a)
+  // Subdivisión de tiempo y etiquetas de conteo (1 e & a / 1 y 2 y / etc)
   const subdivisions = useMemo(() => {
-    const labels: { step: number; text: string; isBeat: boolean }[] = [];
-    if (timeSignature === '4/4') {
-      const beats = ['1', 'e', '&', 'a', '2', 'e', '&', 'a', '3', 'e', '&', 'a', '4', 'e', '&', 'a'];
-      for (let i = 0; i < totalSteps; i++) {
-        labels.push({
-          step: i,
-          text: beats[i % beats.length],
-          isBeat: i % 4 === 0,
-        });
-      }
-    } else if (timeSignature === '6/8') {
-      const beats = ['1', '·', '2', '·', '3', '·', '4', '·', '5', '·', '6', '·'];
-      for (let i = 0; i < totalSteps; i++) {
-        labels.push({
-          step: i,
-          text: beats[i % beats.length],
-          isBeat: i % 2 === 0,
-        });
-      }
-    } else {
-      for (let i = 0; i < totalSteps; i++) {
-        labels.push({
-          step: i,
-          text: `${i + 1}`,
-          isBeat: i % 4 === 0,
-        });
-      }
-    }
-    return labels;
-  }, [timeSignature, totalSteps]);
+    const labels = subConfig.stepLabels;
+    return labels.slice(0, effectiveStepsPerMeasure).map((lbl, idx) => ({
+      step: idx,
+      text: lbl,
+      isBeat: !isNaN(Number(lbl)),
+    }));
+  }, [subConfig, effectiveStepsPerMeasure]);
 
   // Color para Sticking
   const getStickingColor = (sticking?: StickingType) => {
@@ -128,15 +161,69 @@ export const DrumStaffScore: React.FC<DrumStaffScoreProps> = ({
     }
   };
 
+  // Grupos de vigas (Beams) según la subdivisión
+  const beamGroups = useMemo(() => {
+    if (timeSignature === '4/4') {
+      if (effectiveStepsPerMeasure === 16) {
+        // 4 grupos de 4 semicorcheas con doble viga
+        return [0, 1, 2, 3].map((g) => ({
+          group: g,
+          start: g * 4,
+          end: g * 4 + 3,
+          doubleBeam: true,
+        }));
+      }
+      if (effectiveStepsPerMeasure === 8) {
+        // 4 grupos de 2 corcheas con viga simple
+        return [0, 1, 2, 3].map((g) => ({
+          group: g,
+          start: g * 2,
+          end: g * 2 + 1,
+          doubleBeam: false,
+        }));
+      }
+    } else if (timeSignature === '6/8') {
+      if (effectiveStepsPerMeasure === 12) {
+        // 2 pulsos de 6 semicorcheas
+        return [0, 1].map((g) => ({
+          group: g,
+          start: g * 6,
+          end: g * 6 + 5,
+          doubleBeam: true,
+        }));
+      }
+      if (effectiveStepsPerMeasure === 6) {
+        // 2 pulsos de 3 corcheas
+        return [0, 1].map((g) => ({
+          group: g,
+          start: g * 3,
+          end: g * 3 + 2,
+          doubleBeam: false,
+        }));
+      }
+    }
+    return [];
+  }, [timeSignature, effectiveStepsPerMeasure]);
+
   return (
-    <div className="w-full select-none flex flex-col items-center">
-      <div className="w-full relative overflow-hidden rounded-2xl glass-panel p-2 sm:p-5 border border-white/10 shadow-2xl">
-        {/* Glow de fondo para ambientación */}
-        <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/[0.03] via-transparent to-fuchsia-500/[0.02] pointer-events-none" />
+    <div className={`w-full select-none flex flex-col items-center ${isFullscreen ? 'h-full justify-center' : ''}`}>
+      <div
+        className={`w-full relative overflow-hidden rounded-2xl glass-panel ${
+          isFullscreen
+            ? 'p-1 sm:p-2 border-0 bg-transparent shadow-none'
+            : 'p-2 sm:p-5 border border-white/10 shadow-2xl'
+        }`}
+      >
+        {/* Glow de fondo para ambientación en modo normal */}
+        {!isFullscreen && (
+          <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/[0.03] via-transparent to-fuchsia-500/[0.02] pointer-events-none" />
+        )}
 
         <svg
           viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-          className="w-full h-auto max-h-[380px] drop-shadow-md"
+          className={`w-full h-auto drop-shadow-md ${
+            isFullscreen ? 'max-h-[min(55vh,360px)]' : 'max-h-[380px]'
+          }`}
           preserveAspectRatio="xMidYMid meet"
         >
           <defs>
@@ -170,10 +257,9 @@ export const DrumStaffScore: React.FC<DrumStaffScoreProps> = ({
           {/* ============================================================== */}
           {/* LÍNEAS DE FONDO Y PULSO DEL COMPÁS                             */}
           {/* ============================================================== */}
-
-          {/* Marcadores de pulso verticales (beat subdivisions) */}
           {subdivisions.map((item) => {
             const x = START_X + item.step * stepWidth;
+            const isStepActive = stepInMeasure === item.step;
             return (
               <g key={`subdiv-${item.step}`}>
                 {/* Línea divisoria tenue */}
@@ -187,14 +273,22 @@ export const DrumStaffScore: React.FC<DrumStaffScoreProps> = ({
                   strokeDasharray={item.isBeat ? undefined : '3,4'}
                 />
 
-                {/* Conteo superior (1 e & a) */}
+                {/* Conteo superior (1 e & a / 1 y 2 y) */}
                 <text
                   x={x + stepWidth / 2}
                   y={25}
                   textAnchor="middle"
                   fontSize={item.isBeat ? 13 : 11}
                   fontWeight={item.isBeat ? '700' : '500'}
-                  fill={item.isBeat ? (activeStep === item.step && isPlaying ? '#22d3ee' : '#e4e4e7') : '#71717a'}
+                  fill={
+                    item.isBeat
+                      ? isStepActive && isPlaying
+                        ? '#22d3ee'
+                        : '#e4e4e7'
+                      : isStepActive && isPlaying
+                      ? '#22d3ee'
+                      : '#71717a'
+                  }
                   className="font-mono transition-colors duration-150"
                 >
                   {item.text}
@@ -337,37 +431,34 @@ export const DrumStaffScore: React.FC<DrumStaffScoreProps> = ({
           })}
 
           {/* ============================================================== */}
-          {/* VIGAS DE UNIÓN (BEAMS) DE SEMICORCHEAS POR GRUPO DE PULSO      */}
+          {/* VIGAS DE UNIÓN (BEAMS) DINÁMICAS POR SUBDIVISIÓN               */}
           {/* ============================================================== */}
-          {timeSignature === '4/4' && (
-            // 4 grupos de 4 semicorcheas
-            [0, 1, 2, 3].map((group) => {
-              const startStep = group * 4;
-              const endStep = startStep + 3;
-              const x1 = START_X + (startStep + 0.5) * stepWidth + 5;
-              const x2 = START_X + (endStep + 0.5) * stepWidth + 5;
-              const beamY1 = 44;
-              const beamY2 = 50;
+          {beamGroups.map((bg) => {
+            const x1 = START_X + (bg.start + 0.5) * stepWidth + 5;
+            const x2 = START_X + (bg.end + 0.5) * stepWidth + 5;
+            const beamY1 = 44;
+            const beamY2 = 50;
 
-              return (
-                <g key={`beam-group-${group}`}>
-                  {/* Viga superior */}
-                  <line x1={x1} y1={beamY1} x2={x2} y2={beamY1} stroke="#f4f4f5" strokeWidth="3" />
-                  {/* Segunda viga para semicorcheas */}
+            return (
+              <g key={`beam-group-${bg.group}`}>
+                {/* Viga superior */}
+                <line x1={x1} y1={beamY1} x2={x2} y2={beamY1} stroke="#f4f4f5" strokeWidth="3" />
+                {/* Segunda viga para semicorcheas */}
+                {bg.doubleBeam && (
                   <line x1={x1} y1={beamY2} x2={x2} y2={beamY2} stroke="#f4f4f5" strokeWidth="2.5" />
-                </g>
-              );
-            })
-          )}
+                )}
+              </g>
+            );
+          })}
 
           {/* ============================================================== */}
           {/* RENDERIZADO DE NOTAS, PLICAS, ARTICULACIONES Y STICKING        */}
           {/* ============================================================== */}
           {Array.from(hitsByStep.entries()).map(([step, hits]) => {
             const noteX = START_X + (step + 0.5) * stepWidth;
-            const isStepActive = isPlaying && activeStep === step;
+            const isStepActive = isPlaying && stepInMeasure === step;
 
-            // Si no hay notas en este paso, renderizar silencio sutil de semicorchea
+            // Si no hay notas en este paso, renderizar silencio sutil
             if (hits.length === 0) {
               return (
                 <g key={`rest-${step}`} opacity="0.25">
@@ -383,12 +474,11 @@ export const DrumStaffScore: React.FC<DrumStaffScoreProps> = ({
               );
             }
 
-            // Calculamos la plica: va desde la nota más baja hasta la viga superior
+            // Plica vertical
             const minY = Math.min(...hits.map((h) => getNoteY(h.instrument)));
             const maxY = Math.max(...hits.map((h) => getNoteY(h.instrument)));
             const stemTop = 44;
 
-            // Revisar si algún hit tiene acento o sticking en este paso
             const accentHit = hits.find((h) => h.accent);
             const stickingHit = hits.find((h) => h.sticking);
 
@@ -406,7 +496,7 @@ export const DrumStaffScore: React.FC<DrumStaffScoreProps> = ({
                   />
                 )}
 
-                {/* Símbolo de ACENTO ('>') encima de la nota o sobre la plica */}
+                {/* Símbolo de ACENTO ('>') */}
                 {accentHit && (
                   <g
                     transform={`translate(${noteX}, ${stemTop - 10})`}
@@ -424,7 +514,7 @@ export const DrumStaffScore: React.FC<DrumStaffScoreProps> = ({
                   </g>
                 )}
 
-                {/* Plica (Stem vertical hacia arriba) */}
+                {/* Plica (Stem) */}
                 <line
                   x1={noteX + 5}
                   y1={stemTop}
@@ -434,7 +524,7 @@ export const DrumStaffScore: React.FC<DrumStaffScoreProps> = ({
                   strokeWidth="1.6"
                 />
 
-                {/* Cada cabeza de nota en este paso */}
+                {/* Cabezas de notas */}
                 {hits.map((hit, hitIdx) => {
                   const y = getNoteY(hit.instrument);
                   const isCymbal =
@@ -467,7 +557,6 @@ export const DrumStaffScore: React.FC<DrumStaffScoreProps> = ({
                             strokeLinecap="round"
                           />
 
-                          {/* Si es Hi-Hat abierto, círculo indicador encima */}
                           {hit.instrument === 'hihat_open' && (
                             <circle
                               cx="0"
@@ -480,7 +569,7 @@ export const DrumStaffScore: React.FC<DrumStaffScoreProps> = ({
                           )}
                         </g>
                       ) : (
-                        // TAMBOR (Caja, Bombo, Tom): Cabeza Ovalada Rellena
+                        // TAMBOR: Cabeza Ovalada Rellena
                         <g transform={`translate(${noteX}, ${y})`}>
                           <ellipse
                             cx="0"
@@ -499,8 +588,8 @@ export const DrumStaffScore: React.FC<DrumStaffScoreProps> = ({
                   );
                 })}
 
-                {/* Símbolo de STICKING debajo de la nota (R, L, K) */}
-                {stickingHit && (
+                {/* Símbolo de STICKING debajo de la nota (R, L, K, B) */}
+                {stickingHit && stickingHit.sticking && (
                   <g transform={`translate(${noteX}, 185)`}>
                     <text
                       x="0"
@@ -584,22 +673,28 @@ export const DrumStaffScore: React.FC<DrumStaffScoreProps> = ({
       </div>
 
       {/* Indicador de posición visual y estado del compás */}
-      <div className="w-full mt-3 flex items-center justify-between px-2 text-xs text-zinc-500 font-mono">
-        <div className="flex items-center gap-2">
-          <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-          <span>RUNWAY SCANNER:</span>
-          <span className="text-zinc-300 font-medium">
-            {isPlaying ? `Paso ${activeStep + 1} / ${totalSteps}` : 'En pausa'}
-          </span>
-        </div>
+      {!isFullscreen && (
+        <div className="w-full mt-3 flex items-center justify-between px-2 text-xs text-zinc-500 font-mono">
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+            <span>RUNWAY SCANNER:</span>
+            <span className="text-zinc-300 font-medium">
+              {isPlaying
+                ? `Paso ${stepInMeasure + 1} / ${effectiveStepsPerMeasure} (Compás ${effectiveActiveMeasure + 1}/${effectiveTotalMeasures})`
+                : 'En pausa'}
+            </span>
+          </div>
 
-        <div className="flex items-center gap-3">
-          <span>COMPÁS: {timeSignature}</span>
-          <span className="text-zinc-400">
-            {isPlaying ? `${Math.round(progress * 100)}%` : '0%'}
-          </span>
+          <div className="flex items-center gap-3">
+            <span>COMPÁS: {timeSignature}</span>
+            <span className="text-zinc-400">
+              {isPlaying ? `${Math.round(runwayProgress * 100)}%` : '0%'}
+            </span>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
+
+export const DrumMeasureRenderer = DrumStaffScore;
