@@ -13,6 +13,7 @@ export interface SaveExercisePayload {
   timeSignature: string;
   totalMeasures: number;
   stepsPerMeasure: number;
+  subdivision?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: any[];
 }
@@ -55,6 +56,8 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
               difficulty: formData.difficulty,
               bpmDefault: Number(formData.bpm) || 100,
               timeSignature: formData.timeSignature,
+              subdivision: formData.subdivision || '1/16',
+              stepsPerMeasure: formData.stepsPerMeasure || (formData.timeSignature === '6/8' ? 12 : 16),
               totalSteps: totalSteps,
               hitsData: formData.data,
             },
@@ -88,6 +91,8 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
           difficulty: formData.difficulty,
           bpmDefault: Number(formData.bpm) || 100,
           timeSignature: formData.timeSignature,
+          subdivision: formData.subdivision || '1/16',
+          stepsPerMeasure: formData.stepsPerMeasure || (formData.timeSignature === '6/8' ? 12 : 16),
           totalSteps: totalSteps,
           hitsData: formData.data,
         },
@@ -134,6 +139,8 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
               difficulty: formData.difficulty,
               bpmDefault: Number(formData.bpm) || 90,
               timeSignature: formData.timeSignature,
+              subdivision: formData.subdivision || '1/16',
+              stepsPerMeasure: formData.stepsPerMeasure || (formData.timeSignature === '6/8' ? 12 : 16),
               totalSteps: totalSteps,
               tabData: formData.data,
             },
@@ -179,6 +186,8 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
           difficulty: formData.difficulty,
           bpmDefault: Number(formData.bpm) || 90,
           timeSignature: formData.timeSignature,
+          subdivision: formData.subdivision || '1/16',
+          stepsPerMeasure: formData.stepsPerMeasure || (formData.timeSignature === '6/8' ? 12 : 16),
           totalSteps: totalSteps,
           tabData: formData.data,
         },

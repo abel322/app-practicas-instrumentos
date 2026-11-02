@@ -40,6 +40,8 @@ export interface StringExerciseData {
   bpmDefault: number;
   timeSignature: '4/4' | '6/8' | '3/4';
   totalSteps: number;
+  subdivision?: string;
+  stepsPerMeasure?: number;
   tabData: StringTabNote[];
   description?: string;
   createdAt?: string | Date;

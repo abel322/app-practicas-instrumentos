@@ -118,6 +118,8 @@ export async function getStringExercises(instrument?: StringInstrument): Promise
         bpmDefault: ex.bpmDefault,
         timeSignature: ex.timeSignature as any,
         totalSteps: ex.totalSteps,
+        subdivision: (ex as any).subdivision || (ex.totalSteps === 8 ? '1/8' : ex.totalSteps === 4 ? '1/4' : ex.totalSteps === 12 && ex.timeSignature === '4/4' ? '1/8T' : '1/16'),
+        stepsPerMeasure: (ex as any).stepsPerMeasure || (ex.totalSteps <= 16 ? ex.totalSteps : (ex.timeSignature === '6/8' ? 12 : 16)),
         tabData: (Array.isArray(ex.tabData) ? ex.tabData : []) as any,
         createdAt: ex.createdAt,
       }));
@@ -153,6 +155,8 @@ export async function getStringExerciseBySlug(slug: string): Promise<StringExerc
         bpmDefault: dbEx.bpmDefault,
         timeSignature: dbEx.timeSignature as any,
         totalSteps: dbEx.totalSteps,
+        subdivision: (dbEx as any).subdivision || (dbEx.totalSteps === 8 ? '1/8' : dbEx.totalSteps === 4 ? '1/4' : dbEx.totalSteps === 12 && dbEx.timeSignature === '4/4' ? '1/8T' : '1/16'),
+        stepsPerMeasure: (dbEx as any).stepsPerMeasure || (dbEx.totalSteps <= 16 ? dbEx.totalSteps : (dbEx.timeSignature === '6/8' ? 12 : 16)),
         tabData: (Array.isArray(dbEx.tabData) ? dbEx.tabData : []) as any,
         createdAt: dbEx.createdAt,
       };

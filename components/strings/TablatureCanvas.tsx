@@ -8,6 +8,7 @@ export interface TablatureCanvasProps extends TablatureRunwayProps {
   stepsPerMeasure?: number;
   activeMeasureIndex?: number;
   totalMeasures?: number;
+  subdivision?: string;
   measures?: any[];
   tuningNotes?: string[];
 }

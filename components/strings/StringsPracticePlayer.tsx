@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { StringExerciseData, StringTabNote } from '@/types/strings';
 import { getStringsAudioEngine } from '@/lib/stringsAudioEngine';
+import { getSubdivisionConfig } from '@/lib/music-theory/rhythmSubdivisions';
 import { TablatureRunway } from './TablatureRunway';
 import { StringsLegend } from './StringsLegend';
 import { ArrowLeft, Keyboard, Maximize2, Minimize2 } from 'lucide-react';
@@ -41,7 +42,20 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
   }, [isPlaying]);
 
   const isBass = exercise.instrument === 'bass_4';
-  const stepsPerMeasure = exercise.timeSignature === '6/8' ? 12 : 16;
+
+  // Subdivisión rítmica dinámica (ej. 1/8 Corcheas, 1/16 Semicorcheas, 1/8T Tresillos)
+  const subdivisionKey =
+    exercise.subdivision ||
+    (exercise.totalSteps === 8
+      ? '1/8'
+      : exercise.totalSteps === 4
+      ? '1/4'
+      : exercise.totalSteps === 12 && exercise.timeSignature === '4/4'
+      ? '1/8T'
+      : '1/16');
+
+  const subConfig = getSubdivisionConfig(subdivisionKey, exercise.timeSignature, exercise.stepsPerMeasure);
+  const stepsPerMeasure = subConfig.stepsPerMeasure;
   const totalMeasures = Math.max(1, Math.ceil(exercise.totalSteps / stepsPerMeasure));
   const activeMeasureIndex = Math.min(
     totalMeasures - 1,
@@ -49,14 +63,31 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
   );
   const stepInCurrentMeasure = activeStep % stepsPerMeasure;
 
-  // Duración de un paso (semicorchea en 4/4)
-  const getSecondsPerStep = useCallback((currentBpm: number) => {
-    return (60 / currentBpm) / 4;
-  }, []);
+  // Pulsos por compás y pasos por pulso
+  const beatsPerMeasure =
+    exercise.timeSignature === '6/8' ? 2 : exercise.timeSignature === '3/4' ? 3 : 4;
+  const stepsPerBeat = Math.max(1, Math.round(stepsPerMeasure / beatsPerMeasure));
 
-  const getMeasureDuration = useCallback((currentBpm: number) => {
-    return getSecondsPerStep(currentBpm) * exercise.totalSteps;
-  }, [exercise.totalSteps, getSecondsPerStep]);
+  // Duración de un paso según subdivisión y métrica
+  const getSecondsPerStep = useCallback(
+    (currentBpm: number) => {
+      if (exercise.timeSignature === '6/8') {
+        const beatDuration = (60 / currentBpm) * 1.5;
+        const stepsInBeat = stepsPerMeasure === 6 ? 3 : 6;
+        return beatDuration / stepsInBeat;
+      }
+      const beatDuration = 60 / currentBpm;
+      return beatDuration / stepsPerBeat;
+    },
+    [exercise.timeSignature, stepsPerMeasure, stepsPerBeat]
+  );
+
+  const getMeasureDuration = useCallback(
+    (currentBpm: number) => {
+      return getSecondsPerStep(currentBpm) * exercise.totalSteps;
+    },
+    [exercise.totalSteps, getSecondsPerStep]
+  );
 
   // Indexar notas por paso
   const notesByStep = useRef<Map<number, StringTabNote[]>>(new Map());
@@ -74,28 +105,31 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
   }, [exercise]);
 
   // Planificador (Scheduler) de notas de cuerdas
-  const scheduleNote = useCallback((stepNumber: number, time: number) => {
-    const engine = getStringsAudioEngine();
+  const scheduleNote = useCallback(
+    (stepNumber: number, time: number) => {
+      const engine = getStringsAudioEngine();
 
-    // 1. Disparar notas en este paso
-    const notes = notesByStep.current.get(stepNumber) || [];
-    notes.forEach((note) => {
-      engine.triggerNote(
-        exercise.instrument,
-        note.string,
-        note.fret,
-        time,
-        note.technique || 'normal',
-        note.velocity ?? 0.8
-      );
-    });
+      // 1. Disparar notas en este paso
+      const notes = notesByStep.current.get(stepNumber) || [];
+      notes.forEach((note) => {
+        engine.triggerNote(
+          exercise.instrument,
+          note.string,
+          note.fret,
+          time,
+          note.technique || 'normal',
+          note.velocity ?? 0.8
+        );
+      });
 
-    // 2. Metrónomo en tiempos fuertes (cada 4 semicorcheas = 1 tiempo de negra)
-    if (stepNumber % 4 === 0) {
-      const isDownbeat = stepNumber === 0;
-      engine.playMetronome(time, isDownbeat);
-    }
-  }, [exercise.instrument]);
+      // 2. Metrónomo en tiempos fuertes según subdivisión
+      if (stepNumber % stepsPerBeat === 0) {
+        const isDownbeat = stepNumber % stepsPerMeasure === 0;
+        engine.playMetronome(time, isDownbeat);
+      }
+    },
+    [exercise.instrument, stepsPerBeat, stepsPerMeasure]
+  );
 
   // Lookahead loop
   const scheduler = useCallback(() => {
@@ -362,6 +396,9 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
           <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono shrink-0">
             Compás {activeMeasureIndex + 1} de {totalMeasures} • {activeStep + 1}/{exercise.totalSteps}
           </span>
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/60 text-cyan-300 font-mono font-bold shrink-0">
+            {subConfig.id} ({subConfig.name})
+          </span>
           <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-zinc-300 font-mono hidden md:inline shrink-0">
             {isBass ? 'Bajo (4C)' : 'Guitarra (6C)'} • {exercise.difficulty}
           </span>
@@ -412,6 +449,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
           stepInCurrentMeasure={stepInCurrentMeasure}
           totalMeasures={totalMeasures}
           stepsPerMeasure={stepsPerMeasure}
+          subdivision={subConfig.id}
         />
       </main>
 

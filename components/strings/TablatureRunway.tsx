@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { StringInstrument, StringTabNote } from '@/types/strings';
+import { getSubdivisionConfig } from '@/lib/music-theory/rhythmSubdivisions';
 
 export interface RenderedNote {
   id: string;
@@ -17,6 +18,7 @@ export interface TablatureRunwayProps {
   tuning?: string;
   totalSteps?: number;
   timeSignature?: '4/4' | '6/8' | '3/4';
+  subdivision?: string;
   tabData?: StringTabNote[];
   progress?: number; // 0.0 to 1.0
   activeStep?: number;
@@ -38,6 +40,7 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
   tuning = 'Standard',
   totalSteps = 16,
   timeSignature = '4/4',
+  subdivision,
   tabData = [],
   progress = 0,
   activeStep = 0,
@@ -61,8 +64,17 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
   const lineSpacing = isBass ? 26 : 22;
   const startY = isBass ? 70 : 60;
 
+  // Subdivisión rítmica dinámica (ej. 1/8 Corcheas, 1/16 Semicorcheas, 1/8T Tresillos)
+  const subConfig = useMemo(() => {
+    return getSubdivisionConfig(
+      subdivision,
+      timeSignature,
+      stepsPerMeasure || (totalSteps ? totalSteps : undefined)
+    );
+  }, [subdivision, timeSignature, stepsPerMeasure, totalSteps]);
+
   // Pasos por compás y compases totales
-  const effectiveStepsPerMeasure = stepsPerMeasure || (timeSignature === '6/8' ? 12 : 16);
+  const effectiveStepsPerMeasure = stepsPerMeasure || subConfig.stepsPerMeasure;
   const effectiveTotalSteps = totalSteps || (measures ? measures.length * effectiveStepsPerMeasure : 16);
   const effectiveTotalMeasures =
     totalMeasures || Math.max(1, Math.ceil(effectiveTotalSteps / effectiveStepsPerMeasure));
@@ -154,13 +166,8 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
     return map;
   }, [notesInCurrentMeasure, effectiveStepsPerMeasure]);
 
-  // Etiquetas rítmicas del compás (1 e & a 2 e & a...)
-  const beatLabels = useMemo(() => {
-    if (timeSignature === '4/4') {
-      return ['1', 'e', '&', 'a', '2', 'e', '&', 'a', '3', 'e', '&', 'a', '4', 'e', '&', 'a'];
-    }
-    return Array.from({ length: effectiveStepsPerMeasure }).map((_, idx) => `${idx + 1}`);
-  }, [timeSignature, effectiveStepsPerMeasure]);
+  // Etiquetas rítmicas del compás dinámicas según subdivisión
+  const beatLabels = subConfig.stepLabels;
 
   // Color de insignia para cada técnica
   const getTechniqueBadge = (technique?: string) => {
@@ -248,9 +255,11 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
           ref={scrollContainerRef}
           className="flex-1 relative p-2 sm:p-4 flex items-center justify-center overflow-hidden"
         >
-          {/* Badge del Compás Actual */}
-          <div className="absolute top-2 left-3 z-30 px-2.5 py-0.5 rounded-md bg-cyan-950/85 border border-cyan-800/60 text-cyan-300 font-mono text-[11px] font-bold shadow-md select-none pointer-events-none">
-            c.{effectiveActiveMeasure + 1} de {effectiveTotalMeasures}
+          {/* Badge del Compás Actual y Subdivisión */}
+          <div className="absolute top-2 left-3 z-30 px-2.5 py-0.5 rounded-md bg-cyan-950/85 border border-cyan-800/60 text-cyan-300 font-mono text-[11px] font-bold shadow-md select-none pointer-events-none flex items-center gap-1.5">
+            <span>c.{effectiveActiveMeasure + 1} de {effectiveTotalMeasures}</span>
+            <span className="text-cyan-500">•</span>
+            <span className="text-amber-300 font-extrabold">{subConfig.id}</span>
           </div>
 
           {/* Capa de notas del compás activo con key para refresco limpio instantáneo */}
@@ -311,13 +320,13 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
               />
 
               {/* ============================================================== */}
-              {/* SUBDIVISIONES Y TIEMPOS (1 e & a 2 e & a 3 e & a 4 e & a)      */}
+              {/* SUBDIVISIONES Y TIEMPOS (Adaptables a 1/8, 1/16, 1/4, 1/8T)    */}
               {/* ============================================================== */}
               {Array.from({ length: effectiveStepsPerMeasure }).map((_, s) => {
                 const stepX = leftPadding + (s + 0.5) * stepWidth;
                 const tickX = leftPadding + s * stepWidth;
-                const isBeat = s % 4 === 0;
                 const text = beatLabels[s % beatLabels.length];
+                const isBeat = !isNaN(Number(text));
                 const isStepActive = isPlaying && effectiveStepInMeasure === s;
 
                 return (
@@ -335,21 +344,21 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                       />
                     )}
 
-                    {/* Conteo superior (1 e & a) */}
+                    {/* Conteo superior dinámico (1 y 2 y... ó 1 e & a...) */}
                     <text
                       x={stepX}
                       y={22}
                       textAnchor="middle"
                       fontSize={isBeat ? 13 : 11}
-                      fontWeight={isBeat ? '700' : '500'}
+                      fontWeight={isBeat ? '800' : '600'}
                       fill={
                         isBeat
                           ? isStepActive
                             ? '#22d3ee'
-                            : '#e4e4e7'
+                            : '#f1f5f9'
                           : isStepActive
                           ? '#38bdf8'
-                          : '#71717a'
+                          : '#94a3b8'
                       }
                       className="font-mono transition-colors duration-150"
                     >
@@ -557,7 +566,7 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
             <span>RUNWAY SCANNER:</span>
             <span className="text-zinc-300 font-medium">
               {isPlaying
-                ? `Paso ${effectiveStepInMeasure + 1} / ${effectiveStepsPerMeasure} (Compás ${effectiveActiveMeasure + 1} de ${effectiveTotalMeasures})`
+                ? `Paso ${effectiveStepInMeasure + 1} / ${effectiveStepsPerMeasure} (${subConfig.id} ${subConfig.name} - Compás ${effectiveActiveMeasure + 1} de ${effectiveTotalMeasures})`
                 : 'En pausa'}
             </span>
           </div>
@@ -566,6 +575,8 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
             <span>AFINACIÓN: {tuning}</span>
             <span>•</span>
             <span>COMPÁS: {timeSignature}</span>
+            <span>•</span>
+            <span className="text-cyan-400 font-bold">SUBDIVISIÓN: {subConfig.id}</span>
             <span className="text-zinc-400 font-semibold">
               {isPlaying ? `${Math.round(progress * 100)}%` : '0%'}
             </span>

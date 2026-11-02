@@ -15,6 +15,8 @@ model DrumExercise {
   difficulty    String   // "Básico", "Intermedio", "Avanzado"
   bpmDefault    Int      @default(100)
   timeSignature String   @default("4/4")
+  subdivision   String?  @default("1/16")
+  stepsPerMeasure Int?   @default(16)
   totalSteps    Int      @default(16) // Subdivisión base (ej. 16 semicorcheas por compás)
   hitsData      Json     // Array estructurado con notas, duraciones, articulaciones y sticking
   createdAt     DateTime @default(now())
@@ -30,6 +32,8 @@ model StringExercise {
   difficulty    String   // "Básico", "Intermedio", "Avanzado"
   bpmDefault    Int      @default(90)
   timeSignature String   @default("4/4")
+  subdivision   String?  @default("1/16")
+  stepsPerMeasure Int?   @default(16)
   totalSteps    Int      @default(16) // Subdivisión de compás
   tabData       Json     // Array con notas de tablatura (cuerda, traste, técnica, duración)
   createdAt     DateTime @default(now())

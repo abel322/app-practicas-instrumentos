@@ -805,9 +805,10 @@ export const ExerciseBuilder: React.FC = () => {
           timeSignature,
           totalMeasures,
           stepsPerMeasure,
+          subdivision,
           data: formattedData,
         }).catch(() => {});
-
+ 
         setSaveResult({
           success: true,
           url: '/mastery',
@@ -825,6 +826,7 @@ export const ExerciseBuilder: React.FC = () => {
         timeSignature,
         totalMeasures,
         stepsPerMeasure,
+        subdivision,
         data: formattedData,
       });
 
@@ -838,6 +840,7 @@ export const ExerciseBuilder: React.FC = () => {
           bpmDefault: bpm,
           bpm,
           timeSignature,
+          subdivision,
           totalSteps,
           totalMeasures,
           stepsPerMeasure,
