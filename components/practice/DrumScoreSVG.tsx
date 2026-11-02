@@ -18,7 +18,7 @@ export function getDrumYPosition(voice: string = ''): number {
     case 'crash':
       return 40;  // Sobre la línea superior
     case 'ride':
-      return 60;  // En la línea 5
+      return 60;  // En la línea 5 (superior)
     case 'hihat':
     case 'hihat_open':
       return 50;  // Justo sobre la línea 5
@@ -45,7 +45,7 @@ export function DrumScoreRenderer({
   timeSignature = '4/4',
   isPlaying = false,
 }: DrumScoreProps) {
-  // Etiquetas superiores dinámicas según los pasos del compás
+  // Etiquetas según subdivisión rítmica
   const stepLabels = useMemo(() => {
     if (stepsPerMeasure === 8) {
       return ['1', 'y', '2', 'y', '3', 'y', '4', 'y'];
@@ -64,14 +64,14 @@ export function DrumScoreRenderer({
     return ['1', 'e', '&', 'a', '2', 'e', '&', 'a', '3', 'e', '&', 'a', '4', 'e', '&', 'a'];
   }, [stepsPerMeasure, timeSignature]);
 
-  // Dimensiones base del compás en el SVG
+  // Geometría unificada del SVG (Alineación milimétrica absoluta)
   const scoreWidth = 900;
-  const leftMargin = 80;  // Espacio para clave neutral y métrica
-  const rightMargin = 40;
+  const leftMargin = 90;   // Espacio protegido para clave neutral y métrica 4/4
+  const rightMargin = 45;
   const usableWidth = scoreWidth - leftMargin - rightMargin;
   const stepWidth = usableWidth / stepsPerMeasure;
 
-  // Función para obtener la coordenada X exacta de cualquier paso
+  // Coordenada X exacta para cada paso (usada por etiquetas, notas y escáner)
   const getXForStep = (stepIdx: number) => leftMargin + (stepIdx + 0.5) * stepWidth;
 
   // Normalizar lista de notas del compás
@@ -85,7 +85,7 @@ export function DrumScoreRenderer({
     return [];
   }, [measure, hits]);
 
-  // Agrupar notas por paso para dibujar plicas
+  // Agrupar notas por paso para dibujar plicas unificadas
   const notesByStep = useMemo(() => {
     const map = new Map<number, any[]>();
     for (let i = 0; i < stepsPerMeasure; i++) {
@@ -101,37 +101,13 @@ export function DrumScoreRenderer({
     return map;
   }, [notesList, stepsPerMeasure]);
 
-  return (
-    <div className="w-full relative flex flex-col items-center select-none">
-      {/* Cabecera Rítmica Superior Proporcional */}
-      <div
-        className="w-full text-center text-xs font-mono text-slate-400 mb-1 px-4 sm:px-8 select-none"
-        style={{ display: 'grid', gridTemplateColumns: `repeat(${stepsPerMeasure}, minmax(0, 1fr))` }}
-      >
-        {stepLabels.map((lbl, idx) => {
-          const isCurrent = isPlaying && currentStepInMeasure === idx;
-          const isMainBeat = !isNaN(Number(lbl));
-          return (
-            <span
-              key={idx}
-              className={`transition-colors duration-75 ${
-                isCurrent
-                  ? 'text-cyan-400 font-black text-sm scale-110 drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]'
-                  : isMainBeat
-                  ? 'font-bold text-slate-100 text-sm'
-                  : 'text-slate-500'
-              }`}
-            >
-              {lbl}
-            </span>
-          );
-        })}
-      </div>
+  const [numerator, denominator] = timeSignature ? timeSignature.split('/') : ['4', '4'];
 
-      {/* Pentagrama SVG de Batería con Ajuste 100% Responsivo */}
+  return (
+    <div className="w-full relative flex items-center justify-center select-none overflow-hidden">
       <svg
-        viewBox={`0 0 ${scoreWidth} 200`}
-        className="w-full h-auto max-h-56 drop-shadow-md"
+        viewBox={`0 0 ${scoreWidth} 220`}
+        className="w-full h-auto max-h-60"
         preserveAspectRatio="xMidYMid meet"
       >
         <defs>
@@ -144,10 +120,55 @@ export function DrumScoreRenderer({
           </filter>
         </defs>
 
-        {/* 5 Líneas del pentagrama de percusión */}
+        {/* ============================================================ */}
+        {/* 1. CABECERA DE SUBDIVISIONES Y PULSOS (DENTRO DEL SVG)       */}
+        {/* ============================================================ */}
+        {stepLabels.map((lbl, idx) => {
+          const cx = getXForStep(idx);
+          const isMainBeat = !isNaN(Number(lbl)); // 1, 2, 3, 4
+          const isActive = isPlaying && currentStepInMeasure === idx;
+
+          return (
+            <g key={`step-guide-${idx}`}>
+              {/* Pequeña marca guía vertical sobre el pentagrama */}
+              <line
+                x1={cx}
+                y1={isMainBeat ? 18 : 22}
+                x2={cx}
+                y2={30}
+                stroke={isActive ? '#22d3ee' : isMainBeat ? '#64748b' : '#334155'}
+                strokeWidth={isMainBeat ? 1.5 : 1}
+              />
+
+              {/* Texto del Pulso o Subdivisión perfectamente alineado */}
+              <text
+                x={cx}
+                y={isMainBeat ? 14 : 16}
+                textAnchor="middle"
+                fontFamily="ui-monospace, monospace"
+                fontSize={isMainBeat ? '14' : '11'}
+                fontWeight={isMainBeat ? '900' : '600'}
+                fill={
+                  isActive
+                    ? '#22d3ee'
+                    : isMainBeat
+                    ? '#f8fafc'
+                    : '#64748b'
+                }
+                className="transition-colors duration-75 select-none"
+              >
+                {lbl}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* ============================================================ */}
+        {/* 2. PENTAGRAMA DE PERCUSIÓN (5 LÍNEAS)                         */}
+        {/* ============================================================ */}
         {[60, 80, 100, 120, 140].map((y, i) => (
           <line
-            key={`staff-line-${i}`}
+            key={`staff-${i}`}
             x1={leftMargin - 20}
             y1={y}
             x2={scoreWidth - rightMargin}
@@ -157,7 +178,7 @@ export function DrumScoreRenderer({
           />
         ))}
 
-        {/* Barras divisorias inicial y final */}
+        {/* Barras verticales divisorias (inicio y fin de compás) */}
         <line
           x1={leftMargin - 20}
           y1="60"
@@ -175,35 +196,42 @@ export function DrumScoreRenderer({
           strokeWidth="2.5"
         />
 
-        {/* Clave Neutral de Percusión (dos barras verticales) */}
-        <rect x={leftMargin - 15} y="80" width="3" height="40" fill="#94a3b8" rx="1" />
-        <rect x={leftMargin - 9} y="80" width="3" height="40" fill="#94a3b8" rx="1" />
-
-        {/* Métrica del Compás */}
+        {/* Clave de Percusión Neutral y Métrica de Compás */}
         <text
-          x={leftMargin + 6}
-          y="93"
-          fontSize="18"
-          fill="#cbd5e1"
+          x="35"
+          y="108"
+          fill="#94a3b8"
+          fontSize="22"
           fontWeight="bold"
-          fontFamily="serif"
+          fontFamily="monospace"
           textAnchor="middle"
         >
-          {timeSignature.split('/')[0] || '4'}
+          𝄥
         </text>
         <text
-          x={leftMargin + 6}
-          y="125"
-          fontSize="18"
+          x="62"
+          y="90"
           fill="#cbd5e1"
-          fontWeight="bold"
-          fontFamily="serif"
+          fontSize="18"
+          fontWeight="900"
+          fontFamily="sans-serif"
           textAnchor="middle"
         >
-          {timeSignature.split('/')[1] || '4'}
+          {numerator || '4'}
+        </text>
+        <text
+          x="62"
+          y="130"
+          fill="#cbd5e1"
+          fontSize="18"
+          fontWeight="900"
+          fontFamily="sans-serif"
+          textAnchor="middle"
+        >
+          {denominator || '4'}
         </text>
 
-        {/* Líneas divisorias tenues entre pasos */}
+        {/* Líneas divisorias tenues verticales entre pasos */}
         {Array.from({ length: stepsPerMeasure }).map((_, stepIdx) => {
           const x = getXForStep(stepIdx);
           const isMainBeat = stepIdx % (stepsPerMeasure === 8 ? 2 : 4) === 0;
@@ -214,39 +242,41 @@ export function DrumScoreRenderer({
               y1="50"
               x2={x}
               y2="150"
-              stroke={isMainBeat ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)'}
+              stroke={isMainBeat ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.025)'}
               strokeWidth={isMainBeat ? '1.2' : '0.8'}
               strokeDasharray={isMainBeat ? undefined : '2,3'}
             />
           );
         })}
 
-        {/* Renderizado de Notas de Batería con Posición X Matemática Real */}
+        {/* ============================================================ */}
+        {/* 3. NOTAS Y STICKINGS (ALINEADOS A getXForStep)               */}
+        {/* ============================================================ */}
         {Array.from(notesByStep.entries()).map(([stepIdx, stepNotes]) => {
           if (!stepNotes || stepNotes.length === 0) return null;
           const cx = getXForStep(stepIdx);
           const isStepActive = isPlaying && currentStepInMeasure === stepIdx;
 
-          // Plica vertical unificada si hay notas
+          // Plica vertical unificada
           const yPositions = stepNotes.map((n: any) =>
             getDrumYPosition(n.instrumentKey || n.drumType || n.instrument)
           );
           const minY = Math.min(...yPositions);
           const maxY = Math.max(...yPositions);
-          const stemTop = 35;
+          const stemTop = 38;
 
           const accentNote = stepNotes.find((n: any) => n.accent);
           const stickingNote = stepNotes.find((n: any) => n.sticking);
 
           return (
             <g key={`step-col-${stepIdx}`} className="transition-all">
-              {/* Plica (Stem) vertical */}
+              {/* Plica vertical que conecta la nota con la línea de tiempo */}
               <line
                 x1={cx + 6}
                 y1={stemTop}
                 x2={cx + 6}
                 y2={maxY}
-                stroke={isStepActive ? '#22d3ee' : '#94a3b8'}
+                stroke={isStepActive ? '#22d3ee' : '#64748b'}
                 strokeWidth="1.6"
               />
 
@@ -272,7 +302,7 @@ export function DrumScoreRenderer({
 
                 return (
                   <g key={`note-${stepIdx}-${nIdx}`}>
-                    {/* Línea adicional para platillos superiores (Crash) */}
+                    {/* Línea adicional superior para Crash */}
                     {cy <= 40 && (
                       <line
                         x1={cx - 10}
@@ -284,13 +314,13 @@ export function DrumScoreRenderer({
                       />
                     )}
 
-                    {/* Cabeza de nota: cruz (X) para platillos o círculo relleno para tambores */}
+                    {/* Cabeza de nota: cruz (X) para platillos o círculo para tambores */}
                     {isHiHatOrCymbal ? (
                       <g>
                         <path
                           d={`M ${cx - 6} ${cy - 6} L ${cx + 6} ${cy + 6} M ${cx + 6} ${cy - 6} L ${cx - 6} ${cy + 6}`}
                           stroke={isStepActive ? '#22d3ee' : '#38bdf8'}
-                          strokeWidth="2.4"
+                          strokeWidth="2.5"
                           strokeLinecap="round"
                         />
                         {voice.toLowerCase() === 'hihat_open' && (
@@ -348,12 +378,14 @@ export function DrumScoreRenderer({
           );
         })}
 
-        {/* Barra del Escáner (Runway Scanner) sincronizada en base stepsPerMeasure */}
+        {/* ============================================================ */}
+        {/* 4. ESCÁNER VISUAL (RUNWAY SCANNER)                          */}
+        {/* ============================================================ */}
         {isPlaying && (
           <g>
             <line
               x1={getXForStep(currentStepInMeasure)}
-              y1="30"
+              y1="22"
               x2={getXForStep(currentStepInMeasure)}
               y2="190"
               stroke="#22d3ee"
@@ -363,7 +395,7 @@ export function DrumScoreRenderer({
             />
             <circle
               cx={getXForStep(currentStepInMeasure)}
-              cy="30"
+              cy="22"
               r="4"
               fill="#22d3ee"
               filter="url(#drumScanGlow)"
@@ -384,4 +416,3 @@ export function DrumScoreRenderer({
 
 export const DrumScoreSVG = DrumScoreRenderer;
 export default DrumScoreRenderer;
-
