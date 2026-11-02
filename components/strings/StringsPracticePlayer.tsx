@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { StringExerciseData, StringTabNote } from '@/types/strings';
 import { getStringsAudioEngine } from '@/lib/stringsAudioEngine';
 import { TablatureRunway } from './TablatureRunway';
-import { TransportBar } from '@/components/practice/TransportBar';
 import { StringsLegend } from './StringsLegend';
 import { ArrowLeft, Keyboard, Maximize2, Minimize2 } from 'lucide-react';
 
@@ -20,10 +19,11 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
   const [activeStep, setActiveStep] = useState<number>(0);
   const [progress, setProgress] = useState<number>(0);
 
-  // Estado de Pantalla Completa y Orientación Horizontal Forzada (Aislamiento Total z-[9999])
+  // Pantalla Completa con Contenedor Maestro Integral (Aislamiento z-[9999])
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isForceLandscapeCSS, setIsForceLandscapeCSS] = useState<boolean>(false);
-  const tabScrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const fullscreenWrapperRef = useRef<HTMLDivElement | null>(null);
+  const tabContainerRef = useRef<HTMLDivElement | null>(null);
 
   const isPlayingRef = useRef<boolean>(false);
   const bpmRef = useRef<number>(exercise.bpmDefault);
@@ -42,6 +42,10 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
   }, [isPlaying]);
 
   const isBass = exercise.instrument === 'bass_4';
+  const stepsPerMeasure = exercise.timeSignature === '6/8' ? 12 : 16;
+  const currentMeasureIndex = Math.floor(activeStep / stepsPerMeasure);
+  const totalMeasures = Math.max(1, Math.ceil(exercise.totalSteps / stepsPerMeasure));
+  const prevMeasureRef = useRef<number>(-1);
 
   // Duración de un paso (semicorchea en 4/4)
   const getSecondsPerStep = useCallback((currentBpm: number) => {
@@ -182,61 +186,62 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
     getStringsAudioEngine().setMetronomeEnabled(nextState);
   }, [metronomeEnabled]);
 
-  // Funciones de Pantalla Completa y Bloqueo de Orientación Horizontal
-  const enterFullscreenLandscape = useCallback(async () => {
-    const elem = document.documentElement as any;
-
-    try {
-      if (elem.requestFullscreen) {
-        await elem.requestFullscreen();
-      } else if (elem.webkitRequestFullscreen) {
-        await elem.webkitRequestFullscreen();
+  // Control Unificado de Pantalla Completa
+  const handleToggleFullscreen = useCallback(async () => {
+    if (!isFullscreen) {
+      const elem = fullscreenWrapperRef.current;
+      if (elem) {
+        try {
+          if (elem.requestFullscreen) {
+            await elem.requestFullscreen();
+          } else if ((elem as any).webkitRequestFullscreen) {
+            await (elem as any).webkitRequestFullscreen();
+          }
+        } catch (err) {
+          console.warn('Fullscreen bloqueado o no disponible en este dispositivo:', err);
+        }
       }
-    } catch (err) {
-      console.warn('Fullscreen no disponible o bloqueado:', err);
+
+      let orientationLocked = false;
+      try {
+        const orientation =
+          ((screen as any)?.orientation ||
+            (screen as any)?.mozOrientation ||
+            (screen as any)?.msOrientation) as any;
+        if (orientation && typeof orientation.lock === 'function') {
+          await orientation.lock('landscape');
+          orientationLocked = true;
+        }
+      } catch (err) {
+        console.warn('Orientación nativa no admitida o bloqueada:', err);
+      }
+
+      const isPortrait = window.innerHeight > window.innerWidth;
+      setIsForceLandscapeCSS(!orientationLocked && isPortrait);
+      setIsFullscreen(true);
+    } else {
+      try {
+        if (document.exitFullscreen && document.fullscreenElement) {
+          await document.exitFullscreen();
+        } else if ((document as any).webkitExitFullscreen) {
+          await (document as any).webkitExitFullscreen();
+        }
+      } catch (err) {}
+
+      try {
+        const orientation =
+          ((screen as any)?.orientation ||
+            (screen as any)?.mozOrientation ||
+            (screen as any)?.msOrientation) as any;
+        if (orientation && typeof orientation.unlock === 'function') {
+          orientation.unlock();
+        }
+      } catch (err) {}
+
+      setIsForceLandscapeCSS(false);
+      setIsFullscreen(false);
     }
-
-    let orientationLocked = false;
-    try {
-      const orientation =
-        ((screen as any)?.orientation ||
-          (screen as any)?.mozOrientation ||
-          (screen as any)?.msOrientation) as any;
-      if (orientation && typeof orientation.lock === 'function') {
-        await orientation.lock('landscape');
-        orientationLocked = true;
-      }
-    } catch (err) {
-      console.warn('Orientación nativa bloqueada por el sistema:', err);
-    }
-
-    const isPortrait = window.innerHeight > window.innerWidth;
-    setIsForceLandscapeCSS(!orientationLocked && isPortrait);
-    setIsFullscreen(true);
-  }, []);
-
-  const exitFullscreenLandscape = useCallback(async () => {
-    try {
-      const orientation =
-        ((screen as any)?.orientation ||
-          (screen as any)?.mozOrientation ||
-          (screen as any)?.msOrientation) as any;
-      if (orientation && typeof orientation.unlock === 'function') {
-        orientation.unlock();
-      }
-    } catch (err) {}
-
-    try {
-      if (document.exitFullscreen && document.fullscreenElement) {
-        await document.exitFullscreen();
-      } else if ((document as any).webkitExitFullscreen) {
-        await (document as any).webkitExitFullscreen();
-      }
-    } catch (err) {}
-
-    setIsForceLandscapeCSS(false);
-    setIsFullscreen(false);
-  }, []);
+  }, [isFullscreen]);
 
   // Monitoreo de eventos de pantalla y giros físicos
   useEffect(() => {
@@ -247,8 +252,11 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
     };
 
     const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
-        setIsFullscreen(false);
+      const isFs = !!(
+        document.fullscreenElement || (document as any).webkitFullscreenElement
+      );
+      setIsFullscreen(isFs);
+      if (!isFs) {
         setIsForceLandscapeCSS(false);
         const orientation =
           ((screen as any)?.orientation ||
@@ -273,34 +281,43 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
     };
   }, [isFullscreen]);
 
-  // Auto-Centrado Suave del Escáner (Auto-Scroll) sincronizado con activeStep
+  // ==============================================================
+  // 1. AUTO-SCROLL SUAVE POR COMPÁS (PAGINACIÓN SIN SACUDIDAS)
+  // El cursor se mueve libremente en el compás activo. Solo al
+  // ingresar al siguiente compás se desplaza suavemente la vista.
+  // ==============================================================
   useEffect(() => {
-    if (isPlaying && tabScrollContainerRef.current) {
-      const container = tabScrollContainerRef.current;
-      const activeElement = (container.querySelector(
-        `[data-step="${activeStep}"]`
-      ) ||
-        container.querySelector(
-          `[data-step-index="${activeStep}"]`
-        )) as HTMLElement | null;
+    if (!isPlaying || !tabContainerRef.current) return;
 
-      if (activeElement) {
-        const containerWidth = container.clientWidth;
-        const targetScroll =
-          activeElement.offsetLeft - containerWidth / 2 + activeElement.clientWidth / 2;
+    if (currentMeasureIndex !== prevMeasureRef.current) {
+      prevMeasureRef.current = currentMeasureIndex;
+
+      const container = tabContainerRef.current;
+      const measureElement = container.querySelector(
+        `[data-measure-index="${currentMeasureIndex}"]`
+      ) as HTMLElement | null;
+
+      if (measureElement) {
+        const measureLeft = measureElement.offsetLeft;
+
+        // Margen izquierdo de 48px para anticipar la lectura y ver la cejuela previa
+        const targetScroll = measureLeft - 48;
 
         container.scrollTo({
           left: Math.max(0, targetScroll),
           behavior: 'smooth',
         });
       }
-    } else if (!isPlaying && activeStep === 0 && tabScrollContainerRef.current) {
-      tabScrollContainerRef.current.scrollTo({
-        left: 0,
-        behavior: 'smooth',
-      });
     }
-  }, [activeStep, isPlaying]);
+  }, [currentMeasureIndex, isPlaying]);
+
+  // Resetear posición de scroll al pausar o reiniciar
+  useEffect(() => {
+    if (!isPlaying && activeStep === 0 && tabContainerRef.current) {
+      tabContainerRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+      prevMeasureRef.current = -1;
+    }
+  }, [isPlaying, activeStep]);
 
   // Atajos de teclado
   useEffect(() => {
@@ -313,7 +330,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
       } else if (e.code === 'Escape') {
         e.preventDefault();
         if (isFullscreen) {
-          exitFullscreenLandscape();
+          handleToggleFullscreen();
         } else {
           handleStop();
         }
@@ -331,7 +348,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handlePlayPause, handleStop, handleToggleMetronome, isFullscreen, exitFullscreenLandscape]);
+  }, [handlePlayPause, handleStop, handleToggleMetronome, isFullscreen, handleToggleFullscreen]);
 
   // Limpieza al desmontar
   useEffect(() => {
@@ -342,154 +359,74 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
     };
   }, []);
 
-  const stepsPerMeasure = exercise.timeSignature === '6/8' ? 12 : 16;
-  const currentMeasureNumber = Math.floor(activeStep / stepsPerMeasure) + 1;
-  const totalMeasures = Math.max(1, Math.ceil(exercise.totalSteps / stepsPerMeasure));
-
   return (
     <div
-      className={`transition-colors duration-200 ${
+      ref={fullscreenWrapperRef}
+      className={`transition-all duration-200 ${
         isFullscreen
           ? isForceLandscapeCSS
-            ? 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100vh] h-[100vw] rotate-90 z-[9999] bg-[#0c0e14] flex flex-col justify-between p-3 sm:p-5 overflow-hidden select-none'
-            : 'fixed inset-0 z-[9999] bg-[#0c0e14] flex flex-col justify-between p-3 sm:p-5 w-screen h-screen overflow-hidden select-none'
-          : 'relative w-full max-w-6xl mx-auto flex flex-col gap-6'
+            ? 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100vh] h-[100vw] rotate-90 z-[9999] bg-[#0b0d13] flex flex-col justify-between p-3 sm:p-4 overflow-hidden select-none shadow-2xl'
+            : 'fixed inset-0 z-[9999] bg-[#0b0d13] flex flex-col justify-between p-3 sm:p-4 w-screen h-screen overflow-hidden select-none shadow-2xl'
+          : 'relative w-full max-w-6xl mx-auto flex flex-col gap-3'
       }`}
     >
       {/* ============================================================== */}
-      {/* 1. CABECERA EN PANTALLA COMPLETA PURA (Z-[9999])               */}
+      {/* CABECERA SUPERIOR: VISIBLE EN TODO MOMENTO (NORMAL Y FULLSCREEN) */}
       {/* ============================================================== */}
-      {isFullscreen ? (
-        <header className="w-full h-12 px-3 bg-slate-900/95 border border-slate-800 rounded-2xl flex items-center justify-between gap-3 shrink-0 shadow-xl z-30">
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-            <span className="text-sm font-black text-cyan-400 truncate max-w-[140px] sm:max-w-xs">
-              {exercise.title}
-            </span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono shrink-0">
-              {isBass ? 'Bajo' : 'Guitarra'} • {exercise.difficulty}
-            </span>
-            <span className="text-xs font-mono text-amber-300 font-bold ml-1 shrink-0">
-              Paso {activeStep + 1} / {exercise.totalSteps}
-            </span>
-            <span className="text-xs font-mono text-slate-400 shrink-0 hidden md:inline">
-              (c.{currentMeasureNumber} de {totalMeasures})
-            </span>
-          </div>
-
-          {/* Controles de Reproducción, Tempo, Metrónomo y Salida */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            {/* Play / Pausa */}
-            <button
-              type="button"
-              onClick={handlePlayPause}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 ${
-                isPlaying
-                  ? 'bg-amber-400 text-slate-950 font-black animate-pulse shadow-[0_0_12px_rgba(251,191,36,0.6)]'
-                  : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-              }`}
-            >
-              <span>{isPlaying ? '⏸ Pausar' : '▶ Iniciar'}</span>
-            </button>
-
-            {/* Slider de BPM */}
-            <div className="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800 font-mono text-xs">
-              <span className="text-amber-400 font-bold min-w-[50px]">{bpm} BPM</span>
-              <input
-                type="range"
-                min={40}
-                max={200}
-                value={bpm}
-                onChange={(e) => setBpm(Number(e.target.value))}
-                className="w-16 sm:w-24 h-1 bg-slate-800 accent-amber-400 rounded cursor-pointer"
-                title="Ajustar tempo"
-              />
-            </div>
-
-            {/* Botón Metrónomo */}
-            <button
-              type="button"
-              onClick={handleToggleMetronome}
-              className={`px-2 py-1 rounded-lg text-xs font-mono font-bold border transition-all active:scale-95 ${
-                metronomeEnabled
-                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
-                  : 'bg-slate-950 text-slate-500 border-slate-800'
-              }`}
-              title="Alternar Metrónomo"
-            >
-              🔔 {metronomeEnabled ? 'ON' : 'OFF'}
-            </button>
-
-            {/* Botón Salir */}
-            <button
-              type="button"
-              onClick={exitFullscreenLandscape}
-              className="px-3 py-1.5 rounded-xl bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/70 text-xs font-bold transition-all active:scale-95 flex items-center gap-1"
-              title="Salir de Pantalla Completa"
-            >
-              <Minimize2 className="w-3.5 h-3.5" />
-              <span>✕ Salir</span>
-            </button>
-          </div>
-        </header>
-      ) : (
-        /* Header en Modo Normal */
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
-          <div className="flex items-center gap-3">
+      <header className="w-full h-12 px-3 sm:px-4 bg-slate-900/90 border border-slate-800 rounded-2xl flex items-center justify-between gap-3 shrink-0 shadow-lg z-20">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+          {!isFullscreen && (
             <Link
               href="/strings"
-              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-400 hover:text-white transition-colors"
+              className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-400 hover:text-white transition-colors mr-1 shrink-0"
               title="Volver al catálogo de cuerdas"
             >
               <ArrowLeft className="w-4 h-4" />
             </Link>
+          )}
 
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span
-                  className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
-                    isBass
-                      ? 'bg-cyan-500/15 border-cyan-500/30 text-cyan-300'
-                      : 'bg-fuchsia-500/15 border-fuchsia-500/30 text-fuchsia-300'
-                  }`}
-                >
-                  {isBass ? 'Bajo (4 Cuerdas)' : 'Guitarra (6 Cuerdas)'}
-                </span>
-                <span className="text-zinc-600">•</span>
-                <span className="text-[11px] text-cyan-400 uppercase font-semibold">
-                  {exercise.category}
-                </span>
-                <span className="text-zinc-600">•</span>
-                <span className="text-[11px] text-zinc-400 font-mono">
-                  Afinación: {exercise.tuning}
-                </span>
-              </div>
-              <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-                {exercise.title}
-              </h1>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 self-start sm:self-center">
-            <button
-              type="button"
-              onClick={enterFullscreenLandscape}
-              className="p-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all active:scale-95"
-              title="Práctica en Pantalla Completa Horizontal"
-            >
-              <Maximize2 className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="hidden sm:inline text-[11px]">Pantalla Completa</span>
-            </button>
-            <span className="text-xs px-3 py-1 rounded-full font-semibold border bg-white/5 border-white/10 text-zinc-300">
-              {exercise.difficulty}
-            </span>
-          </div>
+          <span className="text-xs sm:text-sm font-black text-cyan-400 truncate max-w-[150px] sm:max-w-xs">
+            {exercise.title}
+          </span>
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono shrink-0">
+            Compás {currentMeasureIndex + 1} de {totalMeasures} • {activeStep + 1}/{exercise.totalSteps}
+          </span>
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-zinc-300 font-mono hidden md:inline shrink-0">
+            {isBass ? 'Bajo (4C)' : 'Guitarra (6C)'} • {exercise.difficulty}
+          </span>
         </div>
-      )}
+
+        {/* Botón de alternancia de Pantalla Completa */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleToggleFullscreen}
+            className={`px-3 py-1 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all active:scale-95 shadow-sm ${
+              isFullscreen
+                ? 'bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/70'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+            }`}
+            title={isFullscreen ? 'Salir de pantalla completa' : 'Activar pantalla completa'}
+          >
+            {isFullscreen ? (
+              <>
+                <Minimize2 className="w-3.5 h-3.5 text-rose-400" />
+                <span>✕ Salir</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="w-3.5 h-3.5 text-cyan-400" />
+                <span>⛶ Pantalla Completa</span>
+              </>
+            )}
+          </button>
+        </div>
+      </header>
 
       {/* ============================================================== */}
-      {/* 2. ÁREA CENTRAL DE TABLATURA CON COLUMNA STICKY DE AFINACIÓN   */}
+      {/* ÁREA CENTRAL DE TABLATURA CON CABECERA STICKY Y SCROLL SUAVE   */}
       {/* ============================================================== */}
-      <main className={`w-full flex items-center justify-center ${isFullscreen ? 'flex-1 min-h-0 py-2' : ''}`}>
+      <main className="w-full flex-1 min-h-0 flex items-stretch bg-[#10131c] rounded-2xl border border-slate-800/80 overflow-hidden shadow-2xl my-1">
         <TablatureRunway
           instrument={exercise.instrument}
           tuning={exercise.tuning}
@@ -500,48 +437,64 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
           activeStep={activeStep}
           isPlaying={isPlaying}
           isFullscreen={isFullscreen}
-          scrollContainerRef={tabScrollContainerRef}
+          scrollContainerRef={tabContainerRef}
         />
       </main>
 
       {/* ============================================================== */}
-      {/* 3. BARRA INFERIOR DE ESTADO (EN FULLSCREEN)                    */}
+      {/* BARRA INFERIOR DE REPRODUCCIÓN: SIEMPRE VISIBLE Y OPERATIVA    */}
       {/* ============================================================== */}
-      {isFullscreen ? (
-        <footer className="w-full h-6 px-3 flex items-center justify-between text-[11px] text-slate-400 bg-slate-950/90 border border-slate-900 rounded-xl shrink-0 font-mono">
-          <span className="flex items-center gap-1.5 text-emerald-400">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            Auto-Scroll: Sincronizado
-          </span>
-          <span>Afinación: {exercise.tuning}</span>
-          <span className="text-zinc-400 font-semibold">
-            {isPlaying ? `${Math.round(progress * 100)}%` : '0%'}
-          </span>
-        </footer>
-      ) : (
-        /* Barra de Transporte en Modo Estándar */
-        <>
-          <div className="w-full">
-            <TransportBar
-              isPlaying={isPlaying}
-              bpm={bpm}
-              metronomeEnabled={metronomeEnabled}
-              onPlayPause={handlePlayPause}
-              onStop={handleStop}
-              onBpmChange={setBpm}
-              onToggleMetronome={handleToggleMetronome}
-              onResetBpm={() => setBpm(exercise.bpmDefault)}
-              defaultBpm={exercise.bpmDefault}
-              backHref="/strings"
-              backLabel="Catálogo Cuerdas"
-            />
-          </div>
+      <footer className="w-full h-14 px-3 sm:px-4 bg-slate-900/95 border border-slate-800 rounded-2xl flex items-center justify-between gap-2 sm:gap-3 shrink-0 shadow-lg z-20">
+        {/* Play / Pausa */}
+        <button
+          type="button"
+          onClick={handlePlayPause}
+          className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 sm:gap-2 transition-all shadow-md active:scale-95 shrink-0 ${
+            isPlaying
+              ? 'bg-amber-400 text-slate-950 animate-pulse shadow-[0_0_12px_rgba(251,191,36,0.6)]'
+              : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+          }`}
+        >
+          <span>{isPlaying ? '⏸ Pausar' : '▶ Iniciar Práctica'}</span>
+        </button>
 
-          <div className="w-full">
+        {/* BPM Slider */}
+        <div className="flex items-center gap-2 bg-slate-950 px-2.5 sm:px-3 py-1.5 rounded-xl border border-slate-800 font-mono text-xs">
+          <span className="text-amber-400 font-black min-w-[55px] text-center">{bpm} BPM</span>
+          <input
+            type="range"
+            min={40}
+            max={200}
+            value={bpm}
+            onChange={(e) => setBpm(Number(e.target.value))}
+            className="w-16 sm:w-28 md:w-36 h-1.5 bg-slate-800 accent-amber-400 rounded cursor-pointer"
+            title="Ajustar Tempo (BPM)"
+          />
+        </div>
+
+        {/* Metrónomo */}
+        <button
+          type="button"
+          onClick={handleToggleMetronome}
+          className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all active:scale-95 shrink-0 ${
+            metronomeEnabled
+              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
+              : 'bg-slate-950 text-slate-500 border-slate-800'
+          }`}
+          title="Alternar Metrónomo"
+        >
+          🔔 <span className="hidden sm:inline">Metrónomo </span>{metronomeEnabled ? 'ON' : 'OFF'}
+        </button>
+      </footer>
+
+      {/* En modo normal: Leyenda y Atajos debajo del reproductor */}
+      {!isFullscreen && (
+        <>
+          <div className="w-full mt-1">
             <StringsLegend />
           </div>
 
-          <div className="mt-2 flex flex-col sm:flex-row items-center justify-between text-xs text-zinc-500 gap-4 px-2">
+          <div className="mt-1 flex flex-col sm:flex-row items-center justify-between text-xs text-zinc-500 gap-4 px-2">
             <div className="flex items-center gap-2">
               <Keyboard className="w-3.5 h-3.5 text-zinc-400" />
               <span>Atajos:</span>

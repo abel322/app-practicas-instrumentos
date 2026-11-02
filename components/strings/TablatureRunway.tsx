@@ -38,6 +38,7 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
 
   // Pasos por compás
   const stepsPerMeasure = timeSignature === '6/8' ? 12 : 16;
+  const numMeasures = Math.max(1, Math.ceil(totalSteps / stepsPerMeasure));
 
   // Ancho y dimensiones dinámicas según la cantidad de compases/pasos
   const stepWidth = 52;
@@ -223,14 +224,33 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
         {/* ============================================================== */}
         <div
           ref={scrollContainerRef}
-          className="flex-1 overflow-x-auto overflow-y-hidden p-2 sm:p-4 relative no-scrollbar"
+          className="flex-1 overflow-x-auto overflow-y-hidden p-2 sm:p-4 relative no-scrollbar scroll-smooth"
         >
           <div
             className="relative w-full flex items-center"
             style={{ minWidth: `${Math.max(700, SVG_WIDTH)}px` }}
           >
-            {/* Marcadores de paso HTML para querySelector y auto-scroll suave */}
+            {/* Marcadores de compás y paso HTML para querySelector y auto-scroll suave sin tirones */}
             <div className="absolute inset-0 pointer-events-none">
+              {Array.from({ length: numMeasures }).map((_, mIdx) => {
+                const mStartStep = mIdx * stepsPerMeasure;
+                const mLeft = START_X + mStartStep * stepWidth;
+                const mWidth = stepsPerMeasure * stepWidth;
+                const leftPercent = (mLeft / SVG_WIDTH) * 100;
+                const widthPercent = (mWidth / SVG_WIDTH) * 100;
+                return (
+                  <div
+                    key={`measure-marker-${mIdx}`}
+                    data-measure-index={mIdx}
+                    className="absolute top-0 bottom-0 pointer-events-none"
+                    style={{
+                      left: `${leftPercent}%`,
+                      width: `${widthPercent}%`,
+                    }}
+                  />
+                );
+              })}
+
               {Array.from({ length: totalSteps }).map((_, stepIdx) => {
                 const leftPercent = ((START_X + stepIdx * stepWidth) / SVG_WIDTH) * 100;
                 const widthPercent = (stepWidth / SVG_WIDTH) * 100;
@@ -305,7 +325,12 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                 const isMeasureStart = item.step % stepsPerMeasure === 0;
 
                 return (
-                  <g key={`subdiv-${item.step}`} data-step={item.step} data-step-index={item.step}>
+                  <g
+                    key={`subdiv-${item.step}`}
+                    data-step={item.step}
+                    data-step-index={item.step}
+                    data-measure-index={Math.floor(item.step / stepsPerMeasure)}
+                  >
                     {/* Línea divisoria de compás vertical nítida (Bar Line) */}
                     {isMeasureStart ? (
                       <g key={`bar-line-${item.step}`}>
