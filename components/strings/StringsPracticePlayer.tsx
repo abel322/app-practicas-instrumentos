@@ -20,7 +20,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
   const [activeStep, setActiveStep] = useState<number>(0);
   const [progress, setProgress] = useState<number>(0);
 
-  // Estado de Pantalla Completa y Orientación Horizontal Forzada
+  // Estado de Pantalla Completa y Orientación Horizontal Forzada (Aislamiento Total z-[9999])
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isForceLandscapeCSS, setIsForceLandscapeCSS] = useState<boolean>(false);
   const tabScrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -273,24 +273,24 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
     };
   }, [isFullscreen]);
 
-  // Auto-Scroll suave sincronizado con el paso activo de la tablatura
+  // Auto-Centrado Suave del Escáner (Auto-Scroll) sincronizado con activeStep
   useEffect(() => {
     if (isPlaying && tabScrollContainerRef.current) {
       const container = tabScrollContainerRef.current;
-      const activeElement = container.querySelector(
-        `[data-step-index="${activeStep}"]`
-      ) as HTMLElement | null;
+      const activeElement = (container.querySelector(
+        `[data-step="${activeStep}"]`
+      ) ||
+        container.querySelector(
+          `[data-step-index="${activeStep}"]`
+        )) as HTMLElement | null;
 
       if (activeElement) {
         const containerWidth = container.clientWidth;
-        const elementLeft = activeElement.offsetLeft;
-        const elementWidth = activeElement.clientWidth;
-
-        // Centrar el compás / paso activo en pantalla para visibilidad fluida
-        const targetScrollLeft = elementLeft - containerWidth / 2 + elementWidth / 2;
+        const targetScroll =
+          activeElement.offsetLeft - containerWidth / 2 + activeElement.clientWidth / 2;
 
         container.scrollTo({
-          left: Math.max(0, targetScrollLeft),
+          left: Math.max(0, targetScroll),
           behavior: 'smooth',
         });
       }
@@ -322,7 +322,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
         handleToggleMetronome();
       } else if (e.code === 'ArrowUp') {
         e.preventDefault();
-        setBpm((prev) => Math.min(240, prev + 5));
+        setBpm((prev) => Math.min(200, prev + 5));
       } else if (e.code === 'ArrowDown') {
         e.preventDefault();
         setBpm((prev) => Math.max(40, prev - 5));
@@ -347,204 +347,222 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
   const totalMeasures = Math.max(1, Math.ceil(exercise.totalSteps / stepsPerMeasure));
 
   return (
-    <div className="w-full flex flex-col gap-6 max-w-5xl mx-auto">
-      {/* 1. Header del Ejercicio (Modo estándar) */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/strings"
-            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-400 hover:text-white transition-colors"
-            title="Volver al catálogo de cuerdas"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span
-                className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
-                  isBass
-                    ? 'bg-cyan-500/15 border-cyan-500/30 text-cyan-300'
-                    : 'bg-fuchsia-500/15 border-fuchsia-500/30 text-fuchsia-300'
-                }`}
-              >
-                {isBass ? 'Bajo (4 Cuerdas)' : 'Guitarra (6 Cuerdas)'}
-              </span>
-              <span className="text-zinc-600">•</span>
-              <span className="text-[11px] text-cyan-400 uppercase font-semibold">
-                {exercise.category}
-              </span>
-              <span className="text-zinc-600">•</span>
-              <span className="text-[11px] text-zinc-400 font-mono">
-                Afinación: {exercise.tuning}
-              </span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+    <div
+      className={`transition-colors duration-200 ${
+        isFullscreen
+          ? isForceLandscapeCSS
+            ? 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100vh] h-[100vw] rotate-90 z-[9999] bg-[#0c0e14] flex flex-col justify-between p-3 sm:p-5 overflow-hidden select-none'
+            : 'fixed inset-0 z-[9999] bg-[#0c0e14] flex flex-col justify-between p-3 sm:p-5 w-screen h-screen overflow-hidden select-none'
+          : 'relative w-full max-w-6xl mx-auto flex flex-col gap-6'
+      }`}
+    >
+      {/* ============================================================== */}
+      {/* 1. CABECERA EN PANTALLA COMPLETA PURA (Z-[9999])               */}
+      {/* ============================================================== */}
+      {isFullscreen ? (
+        <header className="w-full h-12 px-3 bg-slate-900/95 border border-slate-800 rounded-2xl flex items-center justify-between gap-3 shrink-0 shadow-xl z-30">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+            <span className="text-sm font-black text-cyan-400 truncate max-w-[140px] sm:max-w-xs">
               {exercise.title}
-            </h1>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 self-start sm:self-center">
-          <button
-            type="button"
-            onClick={enterFullscreenLandscape}
-            className="p-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all active:scale-95"
-            title="Práctica en Pantalla Completa Horizontal"
-          >
-            <Maximize2 className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden sm:inline text-[11px]">Pantalla Completa</span>
-          </button>
-          <span className="text-xs px-3 py-1 rounded-full font-semibold border bg-white/5 border-white/10 text-zinc-300">
-            {exercise.difficulty}
-          </span>
-        </div>
-      </div>
-
-      {/* 2. Visualizador de Tablatura Profesional con Runway y Pantalla Completa Adaptativa */}
-      <div
-        className={`transition-all duration-200 ${
-          isFullscreen
-            ? isForceLandscapeCSS
-              ? 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100vh] h-[100vw] rotate-90 z-50 bg-[#0d0f14] flex flex-col justify-between p-2 sm:p-3 overflow-hidden select-none'
-              : 'fixed inset-0 z-50 bg-[#0d0f14] flex flex-col justify-between p-2 sm:p-3 overflow-hidden w-screen h-screen select-none'
-            : 'relative w-full'
-        }`}
-      >
-        {/* Cabecera de controles compactos en Pantalla Completa */}
-        {isFullscreen && (
-          <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-slate-900/95 border border-slate-800 rounded-xl mb-1 shrink-0 text-xs">
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-              <span className="font-black text-cyan-400 text-xs truncate max-w-[150px] sm:max-w-xs">
-                {exercise.title}
-              </span>
-              <span className="text-[10px] text-slate-400 font-mono shrink-0">
-                Compás {currentMeasureNumber} de {totalMeasures} • Paso {activeStep + 1} / {exercise.totalSteps}
-              </span>
-              <div className="flex items-center gap-1 pl-2 font-mono text-[11px] text-amber-300 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setBpm((prev) => Math.max(40, prev - 5))}
-                  className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center font-bold transition-all active:scale-95"
-                  title="Disminuir tempo (BPM)"
-                >
-                  -
-                </button>
-                <span>{bpm} BPM</span>
-                <button
-                  type="button"
-                  onClick={() => setBpm((prev) => Math.min(240, prev + 5))}
-                  className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center font-bold transition-all active:scale-95"
-                  title="Aumentar tempo (BPM)"
-                >
-                  +
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={handlePlayPause}
-                className={`px-3 py-1 rounded-lg font-bold text-xs flex items-center gap-1 transition-all ${
-                  isPlaying
-                    ? 'bg-amber-400 text-slate-950 font-black animate-pulse shadow-[0_0_12px_rgba(251,191,36,0.5)]'
-                    : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                }`}
-              >
-                <span>{isPlaying ? '⏸ Pausar' : '▶ Iniciar'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={exitFullscreenLandscape}
-                className="px-2.5 py-1 bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/70 text-xs font-bold rounded-lg flex items-center gap-1 transition-all active:scale-95"
-                title="Salir de Pantalla Completa"
-              >
-                <Minimize2 className="w-3.5 h-3.5" />
-                <span>✕ Salir</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Contenedor con Scroll Horizontal Automático de la Tablatura */}
-        <div
-          ref={tabScrollContainerRef}
-          className={`w-full overflow-x-auto overflow-y-hidden flex items-center relative no-scrollbar ${
-            isFullscreen
-              ? 'flex-1 min-h-0 bg-[#13161f] rounded-2xl border border-slate-800 p-2 sm:p-4'
-              : 'rounded-2xl glass-panel p-2 sm:p-5 border border-white/10 shadow-2xl'
-          }`}
-        >
-          <TablatureRunway
-            instrument={exercise.instrument}
-            tuning={exercise.tuning}
-            totalSteps={exercise.totalSteps}
-            timeSignature={exercise.timeSignature}
-            tabData={exercise.tabData}
-            progress={progress}
-            activeStep={activeStep}
-            isPlaying={isPlaying}
-            isFullscreen={isFullscreen}
-          />
-        </div>
-
-        {/* Barra inferior de estado discreta (Pantalla Completa) */}
-        {isFullscreen && (
-          <footer className="w-full h-5 px-3 flex items-center justify-between text-[10px] text-slate-400 bg-slate-950/90 border-t border-slate-900 shrink-0 mt-1 font-mono">
-            <span className="flex items-center gap-1 text-emerald-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Auto-Scroll: Sincronizado
             </span>
-            <span>Afinación: {exercise.tuning}</span>
-          </footer>
-        )}
-      </div>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono shrink-0">
+              {isBass ? 'Bajo' : 'Guitarra'} • {exercise.difficulty}
+            </span>
+            <span className="text-xs font-mono text-amber-300 font-bold ml-1 shrink-0">
+              Paso {activeStep + 1} / {exercise.totalSteps}
+            </span>
+            <span className="text-xs font-mono text-slate-400 shrink-0 hidden md:inline">
+              (c.{currentMeasureNumber} de {totalMeasures})
+            </span>
+          </div>
 
-      {/* 3. Barra de Transporte */}
-      <div className="w-full">
-        <TransportBar
-          isPlaying={isPlaying}
-          bpm={bpm}
-          metronomeEnabled={metronomeEnabled}
-          onPlayPause={handlePlayPause}
-          onStop={handleStop}
-          onBpmChange={setBpm}
-          onToggleMetronome={handleToggleMetronome}
-          onResetBpm={() => setBpm(exercise.bpmDefault)}
-          defaultBpm={exercise.bpmDefault}
-          backHref="/strings"
-          backLabel="Catálogo Cuerdas"
-        />
-      </div>
+          {/* Controles de Reproducción, Tempo, Metrónomo y Salida */}
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Play / Pausa */}
+            <button
+              type="button"
+              onClick={handlePlayPause}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 ${
+                isPlaying
+                  ? 'bg-amber-400 text-slate-950 font-black animate-pulse shadow-[0_0_12px_rgba(251,191,36,0.6)]'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+              }`}
+            >
+              <span>{isPlaying ? '⏸ Pausar' : '▶ Iniciar'}</span>
+            </button>
 
-      {/* 4. Leyenda de Técnicas */}
-      <div className="w-full">
-        <StringsLegend />
-      </div>
+            {/* Slider de BPM */}
+            <div className="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800 font-mono text-xs">
+              <span className="text-amber-400 font-bold min-w-[50px]">{bpm} BPM</span>
+              <input
+                type="range"
+                min={40}
+                max={200}
+                value={bpm}
+                onChange={(e) => setBpm(Number(e.target.value))}
+                className="w-16 sm:w-24 h-1 bg-slate-800 accent-amber-400 rounded cursor-pointer"
+                title="Ajustar tempo"
+              />
+            </div>
 
-      {/* 5. Atajos y Notas Didácticas */}
-      <div className="mt-2 flex flex-col sm:flex-row items-center justify-between text-xs text-zinc-500 gap-4 px-2">
-        <div className="flex items-center gap-2">
-          <Keyboard className="w-3.5 h-3.5 text-zinc-400" />
-          <span>Atajos:</span>
-          <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 font-mono text-[10px]">Espacio</kbd>
-          <span>Play/Pausa</span>
-          <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 font-mono text-[10px]">Esc</kbd>
-          <span>Stop / Salir</span>
-          <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 font-mono text-[10px]">M</kbd>
-          <span>Metrónomo</span>
-          <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 font-mono text-[10px]">↑/↓</kbd>
-          <span>BPM</span>
+            {/* Botón Metrónomo */}
+            <button
+              type="button"
+              onClick={handleToggleMetronome}
+              className={`px-2 py-1 rounded-lg text-xs font-mono font-bold border transition-all active:scale-95 ${
+                metronomeEnabled
+                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
+                  : 'bg-slate-950 text-slate-500 border-slate-800'
+              }`}
+              title="Alternar Metrónomo"
+            >
+              🔔 {metronomeEnabled ? 'ON' : 'OFF'}
+            </button>
+
+            {/* Botón Salir */}
+            <button
+              type="button"
+              onClick={exitFullscreenLandscape}
+              className="px-3 py-1.5 rounded-xl bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/70 text-xs font-bold transition-all active:scale-95 flex items-center gap-1"
+              title="Salir de Pantalla Completa"
+            >
+              <Minimize2 className="w-3.5 h-3.5" />
+              <span>✕ Salir</span>
+            </button>
+          </div>
+        </header>
+      ) : (
+        /* Header en Modo Normal */
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/strings"
+              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-400 hover:text-white transition-colors"
+              title="Volver al catálogo de cuerdas"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </Link>
+
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span
+                  className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                    isBass
+                      ? 'bg-cyan-500/15 border-cyan-500/30 text-cyan-300'
+                      : 'bg-fuchsia-500/15 border-fuchsia-500/30 text-fuchsia-300'
+                  }`}
+                >
+                  {isBass ? 'Bajo (4 Cuerdas)' : 'Guitarra (6 Cuerdas)'}
+                </span>
+                <span className="text-zinc-600">•</span>
+                <span className="text-[11px] text-cyan-400 uppercase font-semibold">
+                  {exercise.category}
+                </span>
+                <span className="text-zinc-600">•</span>
+                <span className="text-[11px] text-zinc-400 font-mono">
+                  Afinación: {exercise.tuning}
+                </span>
+              </div>
+              <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                {exercise.title}
+              </h1>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-center">
+            <button
+              type="button"
+              onClick={enterFullscreenLandscape}
+              className="p-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all active:scale-95"
+              title="Práctica en Pantalla Completa Horizontal"
+            >
+              <Maximize2 className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline text-[11px]">Pantalla Completa</span>
+            </button>
+            <span className="text-xs px-3 py-1 rounded-full font-semibold border bg-white/5 border-white/10 text-zinc-300">
+              {exercise.difficulty}
+            </span>
+          </div>
         </div>
+      )}
 
-        {exercise.description && (
-          <p className="text-zinc-400 text-center sm:text-right italic max-w-md">
-            "{exercise.description}"
-          </p>
-        )}
-      </div>
+      {/* ============================================================== */}
+      {/* 2. ÁREA CENTRAL DE TABLATURA CON COLUMNA STICKY DE AFINACIÓN   */}
+      {/* ============================================================== */}
+      <main className={`w-full flex items-center justify-center ${isFullscreen ? 'flex-1 min-h-0 py-2' : ''}`}>
+        <TablatureRunway
+          instrument={exercise.instrument}
+          tuning={exercise.tuning}
+          totalSteps={exercise.totalSteps}
+          timeSignature={exercise.timeSignature}
+          tabData={exercise.tabData}
+          progress={progress}
+          activeStep={activeStep}
+          isPlaying={isPlaying}
+          isFullscreen={isFullscreen}
+          scrollContainerRef={tabScrollContainerRef}
+        />
+      </main>
+
+      {/* ============================================================== */}
+      {/* 3. BARRA INFERIOR DE ESTADO (EN FULLSCREEN)                    */}
+      {/* ============================================================== */}
+      {isFullscreen ? (
+        <footer className="w-full h-6 px-3 flex items-center justify-between text-[11px] text-slate-400 bg-slate-950/90 border border-slate-900 rounded-xl shrink-0 font-mono">
+          <span className="flex items-center gap-1.5 text-emerald-400">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            Auto-Scroll: Sincronizado
+          </span>
+          <span>Afinación: {exercise.tuning}</span>
+          <span className="text-zinc-400 font-semibold">
+            {isPlaying ? `${Math.round(progress * 100)}%` : '0%'}
+          </span>
+        </footer>
+      ) : (
+        /* Barra de Transporte en Modo Estándar */
+        <>
+          <div className="w-full">
+            <TransportBar
+              isPlaying={isPlaying}
+              bpm={bpm}
+              metronomeEnabled={metronomeEnabled}
+              onPlayPause={handlePlayPause}
+              onStop={handleStop}
+              onBpmChange={setBpm}
+              onToggleMetronome={handleToggleMetronome}
+              onResetBpm={() => setBpm(exercise.bpmDefault)}
+              defaultBpm={exercise.bpmDefault}
+              backHref="/strings"
+              backLabel="Catálogo Cuerdas"
+            />
+          </div>
+
+          <div className="w-full">
+            <StringsLegend />
+          </div>
+
+          <div className="mt-2 flex flex-col sm:flex-row items-center justify-between text-xs text-zinc-500 gap-4 px-2">
+            <div className="flex items-center gap-2">
+              <Keyboard className="w-3.5 h-3.5 text-zinc-400" />
+              <span>Atajos:</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 font-mono text-[10px]">Espacio</kbd>
+              <span>Play/Pausa</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 font-mono text-[10px]">Esc</kbd>
+              <span>Stop / Salir</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 font-mono text-[10px]">M</kbd>
+              <span>Metrónomo</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 font-mono text-[10px]">↑/↓</kbd>
+              <span>BPM</span>
+            </div>
+
+            {exercise.description && (
+              <p className="text-zinc-400 text-center sm:text-right italic max-w-md">
+                "{exercise.description}"
+              </p>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 };

@@ -13,6 +13,7 @@ interface TablatureRunwayProps {
   activeStep: number;
   isPlaying: boolean;
   isFullscreen?: boolean;
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
@@ -25,6 +26,7 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
   activeStep,
   isPlaying,
   isFullscreen = false,
+  scrollContainerRef,
 }) => {
   const isBass = instrument === 'bass_4';
   const numStrings = isBass ? 4 : 6;
@@ -39,10 +41,10 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
 
   // Ancho y dimensiones dinámicas según la cantidad de compases/pasos
   const stepWidth = 52;
-  const SCORE_WIDTH = Math.max(830, totalSteps * stepWidth);
-  const START_X = 125;
+  const SCORE_WIDTH = Math.max(800, totalSteps * stepWidth);
+  const START_X = 20; // Empieza justo después de la cabecera fija
   const END_X = START_X + SCORE_WIDTH;
-  const SVG_WIDTH = END_X + 45;
+  const SVG_WIDTH = END_X + 35;
 
   // Coordenadas Y para cada cuerda (1 es la más aguda = arriba, 4/6 es la más grave = abajo)
   const stringLines = useMemo(() => {
@@ -110,19 +112,19 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
   const getTechniqueBadge = (technique?: string) => {
     switch (technique) {
       case 'slap':
-        return { label: 'S', color: '#22d3ee', bg: 'rgba(34, 211, 238, 0.2)' }; // Cian
+        return { label: 'S', color: '#22d3ee', bg: 'rgba(34, 211, 238, 0.2)' };
       case 'pop':
-        return { label: 'P', color: '#e879f9', bg: 'rgba(232, 121, 249, 0.2)' }; // Fucsia
+        return { label: 'P', color: '#e879f9', bg: 'rgba(232, 121, 249, 0.2)' };
       case 'ghost':
-        return { label: 'X', color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.15)' }; // Gris
+        return { label: 'X', color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.15)' };
       case 'hammer':
-        return { label: 'H', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.2)' }; // Azul cielo
+        return { label: 'H', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.2)' };
       case 'pull':
-        return { label: 'P', color: '#f472b6', bg: 'rgba(244, 114, 182, 0.2)' }; // Rosa
+        return { label: 'P', color: '#f472b6', bg: 'rgba(244, 114, 182, 0.2)' };
       case 'slide':
-        return { label: '/', color: '#34d399', bg: 'rgba(52, 211, 153, 0.2)' }; // Esmeralda
+        return { label: '/', color: '#34d399', bg: 'rgba(52, 211, 153, 0.2)' };
       case 'vibrato':
-        return { label: '~', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.2)' }; // Ámbar
+        return { label: '~', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.2)' };
       default:
         return null;
     }
@@ -133,402 +135,425 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
 
   return (
     <div className="w-full select-none flex flex-col items-center">
-      {/* Contenedor relativo para alojar los step markers de auto-scroll y el lienzo SVG */}
-      <div
-        className="relative w-full flex items-center justify-center"
-        style={{ minWidth: `${Math.max(750, SVG_WIDTH)}px` }}
-      >
-        {/* Marcadores de paso HTML invisibles para querySelector y auto-scroll suave */}
-        <div className="absolute inset-0 pointer-events-none">
-          {Array.from({ length: totalSteps }).map((_, stepIdx) => {
-            const leftPercent = ((START_X + stepIdx * stepWidth) / SVG_WIDTH) * 100;
-            const widthPercent = (stepWidth / SVG_WIDTH) * 100;
-            return (
-              <div
-                key={`step-marker-${stepIdx}`}
-                data-step-index={stepIdx}
-                className="absolute top-0 bottom-0 pointer-events-none"
-                style={{
-                  left: `${leftPercent}%`,
-                  width: `${widthPercent}%`,
-                }}
-              />
-            );
-          })}
+      {/* Contenedor principal con columna lateral fija de afinación y área de compases con scroll */}
+      <div className="flex items-stretch bg-[#11131c] rounded-2xl border border-slate-800/80 overflow-hidden shadow-2xl w-full">
+        {/* ============================================================== */}
+        {/* CABECERA LATERAL DE CUERDAS FIJA (STICKY / NO SE DESPLAZA)     */}
+        {/* ============================================================== */}
+        <div className="w-12 sm:w-16 bg-slate-950/95 border-r border-slate-800/90 flex flex-col items-center justify-center shrink-0 select-none z-20 shadow-xl">
+          <svg
+            viewBox={`0 0 54 ${SVG_HEIGHT}`}
+            className="w-full h-auto drop-shadow-md select-none"
+            preserveAspectRatio="xMidYMid meet"
+          >
+            {/* Rótulo TAB vertical */}
+            <g className="font-sans font-black select-none text-cyan-400">
+              <text
+                x={16}
+                y={topStaffY + (bottomStaffY - topStaffY) * 0.28}
+                fontSize="14"
+                fill="#38bdf8"
+                textAnchor="middle"
+                fontWeight="900"
+              >
+                T
+              </text>
+              <text
+                x={16}
+                y={topStaffY + (bottomStaffY - topStaffY) * 0.58}
+                fontSize="14"
+                fill="#38bdf8"
+                textAnchor="middle"
+                fontWeight="900"
+              >
+                A
+              </text>
+              <text
+                x={16}
+                y={topStaffY + (bottomStaffY - topStaffY) * 0.88}
+                fontSize="14"
+                fill="#38bdf8"
+                textAnchor="middle"
+                fontWeight="900"
+              >
+                B
+              </text>
+            </g>
+
+            {/* Separador vertical interno */}
+            <line
+              x1={28}
+              y1={topStaffY}
+              x2={28}
+              y2={bottomStaffY}
+              stroke="rgba(255, 255, 255, 0.15)"
+              strokeWidth="1"
+            />
+
+            {/* Rótulo de cuerda alineado exactamente con la altura de cada línea (E, A, D, G / e, B, G, D, A, E) */}
+            {stringLines.map((line) => (
+              <text
+                key={`fixed-tune-${line.stringNum}`}
+                x={41}
+                y={line.y + 4.5}
+                textAnchor="middle"
+                fontSize="13"
+                fontWeight="900"
+                fontFamily="monospace"
+                fill="#f1f5f9"
+              >
+                {line.label}
+              </text>
+            ))}
+
+            {/* Barra inicial que conecta con las cuerdas */}
+            <line
+              x1={53}
+              y1={topStaffY}
+              x2={53}
+              y2={bottomStaffY}
+              stroke="rgba(255, 255, 255, 0.5)"
+              strokeWidth="2"
+            />
+          </svg>
         </div>
 
-        <svg
-          viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-          className="w-full h-auto drop-shadow-md select-none"
-          preserveAspectRatio="xMidYMid meet"
+        {/* ============================================================== */}
+        {/* ÁREA DE COMPASES CON AUTO-SCROLL SINCRONIZADO                  */}
+        {/* ============================================================== */}
+        <div
+          ref={scrollContainerRef}
+          className="flex-1 overflow-x-auto overflow-y-hidden p-2 sm:p-4 relative no-scrollbar"
         >
-          <defs>
-            {/* Glow Filter para el cabezal Runway */}
-            <filter id="stringRunwayGlow" x="-50%" y="-20%" width="200%" height="140%">
-              <feGaussianBlur stdDeviation="3.5" result="blur1" />
-              <feGaussianBlur stdDeviation="7" result="blur2" />
-              <feMerge>
-                <feMergeNode in="blur2" />
-                <feMergeNode in="blur1" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
+          <div
+            className="relative w-full flex items-center"
+            style={{ minWidth: `${Math.max(700, SVG_WIDTH)}px` }}
+          >
+            {/* Marcadores de paso HTML para querySelector y auto-scroll suave */}
+            <div className="absolute inset-0 pointer-events-none">
+              {Array.from({ length: totalSteps }).map((_, stepIdx) => {
+                const leftPercent = ((START_X + stepIdx * stepWidth) / SVG_WIDTH) * 100;
+                const widthPercent = (stepWidth / SVG_WIDTH) * 100;
+                return (
+                  <div
+                    key={`step-marker-${stepIdx}`}
+                    data-step={stepIdx}
+                    data-step-index={stepIdx}
+                    className="absolute top-0 bottom-0 pointer-events-none"
+                    style={{
+                      left: `${leftPercent}%`,
+                      width: `${widthPercent}%`,
+                    }}
+                  />
+                );
+              })}
+            </div>
 
-            {/* Gradiente luminoso vertical */}
-            <linearGradient id="stringRunwayGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.2" />
-              <stop offset="30%" stopColor="#22d3ee" stopOpacity="0.85" />
-              <stop offset="50%" stopColor="#ffffff" stopOpacity="1" />
-              <stop offset="70%" stopColor="#22d3ee" stopOpacity="0.85" />
-              <stop offset="100%" stopColor="#22d3ee" stopOpacity="0.2" />
-            </linearGradient>
+            <svg
+              viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
+              className="w-full h-auto drop-shadow-md select-none"
+              preserveAspectRatio="xMidYMid meet"
+            >
+              <defs>
+                {/* Glow Filter para el cabezal Runway */}
+                <filter id="stringRunwayGlow" x="-50%" y="-20%" width="200%" height="140%">
+                  <feGaussianBlur stdDeviation="3.5" result="blur1" />
+                  <feGaussianBlur stdDeviation="7" result="blur2" />
+                  <feMerge>
+                    <feMergeNode in="blur2" />
+                    <feMergeNode in="blur1" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
 
-            {/* Destello de nota activa */}
-            <radialGradient id="stringHitBurst" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.85" />
-              <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
-            </radialGradient>
-          </defs>
+                {/* Gradiente luminoso vertical */}
+                <linearGradient id="stringRunwayGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.2" />
+                  <stop offset="30%" stopColor="#22d3ee" stopOpacity="0.85" />
+                  <stop offset="50%" stopColor="#ffffff" stopOpacity="1" />
+                  <stop offset="70%" stopColor="#22d3ee" stopOpacity="0.85" />
+                  <stop offset="100%" stopColor="#22d3ee" stopOpacity="0.2" />
+                </linearGradient>
 
-          {/* ============================================================== */}
-          {/* SUBDIVISIONES Y CONTEO RÍTMICO                                */}
-          {/* ============================================================== */}
-          {subdivisions.map((item) => {
-            const x = START_X + item.step * stepWidth;
-            const isMeasureStart = item.step > 0 && item.step % stepsPerMeasure === 0;
+                {/* Destello de nota activa */}
+                <radialGradient id="stringHitBurst" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.85" />
+                  <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
+                </radialGradient>
+              </defs>
 
-            return (
-              <g key={`subdiv-${item.step}`} data-step-index={item.step}>
-                {/* Línea divisoria de compás destacada */}
-                {isMeasureStart && (
-                  <g key={`bar-line-${item.step}`}>
-                    <line
-                      x1={x}
-                      y1={topStaffY - 8}
-                      x2={x}
-                      y2={bottomStaffY + 8}
-                      stroke="rgba(255, 255, 255, 0.6)"
-                      strokeWidth={2}
-                    />
-                    <text
-                      x={x + 6}
-                      y={topStaffY - 10}
-                      fontSize="10"
-                      fontWeight="700"
-                      fontFamily="monospace"
-                      fill="#22d3ee"
-                    >
-                      c.{Math.floor(item.step / stepsPerMeasure) + 1}
-                    </text>
-                  </g>
-                )}
-
+              {/* ============================================================== */}
+              {/* LÍNEAS HORIZONTALES DE LA TABLATURA                            */}
+              {/* ============================================================== */}
+              {stringLines.map((line) => (
                 <line
-                  x1={x}
-                  y1={25}
-                  x2={x}
-                  y2={bottomStaffY + 25}
-                  stroke={
-                    isMeasureStart
-                      ? 'transparent'
-                      : item.isBeat
-                      ? 'rgba(255, 255, 255, 0.12)'
-                      : 'rgba(255, 255, 255, 0.04)'
-                  }
-                  strokeWidth={item.isBeat ? 1.5 : 1}
-                  strokeDasharray={item.isBeat ? undefined : '3,4'}
+                  key={`string-${line.stringNum}`}
+                  x1={0}
+                  y1={line.y}
+                  x2={END_X + 10}
+                  y2={line.y}
+                  stroke="rgba(255, 255, 255, 0.28)"
+                  strokeWidth="1.2"
                 />
+              ))}
 
-                {/* Conteo superior (1 e & a) */}
-                <text
-                  x={x + stepWidth / 2}
-                  y={22}
-                  textAnchor="middle"
-                  fontSize={item.isBeat ? 13 : 11}
-                  fontWeight={item.isBeat ? '700' : '500'}
-                  fill={
-                    item.isBeat
-                      ? activeStep === item.step && isPlaying
-                        ? '#22d3ee'
-                        : '#e4e4e7'
-                      : '#71717a'
-                  }
-                  className="font-mono transition-colors duration-150"
-                >
-                  {item.text}
-                </text>
-              </g>
-            );
-          })}
+              {/* ============================================================== */}
+              {/* SUBDIVISIONES, TIEMPOS Y LÍNEAS DE COMPÁS VERTICALES           */}
+              {/* ============================================================== */}
+              {subdivisions.map((item) => {
+                const x = START_X + item.step * stepWidth;
+                const isMeasureStart = item.step % stepsPerMeasure === 0;
 
-          {/* ============================================================== */}
-          {/* CABECERA TAB LATERAL Y AFINACIÓN                              */}
-          {/* ============================================================== */}
-          {/* Bloque TAB */}
-          <g className="font-sans font-black select-none text-zinc-400">
-            <text
-              x={38}
-              y={topStaffY + (bottomStaffY - topStaffY) * 0.28}
-              fontSize="15"
-              fill="#a1a1aa"
-              textAnchor="middle"
-              fontWeight="900"
-            >
-              T
-            </text>
-            <text
-              x={38}
-              y={topStaffY + (bottomStaffY - topStaffY) * 0.58}
-              fontSize="15"
-              fill="#a1a1aa"
-              textAnchor="middle"
-              fontWeight="900"
-            >
-              A
-            </text>
-            <text
-              x={38}
-              y={topStaffY + (bottomStaffY - topStaffY) * 0.88}
-              fontSize="15"
-              fill="#a1a1aa"
-              textAnchor="middle"
-              fontWeight="900"
-            >
-              B
-            </text>
-          </g>
-
-          {/* Separador vertical del cabezal */}
-          <line
-            x1={54}
-            y1={topStaffY}
-            x2={54}
-            y2={bottomStaffY}
-            stroke="rgba(255, 255, 255, 0.3)"
-            strokeWidth="1.5"
-          />
-
-          {/* Rótulo de cuerda (afinación E, A, D, G / e, B, G, D, A, E) */}
-          {stringLines.map((line) => (
-            <text
-              key={`tune-${line.stringNum}`}
-              x={72}
-              y={line.y + 4}
-              textAnchor="middle"
-              fontSize="12"
-              fontWeight="700"
-              fontFamily="monospace"
-              fill="#71717a"
-            >
-              {line.label}
-            </text>
-          ))}
-
-          {/* Barra inicial del compás */}
-          <line
-            x1={95}
-            y1={topStaffY}
-            x2={95}
-            y2={bottomStaffY}
-            stroke="rgba(255, 255, 255, 0.6)"
-            strokeWidth="2"
-          />
-
-          {/* Barra final de repetición */}
-          <line
-            x1={END_X + 10}
-            y1={topStaffY}
-            x2={END_X + 10}
-            y2={bottomStaffY}
-            stroke="rgba(255, 255, 255, 0.6)"
-            strokeWidth="1.5"
-          />
-          <line
-            x1={END_X + 15}
-            y1={topStaffY}
-            x2={END_X + 15}
-            y2={bottomStaffY}
-            stroke="rgba(255, 255, 255, 0.9)"
-            strokeWidth="4"
-          />
-          {/* Puntos de repetición */}
-          <circle cx={END_X + 4} cy={topStaffY + 12} r="2.5" fill="#e4e4e7" />
-          <circle cx={END_X + 4} cy={bottomStaffY - 12} r="2.5" fill="#e4e4e7" />
-
-          {/* ============================================================== */}
-          {/* LÍNEAS HORIZONTALES DE LA TABLATURA                            */}
-          {/* ============================================================== */}
-          {stringLines.map((line) => (
-            <line
-              key={`string-${line.stringNum}`}
-              x1={95}
-              y1={line.y}
-              x2={END_X + 10}
-              y2={line.y}
-              stroke="rgba(255, 255, 255, 0.28)"
-              strokeWidth="1.2"
-            />
-          ))}
-
-          {/* ============================================================== */}
-          {/* NOTAS DE TABLATURA (TRASTES, MÁSCARAS Y TÉCNICAS)              */}
-          {/* ============================================================== */}
-          {Array.from(notesByStep.entries()).map(([step, notes]) => {
-            const noteX = START_X + (step + 0.5) * stepWidth;
-            const isStepActive = isPlaying && activeStep === step;
-
-            return (
-              <g key={`step-notes-${step}`}>
-                {notes.map((note, noteIdx) => {
-                  const noteY = getStringY(note.string);
-                  const techBadge = getTechniqueBadge(note.technique);
-                  const isGhost = note.technique === 'ghost';
-                  const fretText = isGhost ? 'X' : `${note.fret}`;
-
-                  return (
-                    <g key={`note-${step}-${noteIdx}`}>
-                      {/* Halo reactivo cuando el escaneo impacta la nota */}
-                      {isStepActive && (
-                        <ellipse
-                          cx={noteX}
-                          cy={noteY}
-                          rx={18}
-                          ry={14}
-                          fill="url(#stringHitBurst)"
-                          className="pointer-events-none"
+                return (
+                  <g key={`subdiv-${item.step}`} data-step={item.step} data-step-index={item.step}>
+                    {/* Línea divisoria de compás vertical nítida (Bar Line) */}
+                    {isMeasureStart ? (
+                      <g key={`bar-line-${item.step}`}>
+                        <line
+                          x1={x}
+                          y1={topStaffY - 8}
+                          x2={x}
+                          y2={bottomStaffY + 8}
+                          stroke="rgba(255, 255, 255, 0.85)"
+                          strokeWidth={item.step === 0 ? 3 : 2}
                         />
-                      )}
-
-                      {/* Píldora de máscara de fondo que corta limpiamente la línea detrás del número */}
-                      <rect
-                        x={noteX - 11}
-                        y={noteY - 9.5}
-                        width={22}
-                        height={19}
-                        rx={5}
-                        fill="#09090b"
-                        stroke={isStepActive ? '#22d3ee' : 'rgba(255, 255, 255, 0.2)'}
-                        strokeWidth={isStepActive ? 2 : 1}
-                        filter={isStepActive ? 'url(#stringRunwayGlow)' : undefined}
-                        className="transition-all duration-75"
-                      />
-
-                      {/* Número de traste */}
-                      <text
-                        x={noteX}
-                        y={noteY + 4.5}
-                        textAnchor="middle"
-                        fontSize={fretText.length > 1 ? 12 : 13}
-                        fontWeight="800"
-                        fontFamily="system-ui, -apple-system, sans-serif"
-                        fill={isStepActive ? '#22d3ee' : '#f8fafc'}
-                        className="select-none"
-                      >
-                        {fretText}
-                      </text>
-
-                      {/* Insignia de técnica (Slap 'S', Pop 'P', Slide '/', Hammer 'H') */}
-                      {techBadge && (
-                        <g transform={`translate(${noteX}, ${noteY - 14})`}>
-                          <rect
-                            x="-6"
-                            y="-6"
-                            width="12"
-                            height="12"
-                            rx="3"
-                            fill={techBadge.bg}
-                            stroke={techBadge.color}
-                            strokeWidth="0.8"
-                          />
-                          <text
-                            x="0"
-                            y="3"
-                            textAnchor="middle"
-                            fontSize="9"
-                            fontWeight="900"
-                            fontFamily="monospace"
-                            fill={techBadge.color}
-                          >
-                            {techBadge.label}
-                          </text>
-                        </g>
-                      )}
-
-                      {/* Dedo sugerido (debajo del traste) */}
-                      {note.finger && !techBadge && (
+                        <rect
+                          x={x + 4}
+                          y={topStaffY - 22}
+                          width={26}
+                          height={14}
+                          rx={4}
+                          fill="#0f172a"
+                          stroke="#22d3ee"
+                          strokeWidth={1}
+                        />
                         <text
-                          x={noteX}
-                          y={noteY + 18}
+                          x={x + 17}
+                          y={topStaffY - 11}
                           textAnchor="middle"
                           fontSize="9"
+                          fontWeight="800"
                           fontFamily="monospace"
-                          fill="#71717a"
+                          fill="#38bdf8"
                         >
-                          {note.finger}
+                          c.{Math.floor(item.step / stepsPerMeasure) + 1}
                         </text>
-                      )}
-                    </g>
-                  );
-                })}
-              </g>
-            );
-          })}
+                      </g>
+                    ) : (
+                      <line
+                        x1={x}
+                        y1={25}
+                        x2={x}
+                        y2={bottomStaffY + 25}
+                        stroke={item.isBeat ? 'rgba(255, 255, 255, 0.14)' : 'rgba(255, 255, 255, 0.04)'}
+                        strokeWidth={item.isBeat ? 1.5 : 1}
+                        strokeDasharray={item.isBeat ? undefined : '3,4'}
+                      />
+                    )}
 
-          {/* ============================================================== */}
-          {/* CABEZAL DE ESCANEO RUNWAY ANIMADO                              */}
-          {/* ============================================================== */}
-          {isPlaying && (
-            <g transform={`translate(${runwayX}, 0)`}>
-              {/* Glow difuso */}
+                    {/* Conteo rítmico superior (1 e & a) */}
+                    <text
+                      x={x + stepWidth / 2}
+                      y={22}
+                      textAnchor="middle"
+                      fontSize={item.isBeat ? 13 : 11}
+                      fontWeight={item.isBeat ? '700' : '500'}
+                      fill={
+                        item.isBeat
+                          ? activeStep === item.step && isPlaying
+                            ? '#22d3ee'
+                            : '#e4e4e7'
+                          : '#71717a'
+                      }
+                      className="font-mono transition-colors duration-150"
+                    >
+                      {item.text}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* Barra final de repetición */}
               <line
-                x1="0"
-                y1={25}
-                x2="0"
-                y2={bottomStaffY + 22}
-                stroke="#06b6d4"
-                strokeWidth="10"
-                strokeOpacity="0.2"
-                filter="url(#stringRunwayGlow)"
+                x1={END_X + 4}
+                y1={topStaffY}
+                x2={END_X + 4}
+                y2={bottomStaffY}
+                stroke="rgba(255, 255, 255, 0.6)"
+                strokeWidth="1.5"
               />
-
-              {/* Haz medio */}
               <line
-                x1="0"
-                y1={28}
-                x2="0"
-                y2={bottomStaffY + 20}
-                stroke="#22d3ee"
+                x1={END_X + 9}
+                y1={topStaffY}
+                x2={END_X + 9}
+                y2={bottomStaffY}
+                stroke="rgba(255, 255, 255, 0.95)"
                 strokeWidth="3.5"
-                strokeOpacity="0.75"
               />
+              <circle cx={END_X} cy={topStaffY + 12} r="2.5" fill="#e4e4e7" />
+              <circle cx={END_X} cy={bottomStaffY - 12} r="2.5" fill="#e4e4e7" />
 
-              {/* Centro blanco */}
-              <line
-                x1="0"
-                y1={30}
-                x2="0"
-                y2={bottomStaffY + 18}
-                stroke="#ffffff"
-                strokeWidth="1.8"
-                strokeOpacity="0.95"
-              />
+              {/* ============================================================== */}
+              {/* NOTAS DE TABLATURA (TRASTES, MÁSCARAS Y TÉCNICAS)              */}
+              {/* ============================================================== */}
+              {Array.from(notesByStep.entries()).map(([step, notes]) => {
+                const noteX = START_X + (step + 0.5) * stepWidth;
+                const isStepActive = isPlaying && activeStep === step;
 
-              {/* Marcador puntero superior */}
-              <polygon
-                points="-4.5,25 4.5,25 0,33"
-                fill="#22d3ee"
-                filter="url(#stringRunwayGlow)"
-              />
+                return (
+                  <g key={`step-notes-${step}`}>
+                    {notes.map((note, noteIdx) => {
+                      const noteY = getStringY(note.string);
+                      const techBadge = getTechniqueBadge(note.technique);
+                      const isGhost = note.technique === 'ghost';
+                      const fretText = isGhost ? 'X' : `${note.fret}`;
 
-              {/* Marcador puntero inferior */}
-              <polygon
-                points={`-4.5,${bottomStaffY + 25} 4.5,${bottomStaffY + 25} 0,${bottomStaffY + 17}`}
-                fill="#22d3ee"
-                filter="url(#stringRunwayGlow)"
-              />
-            </g>
-          )}
-        </svg>
+                      return (
+                        <g key={`note-${step}-${noteIdx}`}>
+                          {/* Halo reactivo cuando el escaneo impacta la nota */}
+                          {isStepActive && (
+                            <ellipse
+                              cx={noteX}
+                              cy={noteY}
+                              rx={18}
+                              ry={14}
+                              fill="url(#stringHitBurst)"
+                              className="pointer-events-none"
+                            />
+                          )}
+
+                          {/* Píldora de fondo que corta la línea detrás del número */}
+                          <rect
+                            x={noteX - 11}
+                            y={noteY - 9.5}
+                            width={22}
+                            height={19}
+                            rx={5}
+                            fill="#09090b"
+                            stroke={isStepActive ? '#22d3ee' : 'rgba(255, 255, 255, 0.25)'}
+                            strokeWidth={isStepActive ? 2 : 1}
+                            filter={isStepActive ? 'url(#stringRunwayGlow)' : undefined}
+                            className="transition-all duration-75"
+                          />
+
+                          {/* Número de traste */}
+                          <text
+                            x={noteX}
+                            y={noteY + 4.5}
+                            textAnchor="middle"
+                            fontSize={fretText.length > 1 ? 12 : 13}
+                            fontWeight="800"
+                            fontFamily="system-ui, -apple-system, sans-serif"
+                            fill={isStepActive ? '#22d3ee' : '#f8fafc'}
+                            className="select-none"
+                          >
+                            {fretText}
+                          </text>
+
+                          {/* Insignia de técnica (Slap 'S', Pop 'P', Slide '/', Hammer 'H') */}
+                          {techBadge && (
+                            <g transform={`translate(${noteX}, ${noteY - 14})`}>
+                              <rect
+                                x="-6"
+                                y="-6"
+                                width="12"
+                                height="12"
+                                rx="3"
+                                fill={techBadge.bg}
+                                stroke={techBadge.color}
+                                strokeWidth="0.8"
+                              />
+                              <text
+                                x="0"
+                                y="3"
+                                textAnchor="middle"
+                                fontSize="9"
+                                fontWeight="900"
+                                fontFamily="monospace"
+                                fill={techBadge.color}
+                              >
+                                {techBadge.label}
+                              </text>
+                            </g>
+                          )}
+
+                          {/* Dedo sugerido (debajo del traste) */}
+                          {note.finger && !techBadge && (
+                            <text
+                              x={noteX}
+                              y={noteY + 18}
+                              textAnchor="middle"
+                              fontSize="9"
+                              fontFamily="monospace"
+                              fill="#71717a"
+                            >
+                              {note.finger}
+                            </text>
+                          )}
+                        </g>
+                      );
+                    })}
+                  </g>
+                );
+              })}
+
+              {/* ============================================================== */}
+              {/* CABEZAL DE ESCANEO RUNWAY ANIMADO                              */}
+              {/* ============================================================== */}
+              {isPlaying && (
+                <g transform={`translate(${runwayX}, 0)`}>
+                  {/* Glow difuso */}
+                  <line
+                    x1="0"
+                    y1={25}
+                    x2="0"
+                    y2={bottomStaffY + 22}
+                    stroke="#06b6d4"
+                    strokeWidth="10"
+                    strokeOpacity="0.2"
+                    filter="url(#stringRunwayGlow)"
+                  />
+
+                  {/* Haz medio */}
+                  <line
+                    x1="0"
+                    y1={28}
+                    x2="0"
+                    y2={bottomStaffY + 20}
+                    stroke="#22d3ee"
+                    strokeWidth="3.5"
+                    strokeOpacity="0.75"
+                  />
+
+                  {/* Centro blanco */}
+                  <line
+                    x1="0"
+                    y1={30}
+                    x2="0"
+                    y2={bottomStaffY + 18}
+                    stroke="#ffffff"
+                    strokeWidth="1.8"
+                    strokeOpacity="0.95"
+                  />
+
+                  {/* Marcador puntero superior */}
+                  <polygon
+                    points="-4.5,25 4.5,25 0,33"
+                    fill="#22d3ee"
+                    filter="url(#stringRunwayGlow)"
+                  />
+
+                  {/* Marcador puntero inferior */}
+                  <polygon
+                    points={`-4.5,${bottomStaffY + 25} 4.5,${bottomStaffY + 25} 0,${bottomStaffY + 17}`}
+                    fill="#22d3ee"
+                    filter="url(#stringRunwayGlow)"
+                  />
+                </g>
+              )}
+            </svg>
+          </div>
+        </div>
       </div>
 
       {/* Indicador de estado inferior (solo visible fuera de pantalla completa) */}
