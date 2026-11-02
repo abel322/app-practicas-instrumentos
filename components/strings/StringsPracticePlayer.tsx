@@ -23,7 +23,6 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isForceLandscapeCSS, setIsForceLandscapeCSS] = useState<boolean>(false);
   const fullscreenWrapperRef = useRef<HTMLDivElement | null>(null);
-  const tabContainerRef = useRef<HTMLDivElement | null>(null);
 
   const isPlayingRef = useRef<boolean>(false);
   const bpmRef = useRef<number>(exercise.bpmDefault);
@@ -43,9 +42,12 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
 
   const isBass = exercise.instrument === 'bass_4';
   const stepsPerMeasure = exercise.timeSignature === '6/8' ? 12 : 16;
-  const currentMeasureIndex = Math.floor(activeStep / stepsPerMeasure);
   const totalMeasures = Math.max(1, Math.ceil(exercise.totalSteps / stepsPerMeasure));
-  const prevMeasureRef = useRef<number>(-1);
+  const activeMeasureIndex = Math.min(
+    totalMeasures - 1,
+    Math.floor(activeStep / stepsPerMeasure)
+  );
+  const stepInCurrentMeasure = activeStep % stepsPerMeasure;
 
   // Duración de un paso (semicorchea en 4/4)
   const getSecondsPerStep = useCallback((currentBpm: number) => {
@@ -282,38 +284,11 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
   }, [isFullscreen]);
 
   // ==============================================================
-  // 1. AUTO-SCROLL SUAVE POR COMPÁS (PAGINACIÓN SIN SACUDIDAS)
-  // El cursor se mueve libremente en el compás activo. Solo al
-  // ingresar al siguiente compás se desplaza suavemente la vista.
+  // ZERO-JERK MEASURE FLIP (PAGINACIÓN FIJA SIN SCROLL)
+  // El contenedor permanece completamente inmóvil en pantalla.
+  // No se realizan llamadas a scrollTo, scrollIntoView ni scrollLeft.
+  // La tablatura conmuta instantáneamente al compás activo.
   // ==============================================================
-  useEffect(() => {
-    if (!isPlaying || !tabContainerRef.current) return;
-
-    if (currentMeasureIndex !== prevMeasureRef.current) {
-      prevMeasureRef.current = currentMeasureIndex;
-
-      const container = tabContainerRef.current;
-      const measureElement = container.querySelector(
-        `[data-measure-index="${currentMeasureIndex}"]`
-      ) as HTMLElement | null;
-
-      if (measureElement) {
-        // Paginación por compás limpio: cada compás abarca el 100% del contenedor visible
-        container.scrollTo({
-          left: measureElement.offsetLeft,
-          behavior: 'smooth',
-        });
-      }
-    }
-  }, [currentMeasureIndex, isPlaying]);
-
-  // Resetear posición de scroll al pausar o reiniciar
-  useEffect(() => {
-    if (!isPlaying && activeStep === 0 && tabContainerRef.current) {
-      tabContainerRef.current.scrollTo({ left: 0, behavior: 'smooth' });
-      prevMeasureRef.current = -1;
-    }
-  }, [isPlaying, activeStep]);
 
   // Atajos de teclado
   useEffect(() => {
@@ -385,7 +360,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
             {exercise.title}
           </span>
           <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono shrink-0">
-            Compás {currentMeasureIndex + 1} de {totalMeasures} • {activeStep + 1}/{exercise.totalSteps}
+            Compás {activeMeasureIndex + 1} de {totalMeasures} • {activeStep + 1}/{exercise.totalSteps}
           </span>
           <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-zinc-300 font-mono hidden md:inline shrink-0">
             {isBass ? 'Bajo (4C)' : 'Guitarra (6C)'} • {exercise.difficulty}
@@ -420,7 +395,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
       </header>
 
       {/* ============================================================== */}
-      {/* ÁREA CENTRAL DE TABLATURA CON CABECERA STICKY Y SCROLL SUAVE   */}
+      {/* ÁREA CENTRAL DE TABLATURA ESTÁTICA (ZERO-JERK PAGE FLIP)       */}
       {/* ============================================================== */}
       <main className="w-full flex-1 min-h-0 flex items-stretch bg-[#10131c] rounded-2xl border border-slate-800/80 overflow-hidden shadow-2xl my-1">
         <TablatureRunway
@@ -433,7 +408,10 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
           activeStep={activeStep}
           isPlaying={isPlaying}
           isFullscreen={isFullscreen}
-          scrollContainerRef={tabContainerRef}
+          activeMeasureIndex={activeMeasureIndex}
+          stepInCurrentMeasure={stepInCurrentMeasure}
+          totalMeasures={totalMeasures}
+          stepsPerMeasure={stepsPerMeasure}
         />
       </main>
 

@@ -1,7 +1,19 @@
 'use client';
 
-import { TablatureRunway } from './TablatureRunway';
+import React from 'react';
+import { TablatureRunway, TablatureRunwayProps } from './TablatureRunway';
 
-export const TablatureCanvas = TablatureRunway;
-export default TablatureRunway;
+export interface TablatureCanvasProps extends TablatureRunwayProps {
+  currentStep?: number;
+  stepsPerMeasure?: number;
+  activeMeasureIndex?: number;
+  totalMeasures?: number;
+  measures?: any[];
+  tuningNotes?: string[];
+}
 
+export const TablatureCanvas: React.FC<TablatureCanvasProps> = (props) => {
+  return <TablatureRunway {...props} />;
+};
+
+export default TablatureCanvas;
