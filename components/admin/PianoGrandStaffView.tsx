@@ -58,13 +58,32 @@ export function PianoGrandStaffView({
   const [mobileOctaveRange, setMobileOctaveRange] = useState<'bass' | 'treble'>('treble');
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  // Dimensiones del lienzo SVG optimizadas para llenar la pantalla
   const width = 960;
-  const height = 340;
-  const leftMargin = 90;
-  const rightMargin = 40;
+  const height = 410;
+  const leftMargin = 100; // Espacio protegido para claves grandes
+  const rightMargin = 35;
   const usableWidth = width - leftMargin - rightMargin;
   const safeTotalSteps = Math.max(1, totalSteps);
   const stepWidth = usableWidth / safeTotalSteps;
+
+  // LÍNEAS DE CLAVE DE SOL (Separación de 24px):
+  // Línea 5 (Fa5) = 55
+  // Línea 4 (Re5) = 79
+  // Línea 3 (Si4) = 103
+  // Línea 2 (Sol4) = 127
+  // Línea 1 (Mi4) = 151
+  // Línea Adicional Central (Do4 / C4 = MIDI 60) = 187
+  //
+  // LÍNEAS DE CLAVE DE FA (Separación de 24px):
+  // Línea 5 (La3) = 223
+  // Línea 4 (Fa3) = 247
+  // Línea 3 (Re3) = 271
+  // Línea 2 (Si2) = 295
+  // Línea 1 (Sol2) = 319
+  const trebleLines = [55, 79, 103, 127, 151];
+  const bassLines = [223, 247, 271, 295, 319];
+  const middleCY = 187;
 
   const beatsPerBar = useMemo(() => {
     return parseInt(timeSignature.split('/')[0], 10) || 4;
@@ -129,10 +148,10 @@ export function PianoGrandStaffView({
 
   const getXForStep = (stepIdx: number) => leftMargin + (stepIdx + 0.5) * stepWidth;
 
+  // Mapeo Y continuo calibrado a la nueva escala (1 semitono aprox = 4.8px)
   const getYForMidi = (midi: number): number => {
-    // Escala lineal de semitonos centrada en C4 (midi = 60, y = 135)
-    const delta = midi - 60;
-    return 135 - delta * 3.1;
+    const delta = midi - 60; // Distancia en semitonos respecto a C4
+    return middleCY - delta * 4.8;
   };
 
   const handleStaffClick = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -152,7 +171,7 @@ export function PianoGrandStaffView({
     const relativeY = (clickY / rect.height) * height;
     const estimatedMidi = Math.max(
       36,
-      Math.min(84, Math.round(60 + (135 - relativeY) / 3.1))
+      Math.min(84, Math.round(60 + (middleCY - relativeY) / 4.8))
     );
 
     pianoPreviewSynth.playNote(estimatedMidi, 0.35, 95);
@@ -179,12 +198,12 @@ export function PianoGrandStaffView({
       ref={containerRef}
       className={
         isFullscreen
-          ? 'fixed inset-0 z-[9999] bg-[#0c0e14] p-3 sm:p-5 flex flex-col justify-between select-none overflow-y-auto'
-          : 'w-full bg-[#0d0f17] border border-slate-800 rounded-2xl p-3 sm:p-4 flex flex-col items-center select-none shadow-2xl overflow-x-auto no-scrollbar'
+          ? 'fixed inset-0 z-[9999] bg-[#0c0e14] p-3 sm:p-4 flex flex-col justify-between select-none overflow-hidden'
+          : 'w-full flex-1 bg-[#0d0f17] border border-slate-800 rounded-2xl p-3 sm:p-4 flex flex-col items-center select-none shadow-2xl overflow-hidden'
       }
     >
       {/* Cabecera del Gran Pentagrama con Botón de Pantalla Completa Horizontal */}
-      <div className="w-full flex flex-wrap items-center justify-between gap-2 text-xs mb-2 px-1">
+      <div className="w-full flex flex-wrap items-center justify-between gap-2 text-xs mb-1.5 px-1 shrink-0">
         <div className="flex items-center gap-2">
           <span className="font-bold text-amber-300 text-[11px] sm:text-xs">
             🎼 Gran Pentagrama (Sol / Fa)
@@ -195,7 +214,7 @@ export function PianoGrandStaffView({
         </div>
 
         <div className="flex items-center gap-2">
-          {isFullscreen && (
+          {isFullscreen ? (
             <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-xl border border-slate-800 font-mono text-[11px]">
               <button
                 type="button"
@@ -217,9 +236,7 @@ export function PianoGrandStaffView({
                 ▶
               </button>
             </div>
-          )}
-
-          {!isFullscreen && (
+          ) : (
             <span className="font-mono text-cyan-400 text-[11px]">
               Paso activo: #{activeStepInput + 1} ({getStepLabel(activeStepInput, activeSubdivision, beatsPerBar)})
             </span>
@@ -235,129 +252,118 @@ export function PianoGrandStaffView({
         </div>
       </div>
 
-      {/* Lienzo SVG del Gran Pentagrama */}
-      <div className="w-full overflow-x-auto no-scrollbar flex-1 flex items-center justify-center">
+      {/* Lienzo SVG del Gran Pentagrama con Espaciado Ampliado (24px por línea) */}
+      <div className="w-full flex-1 min-h-0 flex flex-col items-center justify-center select-none overflow-hidden">
         <svg
           viewBox={`0 0 ${width} ${height}`}
           className={
             isFullscreen
-              ? 'w-full h-full max-h-[68vh] min-w-[680px] cursor-crosshair'
-              : 'w-full h-auto max-h-[380px] min-w-[640px] sm:min-w-0 cursor-crosshair'
+              ? 'w-full h-full flex-1 min-h-0 cursor-crosshair'
+              : 'w-full h-full max-h-[380px] cursor-crosshair'
           }
           onClick={handleStaffClick}
+          preserveAspectRatio="xMidYMid meet"
         >
           {/* Franja de resaltado de la columna del paso activo de grabación */}
           <rect
             x={leftMargin + activeStepInput * stepWidth}
-            y="36"
+            y="42"
             width={stepWidth}
-            height="208"
+            height="295"
             fill="rgba(34, 211, 238, 0.06)"
-            stroke="rgba(34, 211, 238, 0.2)"
+            stroke="rgba(34, 211, 238, 0.22)"
             strokeWidth="1"
             rx="4"
           />
 
-          {/* Guías verticales sutiles por paso */}
-          {Array.from({ length: safeTotalSteps }).map((_, stepIdx) => (
-            <line
-              key={`step-guide-${stepIdx}`}
-              x1={getXForStep(stepIdx)}
-              y1="50"
-              x2={getXForStep(stepIdx)}
-              y2="230"
-              stroke="#1e293b"
-              strokeWidth="1"
-              strokeDasharray="2 4"
-            />
-          ))}
-
-          {/* Llave / Corchete de unión a la izquierda */}
+          {/* ============================================================ */}
+          {/* 1. ESTRUCTURA Y CLAVES GRANDES                               */}
+          {/* ============================================================ */}
+          {/* Llave / Corchete vertical izquierdo */}
           <line
-            x1={leftMargin - 25}
-            y1="50"
-            x2={leftMargin - 25}
-            y2="230"
+            x1={leftMargin - 30}
+            y1="55"
+            x2={leftMargin - 30}
+            y2="319"
             stroke="#94a3b8"
-            strokeWidth="4"
+            strokeWidth="4.5"
           />
           <path
-            d={`M ${leftMargin - 25} 50 Q ${leftMargin - 35} 140 ${leftMargin - 25} 140 Q ${leftMargin - 35} 140 ${leftMargin - 25} 230`}
+            d={`M ${leftMargin - 30} 55 Q ${leftMargin - 45} 187 ${leftMargin - 30} 187 Q ${leftMargin - 45} 187 ${leftMargin - 30} 319`}
             fill="none"
             stroke="#94a3b8"
-            strokeWidth="2.5"
+            strokeWidth="3"
           />
 
-          {/* 1. CLAVE DE SOL (5 Líneas superiores: 50, 65, 80, 95, 110) */}
-          {[50, 65, 80, 95, 110].map((y, i) => (
+          {/* 5 Líneas de Clave de Sol (2px de grosor para alta visibilidad) */}
+          {trebleLines.map((y, i) => (
             <line
               key={`treble-${i}`}
-              x1={leftMargin - 25}
+              x1={leftMargin - 30}
               y1={y}
               x2={width - rightMargin}
               y2={y}
-              stroke="#334155"
-              strokeWidth="1.5"
+              stroke="#475569"
+              strokeWidth="2"
             />
           ))}
-          {/* Símbolo Clave de Sol */}
-          <text x="68" y="102" fill="#cbd5e1" fontSize="42" fontFamily="serif">
+          {/* Símbolo Clave de Sol agrandado */}
+          <text x="65" y="142" fill="#cbd5e1" fontSize="62" fontFamily="serif">
             𝄞
           </text>
 
-          {/* Línea adicional central de referencia para C4 (Do Central = 135) */}
+          {/* Línea adicional para C4 (Do Central) */}
           <line
             x1={leftMargin - 10}
-            y1="135"
+            y1={middleCY}
             x2={width - rightMargin}
-            y2="135"
-            stroke={normalizedNotes.some((n) => n.midiNumber === 60) ? '#475569' : '#1e293b'}
-            strokeDasharray="4 4"
-            strokeWidth="1"
+            y2={middleCY}
+            stroke="#334155"
+            strokeDasharray="4 6"
+            strokeWidth="1.5"
           />
-          <text x={leftMargin - 22} y="138" fill="#475569" fontSize="9" fontFamily="monospace">
-            C4
-          </text>
 
-          {/* 2. CLAVE DE FA (5 Líneas inferiores: 170, 185, 200, 215, 230) */}
-          {[170, 185, 200, 215, 230].map((y, i) => (
+          {/* 5 Líneas de Clave de Fa (2px de grosor) */}
+          {bassLines.map((y, i) => (
             <line
               key={`bass-${i}`}
-              x1={leftMargin - 25}
+              x1={leftMargin - 30}
               y1={y}
               x2={width - rightMargin}
               y2={y}
-              stroke="#334155"
-              strokeWidth="1.5"
+              stroke="#475569"
+              strokeWidth="2"
             />
           ))}
-          {/* Símbolo Clave de Fa */}
-          <text x="68" y="205" fill="#cbd5e1" fontSize="34" fontFamily="serif">
+          {/* Símbolo Clave de Fa agrandado */}
+          <text x="66" y="282" fill="#cbd5e1" fontSize="48" fontFamily="serif">
             𝄢
           </text>
 
-          {/* Líneas divisorias de compás */}
+          {/* Barras divisorias verticales de inicio y fin */}
           <line
-            x1={leftMargin - 25}
-            y1="50"
-            x2={leftMargin - 25}
-            y2="230"
+            x1={leftMargin - 30}
+            y1="55"
+            x2={leftMargin - 30}
+            y2="319"
             stroke="#94a3b8"
-            strokeWidth="2.5"
+            strokeWidth="3"
           />
           <line
             x1={width - rightMargin}
-            y1="50"
+            y1="55"
             x2={width - rightMargin}
-            y2="230"
+            y2="319"
             stroke="#94a3b8"
-            strokeWidth="2.5"
+            strokeWidth="3"
           />
 
-          {/* Cabecera de pasos rítmicos */}
+          {/* ============================================================ */}
+          {/* 2. CABECERA DE PASOS RÍTMICOS (NÚMEROS MÁS GRANDES)         */}
+          {/* ============================================================ */}
           {Array.from({ length: safeTotalSteps }).map((_, stepIdx) => {
+            const cx = getXForStep(stepIdx);
             const isSelected = activeStepInput === stepIdx;
-            const rhythmLabel = getStepLabel(stepIdx, activeSubdivision, beatsPerBar);
             return (
               <g
                 key={stepIdx}
@@ -367,33 +373,32 @@ export function PianoGrandStaffView({
                   onSelectStep(stepIdx);
                 }}
               >
+                <line
+                  x1={cx}
+                  y1="34"
+                  x2={cx}
+                  y2="44"
+                  stroke={isSelected ? '#22d3ee' : '#334155'}
+                  strokeWidth={isSelected ? '2' : '1'}
+                />
                 <text
-                  x={getXForStep(stepIdx)}
-                  y="22"
+                  x={cx}
+                  y="28"
                   textAnchor="middle"
                   fill={isSelected ? '#22d3ee' : '#64748b'}
-                  fontSize="11"
+                  fontSize="13"
                   fontWeight={isSelected ? 'bold' : 'normal'}
                   fontFamily="monospace"
                 >
                   {stepIdx + 1}
                 </text>
-                <text
-                  x={getXForStep(stepIdx)}
-                  y="34"
-                  textAnchor="middle"
-                  fill={isSelected ? '#fbbf24' : '#475569'}
-                  fontSize="9"
-                  fontWeight={isSelected ? 'bold' : 'normal'}
-                  fontFamily="monospace"
-                >
-                  {rhythmLabel}
-                </text>
               </g>
             );
           })}
 
-          {/* Renderizado de Notas */}
+          {/* ============================================================ */}
+          {/* 3. NOTAS AGIGANTADAS CON PLICAS CLARAS                      */}
+          {/* ============================================================ */}
           {normalizedNotes.map((n, idx) => {
             const cx = getXForStep(n.stepIndex);
             const cy = getYForMidi(n.midiNumber);
@@ -414,37 +419,25 @@ export function PianoGrandStaffView({
               >
                 <title>{`${noteLabel} (MIDI ${n.midiNumber}) - Paso #${n.stepIndex + 1}`}</title>
 
-                {/* Línea adicional para Do Central C4 */}
+                {/* Línea adicional visible si es C4 */}
                 {n.midiNumber === 60 && (
                   <line
-                    x1={cx - 12}
-                    y1="135"
-                    x2={cx + 12}
-                    y2="135"
+                    x1={cx - 16}
+                    y1={middleCY}
+                    x2={cx + 16}
+                    y2={middleCY}
                     stroke="#f59e0b"
-                    strokeWidth="2"
-                  />
-                )}
-
-                {/* Líneas adicionales superiores o inferiores extremas */}
-                {(cy < 42 || cy > 238) && (
-                  <line
-                    x1={cx - 12}
-                    y1={cy}
-                    x2={cx + 12}
-                    y2={cy}
-                    stroke="#64748b"
-                    strokeWidth="1.5"
+                    strokeWidth="2.5"
                   />
                 )}
 
                 {/* Símbolo de sostenido si es tecla negra */}
                 {isSharp && (
                   <text
-                    x={cx - 14}
-                    y={cy + 4}
+                    x={cx - 18}
+                    y={cy + 5}
                     fill="#fbbf24"
-                    fontSize="11"
+                    fontSize="14"
                     fontWeight="bold"
                     fontFamily="serif"
                   >
@@ -452,58 +445,49 @@ export function PianoGrandStaffView({
                   </text>
                 )}
 
-                {/* Plica vertical */}
+                {/* Plica vertical más gruesa y visible */}
                 <line
-                  x1={isTreble ? cx + 6 : cx - 6}
+                  x1={isTreble ? cx + 9 : cx - 9}
                   y1={cy}
-                  x2={isTreble ? cx + 6 : cx - 6}
-                  y2={isTreble ? cy - 28 : cy + 28}
+                  x2={isTreble ? cx + 9 : cx - 9}
+                  y2={isTreble ? cy - 38 : cy + 38}
                   stroke="#f59e0b"
-                  strokeWidth="2"
+                  strokeWidth="2.5"
                 />
 
-                {/* Cabeza ovalada de la nota */}
+                {/* Cabeza ovalada de la nota ampliada al tamaño real */}
                 <ellipse
                   cx={cx}
                   cy={cy}
-                  rx="7"
-                  ry="5"
+                  rx="10"
+                  ry="7.5"
                   transform={`rotate(-20 ${cx} ${cy})`}
                   fill="#f59e0b"
+                  stroke="#d97706"
+                  strokeWidth="1.5"
                 />
-
-                {/* Etiqueta miniatura de la nota */}
-                <text
-                  x={cx}
-                  y={isTreble ? cy + 14 : cy - 9}
-                  textAnchor="middle"
-                  fill="#fde68a"
-                  fontSize="8"
-                  fontFamily="monospace"
-                  fontWeight="bold"
-                >
-                  {noteLabel}
-                </text>
               </g>
             );
           })}
 
-          {/* Cursor del Escáner de Reproducción */}
+          {/* ============================================================ */}
+          {/* 4. CURSOR ESCÁNER DE PASO ACTIVO / REPRODUCCIÓN             */}
+          {/* ============================================================ */}
           <line
             x1={getXForStep(effectiveCursorStep)}
-            y1="40"
+            y1="45"
             x2={getXForStep(effectiveCursorStep)}
-            y2="240"
+            y2="335"
             stroke="#22d3ee"
-            strokeWidth="2.5"
-            filter="drop-shadow(0 0 6px rgba(34, 211, 238, 0.8))"
+            strokeWidth="3"
+            filter="drop-shadow(0 0 8px rgba(34, 211, 238, 0.9))"
             className="pointer-events-none transition-all duration-75 ease-linear"
           />
         </svg>
       </div>
 
       {/* Panel Táctil Rápido: Teclado de Entrada Asistida (Especial para móviles) */}
-      <div className="w-full mt-3 bg-slate-950 p-2.5 rounded-2xl border border-slate-800 flex flex-col gap-2">
+      <div className="w-full mt-2 bg-slate-950 p-2.5 rounded-2xl border border-slate-800 flex flex-col gap-2 shrink-0">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-[11px] font-bold text-slate-300">
             🎹 Tocar Nota en Paso <span className="text-cyan-400 font-mono">#{activeStepInput + 1}</span>:

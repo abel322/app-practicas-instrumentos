@@ -439,7 +439,7 @@ export function PianoRollBuilder({
 
       {/* 2. Renderizado Condicional: Piano Roll vs Gran Pentagrama (Clave de Sol y Fa) */}
       {editorViewMode === 'sheet' ? (
-        <div className="p-3 sm:p-4 bg-[#0a0c12]">
+        <div className="flex-1 h-full min-h-0 flex flex-col p-2 sm:p-4 bg-[#0a0c12]">
           <PianoGrandStaffView
             totalSteps={totalSteps}
             currentStep={isPlaying ? playbackStepInMeasure : activeStepInput}
