@@ -24,23 +24,62 @@ export interface PianoGrandStaffProps {
   isPlaying?: boolean;
 }
 
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const CHROMATIC_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const BLACK_KEY_OFFSETS = new Set([1, 3, 6, 8, 10]);
 
-const OCTAVE_NOTES = [
-  { name: 'Do', midiOffset: 0 },
-  { name: 'Do#', midiOffset: 1, isBlack: true },
-  { name: 'Re', midiOffset: 2 },
-  { name: 'Re#', midiOffset: 3, isBlack: true },
-  { name: 'Mi', midiOffset: 4 },
-  { name: 'Fa', midiOffset: 5 },
-  { name: 'Fa#', midiOffset: 6, isBlack: true },
-  { name: 'Sol', midiOffset: 7 },
-  { name: 'Sol#', midiOffset: 8, isBlack: true },
-  { name: 'La', midiOffset: 9 },
-  { name: 'La#', midiOffset: 10, isBlack: true },
-  { name: 'Si', midiOffset: 11 },
+const OCTAVES = [
+  { num: 1, label: 'C1 - B1 (Subgrave)', baseMidi: 24, clefHint: 'Clave Fa' },
+  { num: 2, label: 'C2 - B2 (Bajos Profundos)', baseMidi: 36, clefHint: 'Clave Fa' },
+  { num: 3, label: 'C3 - B3 (Medios Graves)', baseMidi: 48, clefHint: 'Clave Fa' },
+  { num: 4, label: 'C4 - B4 (Central)', baseMidi: 60, clefHint: 'Centro / Sol' },
+  { num: 5, label: 'C5 - B5 (Agudos Medios)', baseMidi: 72, clefHint: 'Clave Sol' },
+  { num: 6, label: 'C6 - B6 (Altos)', baseMidi: 84, clefHint: 'Clave Sol' },
+  { num: 7, label: 'C7 - B7 (Sobreagudos)', baseMidi: 96, clefHint: 'Clave Sol' },
+  { num: 8, label: 'C8 (Extremo Superior)', baseMidi: 108, clefHint: 'Clave Sol' },
 ];
+
+const NOTE_NAMES = [
+  { name: 'Do', offset: 0 },
+  { name: 'Re', offset: 2 },
+  { name: 'Mi', offset: 4 },
+  { name: 'Fa', offset: 5 },
+  { name: 'Sol', offset: 7 },
+  { name: 'La', offset: 9 },
+  { name: 'Si', offset: 11 },
+];
+
+const SHARP_NOTES = [
+  { name: 'Do#', offset: 1 },
+  { name: 'Re#', offset: 3 },
+  { name: 'Fa#', offset: 6 },
+  { name: 'Sol#', offset: 8 },
+  { name: 'La#', offset: 10 },
+];
+
+/**
+ * Generador de etiquetas rítmicas musicales según la cantidad de pasos o subdivisión activa:
+ * - 8 pasos (1/8 Corcheas): 1, y, 2, y, 3, y, 4, y
+ * - 4 pasos (1/4 Negras): 1, 2, 3, 4
+ * - 12 pasos (1/8T Tresillos): 1, ti, ta, 2, ti, ta, 3, ti, ta, 4, ti, ta
+ * - 16 pasos (1/16 Semicorcheas): 1, e, &, a, 2, e, &, a, 3, e, &, a, 4, e, &, a
+ */
+export const getStepLabels = (
+  steps: number,
+  subdivision?: string,
+  beatsPerBar: number = 4
+): string[] => {
+  if (steps === 8) return ['1', 'y', '2', 'y', '3', 'y', '4', 'y'];
+  if (steps === 4) return ['1', '2', '3', '4'];
+  if (steps === 12) {
+    return ['1', 'ti', 'ta', '2', 'ti', 'ta', '3', 'ti', 'ta', '4', 'ti', 'ta'];
+  }
+  if (steps === 16) {
+    return ['1', 'e', '&', 'a', '2', 'e', '&', 'a', '3', 'e', '&', 'a', '4', 'e', '&', 'a'];
+  }
+  return Array.from({ length: steps }, (_, idx) =>
+    getStepLabel(idx, subdivision || '1/16', beatsPerBar)
+  );
+};
 
 export function PianoGrandStaffView({
   totalSteps,
@@ -55,12 +94,12 @@ export function PianoGrandStaffView({
   isPlaying = false,
 }: PianoGrandStaffProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [mobileOctaveRange, setMobileOctaveRange] = useState<'bass' | 'treble'>('treble');
+  const [selectedOctave, setSelectedOctave] = useState<number>(4); // Octava activa (1 a 8)
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Dimensiones del lienzo SVG optimizadas para llenar la pantalla
   const width = 960;
-  const height = 410;
+  const baseHeight = 410;
   const leftMargin = 100; // Espacio protegido para claves grandes
   const rightMargin = 35;
   const usableWidth = width - leftMargin - rightMargin;
@@ -88,6 +127,11 @@ export function PianoGrandStaffView({
   const beatsPerBar = useMemo(() => {
     return parseInt(timeSignature.split('/')[0], 10) || 4;
   }, [timeSignature]);
+
+  const stepLabels = useMemo(
+    () => getStepLabels(safeTotalSteps, activeSubdivision, beatsPerBar),
+    [safeTotalSteps, activeSubdivision, beatsPerBar]
+  );
 
   const toggleFullscreenLandscape = async () => {
     if (!isFullscreen) {
@@ -148,11 +192,61 @@ export function PianoGrandStaffView({
 
   const getXForStep = (stepIdx: number) => leftMargin + (stepIdx + 0.5) * stepWidth;
 
-  // Mapeo Y continuo calibrado a la nueva escala (1 semitono aprox = 4.8px)
+  // Centro C4 = 187. Paso vertical por semitono aproximado = 4.8px
   const getYForMidi = (midi: number): number => {
-    const delta = midi - 60; // Distancia en semitonos respecto a C4
-    return middleCY - delta * 4.8;
+    return 187 - (midi - 60) * 4.8;
   };
+
+  // Generar líneas adicionales requeridas para una nota según su altura (C1 a C8)
+  const getLedgerLinesForNote = (midi: number, cy: number, cx: number) => {
+    const lines: number[] = [];
+
+    // Do central C4 (MIDI 60)
+    if (midi === 60) {
+      lines.push(187);
+    }
+    // Sobreagudos por encima de la 5ª línea de Sol (F5 = 55 -> notas con y < 55)
+    else if (cy < 55) {
+      for (let y = 31; y >= cy - 6; y -= 24) {
+        lines.push(y);
+      }
+    }
+    // Subgraves por debajo de la 1ª línea de Fa (G2 = 319 -> notas con y > 319)
+    else if (cy > 319) {
+      for (let y = 343; y <= cy + 6; y += 24) {
+        lines.push(y);
+      }
+    }
+
+    return lines.map((lineY, idx) => (
+      <line
+        key={idx}
+        x1={cx - 16}
+        y1={lineY}
+        x2={cx + 16}
+        y2={lineY}
+        stroke="#94a3b8"
+        strokeWidth="2"
+      />
+    ));
+  };
+
+  // Ajustar dinámicamente el viewBox vertical si existen notas en registros extremos (C1, C7, C8)
+  const { viewBoxMinY, viewBoxHeight } = useMemo(() => {
+    if (normalizedNotes.length === 0) {
+      return { viewBoxMinY: 0, viewBoxHeight: baseHeight };
+    }
+    const ys = normalizedNotes.map((n) => getYForMidi(n.midiNumber));
+    const minNoteY = Math.min(...ys);
+    const maxNoteY = Math.max(...ys);
+
+    const topBound = Math.min(0, Math.floor(minNoteY - 48));
+    const bottomBound = Math.max(baseHeight, Math.ceil(maxNoteY + 48));
+    return {
+      viewBoxMinY: topBound,
+      viewBoxHeight: bottomBound - topBound,
+    };
+  }, [normalizedNotes]);
 
   const handleStaffClick = (e: React.MouseEvent<SVGSVGElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -168,10 +262,10 @@ export function PianoGrandStaffView({
     );
     onSelectStep(clickedStep);
 
-    const relativeY = (clickY / rect.height) * height;
+    const relativeY = viewBoxMinY + (clickY / rect.height) * viewBoxHeight;
     const estimatedMidi = Math.max(
-      36,
-      Math.min(84, Math.round(60 + (middleCY - relativeY) / 4.8))
+      24,
+      Math.min(108, Math.round(60 + (middleCY - relativeY) / 4.8))
     );
 
     pianoPreviewSynth.playNote(estimatedMidi, 0.35, 95);
@@ -179,8 +273,9 @@ export function PianoGrandStaffView({
   };
 
   const handleTouchNoteInput = (midiNumber: number) => {
-    pianoPreviewSynth.playNote(midiNumber, 0.35, 95);
-    onToggleNote(activeStepInput, midiNumber, 100);
+    const clampedMidi = Math.max(24, Math.min(108, midiNumber));
+    pianoPreviewSynth.playNote(clampedMidi, 0.35, 95);
+    onToggleNote(activeStepInput, clampedMidi, 100);
   };
 
   const effectiveCursorStep = useMemo(() => {
@@ -192,6 +287,13 @@ export function PianoGrandStaffView({
     }
     return Math.max(0, Math.min(safeTotalSteps - 1, activeStepInput));
   }, [isPlaying, currentStep, activeStepInput, safeTotalSteps]);
+
+  const activeOctaveMeta = useMemo(
+    () => OCTAVES.find((o) => o.num === selectedOctave) || OCTAVES[3],
+    [selectedOctave]
+  );
+
+  const activeStepRhythmLabel = stepLabels[activeStepInput] || `${activeStepInput + 1}`;
 
   return (
     <div
@@ -209,7 +311,7 @@ export function PianoGrandStaffView({
             🎼 Gran Pentagrama (Sol / Fa)
           </span>
           <span className="hidden md:inline text-slate-400 text-[11px]">
-            • Mano Derecha: Clave de Sol | Mano Izquierda: Clave de Fa
+            • Rango Concierto C1–C8 • Mano Derecha: Clave de Sol | Mano Izquierda: Clave de Fa
           </span>
         </div>
 
@@ -225,7 +327,7 @@ export function PianoGrandStaffView({
                 ◀
               </button>
               <span className="text-cyan-400 font-bold px-1.5">
-                Paso #{activeStepInput + 1} ({getStepLabel(activeStepInput, activeSubdivision, beatsPerBar)})
+                Paso #{activeStepInput + 1} ({activeStepRhythmLabel})
               </span>
               <button
                 type="button"
@@ -238,7 +340,7 @@ export function PianoGrandStaffView({
             </div>
           ) : (
             <span className="font-mono text-cyan-400 text-[11px]">
-              Paso activo: #{activeStepInput + 1} ({getStepLabel(activeStepInput, activeSubdivision, beatsPerBar)})
+              Paso activo: #{activeStepInput + 1} ({activeStepRhythmLabel})
             </span>
           )}
 
@@ -255,7 +357,7 @@ export function PianoGrandStaffView({
       {/* Lienzo SVG del Gran Pentagrama con Espaciado Ampliado (24px por línea) */}
       <div className="w-full flex-1 min-h-0 flex flex-col items-center justify-center select-none overflow-hidden">
         <svg
-          viewBox={`0 0 ${width} ${height}`}
+          viewBox={`0 ${viewBoxMinY} ${width} ${viewBoxHeight}`}
           className={
             isFullscreen
               ? 'w-full h-full flex-1 min-h-0 cursor-crosshair'
@@ -312,7 +414,7 @@ export function PianoGrandStaffView({
             𝄞
           </text>
 
-          {/* Línea adicional para C4 (Do Central) */}
+          {/* Línea adicional guía para C4 (Do Central) */}
           <line
             x1={leftMargin - 10}
             y1={middleCY}
@@ -359,11 +461,13 @@ export function PianoGrandStaffView({
           />
 
           {/* ============================================================ */}
-          {/* 2. CABECERA DE PASOS RÍTMICOS (NÚMEROS MÁS GRANDES)         */}
+          {/* 2. CABECERA DE PASOS RÍTMICOS MUSICALES (1 e & a / 1 y 2 y)  */}
           {/* ============================================================ */}
-          {Array.from({ length: safeTotalSteps }).map((_, stepIdx) => {
+          {stepLabels.map((lbl, stepIdx) => {
             const cx = getXForStep(stepIdx);
             const isSelected = activeStepInput === stepIdx;
+            const isMainBeat = !isNaN(Number(lbl)); // Tiempos 1, 2, 3, 4
+
             return (
               <g
                 key={stepIdx}
@@ -375,36 +479,36 @@ export function PianoGrandStaffView({
               >
                 <line
                   x1={cx}
-                  y1="34"
+                  y1={isMainBeat ? 26 : 32}
                   x2={cx}
-                  y2="44"
-                  stroke={isSelected ? '#22d3ee' : '#334155'}
-                  strokeWidth={isSelected ? '2' : '1'}
+                  y2="42"
+                  stroke={isSelected ? '#22d3ee' : isMainBeat ? '#64748b' : '#334155'}
+                  strokeWidth={isSelected ? '2' : isMainBeat ? '1.5' : '1'}
                 />
                 <text
                   x={cx}
-                  y="28"
+                  y={isMainBeat ? 22 : 24}
                   textAnchor="middle"
-                  fill={isSelected ? '#22d3ee' : '#64748b'}
-                  fontSize="13"
-                  fontWeight={isSelected ? 'bold' : 'normal'}
-                  fontFamily="monospace"
+                  fill={isSelected ? '#22d3ee' : isMainBeat ? '#f8fafc' : '#64748b'}
+                  fontSize={isMainBeat ? '14' : '11'}
+                  fontWeight={isMainBeat ? '900' : '600'}
+                  fontFamily="ui-monospace, monospace"
                 >
-                  {stepIdx + 1}
+                  {lbl}
                 </text>
               </g>
             );
           })}
 
           {/* ============================================================ */}
-          {/* 3. NOTAS AGIGANTADAS CON PLICAS CLARAS                      */}
+          {/* 3. NOTAS AGIGANTADAS CON PLICAS Y LÍNEAS ADICIONALES (C1-C8) */}
           {/* ============================================================ */}
           {normalizedNotes.map((n, idx) => {
             const cx = getXForStep(n.stepIndex);
             const cy = getYForMidi(n.midiNumber);
             const isTreble = n.midiNumber >= 60;
             const isSharp = BLACK_KEY_OFFSETS.has(n.midiNumber % 12);
-            const noteLabel = `${NOTE_NAMES[n.midiNumber % 12]}${Math.floor(n.midiNumber / 12) - 1}`;
+            const noteLabel = `${CHROMATIC_NAMES[n.midiNumber % 12]}${Math.floor(n.midiNumber / 12) - 1}`;
 
             return (
               <g
@@ -419,17 +523,8 @@ export function PianoGrandStaffView({
               >
                 <title>{`${noteLabel} (MIDI ${n.midiNumber}) - Paso #${n.stepIndex + 1}`}</title>
 
-                {/* Línea adicional visible si es C4 */}
-                {n.midiNumber === 60 && (
-                  <line
-                    x1={cx - 16}
-                    y1={middleCY}
-                    x2={cx + 16}
-                    y2={middleCY}
-                    stroke="#f59e0b"
-                    strokeWidth="2.5"
-                  />
-                )}
+                {/* Líneas adicionales dinámicas (C4, sobreagudos > F5 y subgraves < G2) */}
+                {getLedgerLinesForNote(n.midiNumber, cy, cx)}
 
                 {/* Símbolo de sostenido si es tecla negra */}
                 {isSharp && (
@@ -466,6 +561,19 @@ export function PianoGrandStaffView({
                   stroke="#d97706"
                   strokeWidth="1.5"
                 />
+
+                {/* Etiqueta de altura de la nota */}
+                <text
+                  x={cx}
+                  y={isTreble ? cy + 18 : cy - 12}
+                  textAnchor="middle"
+                  fill="#fde68a"
+                  fontSize="9"
+                  fontFamily="ui-monospace, monospace"
+                  fontWeight="bold"
+                >
+                  {noteLabel}
+                </text>
               </g>
             );
           })}
@@ -486,89 +594,107 @@ export function PianoGrandStaffView({
         </svg>
       </div>
 
-      {/* Panel Táctil Rápido: Teclado de Entrada Asistida (Especial para móviles) */}
+      {/* Panel Táctil Rápido: Teclado de Entrada Asistida con Rango Completo C1 a C8 */}
       <div className="w-full mt-2 bg-slate-950 p-2.5 rounded-2xl border border-slate-800 flex flex-col gap-2 shrink-0">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-[11px] font-bold text-slate-300">
-            🎹 Tocar Nota en Paso <span className="text-cyan-400 font-mono">#{activeStepInput + 1}</span>:
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold text-slate-300">
+              🎹 Tocar Nota en Paso{' '}
+              <span className="text-cyan-400 font-mono">
+                #{activeStepInput + 1} ({activeStepRhythmLabel})
+              </span>
+              :
+            </span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-amber-300">
+              {activeOctaveMeta.label} • {activeOctaveMeta.clefHint}
+            </span>
+          </div>
 
-          {/* Selector de Registro */}
-          <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800 text-[10px]">
-            <button
-              type="button"
-              onClick={() => setMobileOctaveRange('bass')}
-              className={`px-2 py-0.5 rounded font-bold transition-colors ${
-                mobileOctaveRange === 'bass'
-                  ? 'bg-amber-500 text-slate-950 font-black'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Clave Fa (C2-B3)
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileOctaveRange('treble')}
-              className={`px-2 py-0.5 rounded font-bold transition-colors ${
-                mobileOctaveRange === 'treble'
-                  ? 'bg-amber-500 text-slate-950 font-black'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Clave Sol (C4-B5)
-            </button>
+          {/* Barra de Selección de Octava Completa (C1 a C8) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+            <span className="text-[10px] font-bold text-slate-400 mr-1 shrink-0">OCTAVA:</span>
+            {OCTAVES.map((oct) => (
+              <button
+                key={oct.num}
+                type="button"
+                onClick={() => setSelectedOctave(oct.num)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all ${
+                  selectedOctave === oct.num
+                    ? 'bg-amber-400 text-slate-950 font-black shadow-md'
+                    : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                }`}
+                title={oct.label}
+              >
+                C{oct.num}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Teclas Táctiles Grandes de Entrada */}
-        <div className="w-full flex items-center justify-start sm:justify-center gap-1 overflow-x-auto py-1 no-scrollbar">
-          {[4, 5].map((octaveNum) => {
-            const baseMidi =
-              mobileOctaveRange === 'treble'
-                ? octaveNum === 4
-                  ? 60
-                  : 72
-                : octaveNum === 4
-                ? 36
-                : 48;
-            const octaveLabel =
-              mobileOctaveRange === 'treble'
-                ? octaveNum === 4
-                  ? '4'
-                  : '5'
-                : octaveNum === 4
-                ? '2'
-                : '3';
+        {/* Fila de Teclas Blancas (Do a Si) y Sostenidos para la Octava Seleccionada */}
+        <div className="w-full flex flex-col gap-1.5">
+          {/* Teclas Naturales Grandes (Do, Re, Mi, Fa, Sol, La, Si) */}
+          <div className="w-full flex items-center justify-center gap-1.5 overflow-x-auto py-0.5 no-scrollbar">
+            {NOTE_NAMES.map((noteItem) => {
+              const currentMidi = activeOctaveMeta.baseMidi + noteItem.offset;
+              if (currentMidi > 108) return null; // C8 es el tope superior del piano de 88 teclas
+              const isNoteActive = normalizedNotes.some(
+                (n) =>
+                  n.stepIndex === activeStepInput &&
+                  n.midiNumber === currentMidi
+              );
 
-            return (
-              <div key={octaveNum} className="flex items-center gap-1 shrink-0">
-                {OCTAVE_NOTES.filter((n) => !n.isBlack).map((whiteKey) => {
-                  const currentMidi = baseMidi + whiteKey.midiOffset;
-                  const isNoteActive = normalizedNotes.some(
-                    (n) =>
-                      n.stepIndex === activeStepInput &&
-                      n.midiNumber === currentMidi
-                  );
+              return (
+                <button
+                  key={currentMidi}
+                  type="button"
+                  onClick={() => handleTouchNoteInput(currentMidi)}
+                  className={`h-14 flex-1 min-w-[44px] max-w-[76px] rounded-xl flex flex-col justify-end items-center pb-1.5 text-xs font-bold border transition-all active:scale-95 shadow-md ${
+                    isNoteActive
+                      ? 'bg-amber-400 text-slate-950 border-amber-300 font-black shadow-amber-500/30'
+                      : 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700'
+                  }`}
+                >
+                  <span>{noteItem.name}</span>
+                  <span className="text-[10px] opacity-70 font-mono">
+                    {selectedOctave}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
-                  return (
-                    <button
-                      key={currentMidi}
-                      type="button"
-                      onClick={() => handleTouchNoteInput(currentMidi)}
-                      className={`h-14 w-9 sm:w-10 rounded-lg flex flex-col justify-end items-center pb-1 text-[10px] font-bold border transition-all active:scale-95 shadow-md ${
-                        isNoteActive
-                          ? 'bg-amber-400 text-slate-950 border-amber-300 font-black shadow-amber-500/30'
-                          : 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700'
-                      }`}
-                    >
-                      <span>{whiteKey.name}</span>
-                      <span className="text-[9px] opacity-60 font-mono">{octaveLabel}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            );
-          })}
+          {/* Teclas Negras / Sostenidos de la Octava Activa (Opcional rápido) */}
+          {selectedOctave < 8 && (
+            <div className="w-full flex items-center justify-center gap-1.5 overflow-x-auto no-scrollbar">
+              {SHARP_NOTES.map((sharpItem) => {
+                const currentMidi = activeOctaveMeta.baseMidi + sharpItem.offset;
+                const isNoteActive = normalizedNotes.some(
+                  (n) =>
+                    n.stepIndex === activeStepInput &&
+                    n.midiNumber === currentMidi
+                );
+
+                return (
+                  <button
+                    key={currentMidi}
+                    type="button"
+                    onClick={() => handleTouchNoteInput(currentMidi)}
+                    className={`h-8 px-3 rounded-lg flex items-center gap-1 text-[10px] font-bold border transition-all active:scale-95 ${
+                      isNoteActive
+                        ? 'bg-amber-400 text-slate-950 border-amber-300 font-black'
+                        : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800'
+                    }`}
+                  >
+                    <span>{sharpItem.name}</span>
+                    <span className="text-[9px] opacity-60 font-mono">
+                      {selectedOctave}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>

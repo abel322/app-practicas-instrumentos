@@ -74,18 +74,18 @@ export function getStepLabel(
     return subLabels[sub];
   }
 
-  // 1/8 (Corcheas): 2 pasos por pulso (1, &)
+  // 1/8 (Corcheas): 2 pasos por pulso (1, y)
   if (subdivision === '1/8') {
     const beatNumber = Math.floor(stepIndex / 2) + 1;
     const sub = stepIndex % 2;
-    return sub === 0 ? beatNumber.toString() : '&';
+    return sub === 0 ? beatNumber.toString() : 'y';
   }
 
-  // 1/8T (Tresillos de corchea): 3 pasos por pulso (1, t, a)
+  // 1/8T (Tresillos de corchea): 3 pasos por pulso (1, ti, ta)
   if (subdivision === '1/8T') {
     const beatNumber = Math.floor(stepIndex / 3) + 1;
     const sub = stepIndex % 3;
-    const subLabels = [beatNumber.toString(), 't', 'a'];
+    const subLabels = [beatNumber.toString(), 'ti', 'ta'];
     return subLabels[sub];
   }
 
@@ -178,8 +178,8 @@ export interface PianoRollBuilderProps {
   onViewModeChange?: (mode: 'pianoroll' | 'sheet') => void;
 }
 
-// Rango de 4 octavas útiles: C2 (36) a C6 (84) -> 49 teclas ordenadas de agudo a grave
-const PIANO_KEYS = Array.from({ length: 49 }, (_, i) => 84 - i);
+// Rango de concierto completo: C1 (24) a C8 (108) -> 85 teclas ordenadas de agudo a grave
+const PIANO_KEYS = Array.from({ length: 85 }, (_, i) => 108 - i);
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
