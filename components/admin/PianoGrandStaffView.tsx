@@ -24,8 +24,66 @@ export interface PianoGrandStaffProps {
   isPlaying?: boolean;
 }
 
-const CHROMATIC_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-const BLACK_KEY_OFFSETS = new Set([1, 3, 6, 8, 10]);
+// Mapeo diatónico natural: C=0, D=1, E=2, F=3, G=4, A=5, B=6
+const SEMITONE_TO_DIATONIC: Record<number, { step: number; isAccidental: boolean; name: string }> = {
+  0:  { step: 0, isAccidental: false, name: 'C' },  // Do
+  1:  { step: 0, isAccidental: true,  name: 'C#' }, // Do#
+  2:  { step: 1, isAccidental: false, name: 'D' },  // Re
+  3:  { step: 1, isAccidental: true,  name: 'D#' }, // Re#
+  4:  { step: 2, isAccidental: false, name: 'E' },  // Mi
+  5:  { step: 3, isAccidental: false, name: 'F' },  // Fa
+  6:  { step: 3, isAccidental: true,  name: 'F#' }, // Fa#
+  7:  { step: 4, isAccidental: false, name: 'G' },  // Sol
+  8:  { step: 4, isAccidental: true,  name: 'G#' }, // Sol#
+  9:  { step: 5, isAccidental: false, name: 'A' },  // La
+  10: { step: 5, isAccidental: true,  name: 'A#' }, // La#
+  11: { step: 6, isAccidental: false, name: 'B' },  // Si
+};
+
+// Mapeo inverso de grado diatónico (0..6) a semitono natural dentro de la octava
+const DIATONIC_TO_SEMITONE = [0, 2, 4, 5, 7, 9, 11];
+
+// Altura exacta de las 5 líneas de cada pentagrama (separación de 24px entre líneas)
+// Clave de Sol:
+// Línea 5 (F5) = 55
+// Línea 4 (D5) = 79
+// Línea 3 (B4) = 103
+// Línea 2 (G4 / Sol4) = 127  <-- ¡Segunda línea garantizada para SOL!
+// Línea 1 (E4 / Mi4) = 151
+//
+// Línea Adicional Central (C4 / Do4 = Do Central):
+// y = 175 (exactamente a 24px debajo de E4)
+//
+// Clave de Fa:
+// Línea 5 (A3 / La3) = 199 (a 24px debajo de C4)
+// Línea 4 (F3 / Fa3) = 223   <-- ¡Cuarta línea garantizada para FA!
+// Línea 3 (D3 / Re3) = 247
+// Línea 2 (B2 / Si2) = 271
+// Línea 1 (G2 / Sol2) = 295
+
+const LINE_SPACING = 24;
+const STEP_SPACING = LINE_SPACING / 2; // 12px por grado diatónico (línea -> espacio -> línea)
+const MIDDLE_C_Y = 175; // Altura de C4 (Do Central / MIDI 60)
+const MIDDLE_C_DIATONIC = 4 * 7 + 0; // Octava 4, Grado 0 = 28
+
+export function getDiatonicInfo(midi: number) {
+  const octave = Math.floor(midi / 12) - 1;
+  const semitoneInOctave = ((midi % 12) + 12) % 12;
+  const info = SEMITONE_TO_DIATONIC[semitoneInOctave];
+  const absoluteDiatonicIndex = octave * 7 + info.step;
+  const diatonicOffset = absoluteDiatonicIndex - MIDDLE_C_DIATONIC;
+
+  // Cada grado diatónico hacia arriba resta 12px en Y; hacia abajo suma 12px
+  const y = MIDDLE_C_Y - diatonicOffset * STEP_SPACING;
+
+  return {
+    y,
+    name: `${info.name}${octave}`,
+    isAccidental: info.isAccidental,
+    octave,
+    step: info.step,
+  };
+}
 
 const OCTAVES = [
   { num: 1, label: 'C1 - B1 (Subgrave)', baseMidi: 24, clefHint: 'Clave Fa' },
@@ -99,30 +157,15 @@ export function PianoGrandStaffView({
 
   // Dimensiones del lienzo SVG optimizadas para llenar la pantalla
   const width = 960;
-  const baseHeight = 410;
+  const baseHeight = 365;
   const leftMargin = 100; // Espacio protegido para claves grandes
   const rightMargin = 35;
   const usableWidth = width - leftMargin - rightMargin;
   const safeTotalSteps = Math.max(1, totalSteps);
   const stepWidth = usableWidth / safeTotalSteps;
 
-  // LÍNEAS DE CLAVE DE SOL (Separación de 24px):
-  // Línea 5 (Fa5) = 55
-  // Línea 4 (Re5) = 79
-  // Línea 3 (Si4) = 103
-  // Línea 2 (Sol4) = 127
-  // Línea 1 (Mi4) = 151
-  // Línea Adicional Central (Do4 / C4 = MIDI 60) = 187
-  //
-  // LÍNEAS DE CLAVE DE FA (Separación de 24px):
-  // Línea 5 (La3) = 223
-  // Línea 4 (Fa3) = 247
-  // Línea 3 (Re3) = 271
-  // Línea 2 (Si2) = 295
-  // Línea 1 (Sol2) = 319
-  const trebleLines = [55, 79, 103, 127, 151];
-  const bassLines = [223, 247, 271, 295, 319];
-  const middleCY = 187;
+  const trebleLines = [55, 79, 103, 127, 151]; // F5, D5, B4, G4, E4
+  const bassLines = [199, 223, 247, 271, 295]; // A3, F3, D3, B2, G2
 
   const beatsPerBar = useMemo(() => {
     return parseInt(timeSignature.split('/')[0], 10) || 4;
@@ -192,51 +235,12 @@ export function PianoGrandStaffView({
 
   const getXForStep = (stepIdx: number) => leftMargin + (stepIdx + 0.5) * stepWidth;
 
-  // Centro C4 = 187. Paso vertical por semitono aproximado = 4.8px
-  const getYForMidi = (midi: number): number => {
-    return 187 - (midi - 60) * 4.8;
-  };
-
-  // Generar líneas adicionales requeridas para una nota según su altura (C1 a C8)
-  const getLedgerLinesForNote = (midi: number, cy: number, cx: number) => {
-    const lines: number[] = [];
-
-    // Do central C4 (MIDI 60)
-    if (midi === 60) {
-      lines.push(187);
-    }
-    // Sobreagudos por encima de la 5ª línea de Sol (F5 = 55 -> notas con y < 55)
-    else if (cy < 55) {
-      for (let y = 31; y >= cy - 6; y -= 24) {
-        lines.push(y);
-      }
-    }
-    // Subgraves por debajo de la 1ª línea de Fa (G2 = 319 -> notas con y > 319)
-    else if (cy > 319) {
-      for (let y = 343; y <= cy + 6; y += 24) {
-        lines.push(y);
-      }
-    }
-
-    return lines.map((lineY, idx) => (
-      <line
-        key={idx}
-        x1={cx - 16}
-        y1={lineY}
-        x2={cx + 16}
-        y2={lineY}
-        stroke="#94a3b8"
-        strokeWidth="2"
-      />
-    ));
-  };
-
   // Ajustar dinámicamente el viewBox vertical si existen notas en registros extremos (C1, C7, C8)
   const { viewBoxMinY, viewBoxHeight } = useMemo(() => {
     if (normalizedNotes.length === 0) {
       return { viewBoxMinY: 0, viewBoxHeight: baseHeight };
     }
-    const ys = normalizedNotes.map((n) => getYForMidi(n.midiNumber));
+    const ys = normalizedNotes.map((n) => getDiatonicInfo(n.midiNumber).y);
     const minNoteY = Math.min(...ys);
     const maxNoteY = Math.max(...ys);
 
@@ -263,9 +267,14 @@ export function PianoGrandStaffView({
     onSelectStep(clickedStep);
 
     const relativeY = viewBoxMinY + (clickY / rect.height) * viewBoxHeight;
+    // Calcular el grado diatónico pulsado respecto a C4 (MIDDLE_C_Y = 175)
+    const clickedDiatonicOffset = Math.round((MIDDLE_C_Y - relativeY) / STEP_SPACING);
+    const targetDiatonicIndex = MIDDLE_C_DIATONIC + clickedDiatonicOffset;
+    const targetOctave = Math.floor(targetDiatonicIndex / 7);
+    const targetDiatonicStep = ((targetDiatonicIndex % 7) + 7) % 7;
     const estimatedMidi = Math.max(
       24,
-      Math.min(108, Math.round(60 + (middleCY - relativeY) / 4.8))
+      Math.min(108, (targetOctave + 1) * 12 + DIATONIC_TO_SEMITONE[targetDiatonicStep])
     );
 
     pianoPreviewSynth.playNote(estimatedMidi, 0.35, 95);
@@ -354,7 +363,7 @@ export function PianoGrandStaffView({
         </div>
       </div>
 
-      {/* Lienzo SVG del Gran Pentagrama con Espaciado Ampliado (24px por línea) */}
+      {/* Lienzo SVG del Gran Pentagrama con Mapeo Diatónico Exacto */}
       <div className="w-full flex-1 min-h-0 flex flex-col items-center justify-center select-none overflow-hidden">
         <svg
           viewBox={`0 ${viewBoxMinY} ${width} ${viewBoxHeight}`}
@@ -371,7 +380,7 @@ export function PianoGrandStaffView({
             x={leftMargin + activeStepInput * stepWidth}
             y="42"
             width={stepWidth}
-            height="295"
+            height="268"
             fill="rgba(34, 211, 238, 0.06)"
             stroke="rgba(34, 211, 238, 0.22)"
             strokeWidth="1"
@@ -381,23 +390,23 @@ export function PianoGrandStaffView({
           {/* ============================================================ */}
           {/* 1. ESTRUCTURA Y CLAVES GRANDES                               */}
           {/* ============================================================ */}
-          {/* Llave / Corchete vertical izquierdo */}
+          {/* Corchete / Llave de unión a la izquierda */}
           <line
             x1={leftMargin - 30}
             y1="55"
             x2={leftMargin - 30}
-            y2="319"
+            y2="295"
             stroke="#94a3b8"
             strokeWidth="4.5"
           />
           <path
-            d={`M ${leftMargin - 30} 55 Q ${leftMargin - 45} 187 ${leftMargin - 30} 187 Q ${leftMargin - 45} 187 ${leftMargin - 30} 319`}
+            d={`M ${leftMargin - 30} 55 Q ${leftMargin - 45} 175 ${leftMargin - 30} 175 Q ${leftMargin - 45} 175 ${leftMargin - 30} 295`}
             fill="none"
             stroke="#94a3b8"
             strokeWidth="3"
           />
 
-          {/* 5 Líneas de Clave de Sol (2px de grosor para alta visibilidad) */}
+          {/* Líneas de Clave de Sol */}
           {trebleLines.map((y, i) => (
             <line
               key={`treble-${i}`}
@@ -409,23 +418,23 @@ export function PianoGrandStaffView({
               strokeWidth="2"
             />
           ))}
-          {/* Símbolo Clave de Sol agrandado */}
-          <text x="65" y="142" fill="#cbd5e1" fontSize="62" fontFamily="serif">
+          {/* Clave de Sol centrada exactamente con su bucle envolviendo la 2ª línea (G4 = 127) */}
+          <text x="65" y="145" fill="#cbd5e1" fontSize="66" fontFamily="serif">
             𝄞
           </text>
 
-          {/* Línea adicional guía para C4 (Do Central) */}
+          {/* Línea guía punteada para Do Central C4 (y = 175) */}
           <line
-            x1={leftMargin - 10}
-            y1={middleCY}
+            x1={leftMargin - 15}
+            y1={MIDDLE_C_Y}
             x2={width - rightMargin}
-            y2={middleCY}
+            y2={MIDDLE_C_Y}
             stroke="#334155"
             strokeDasharray="4 6"
             strokeWidth="1.5"
           />
 
-          {/* 5 Líneas de Clave de Fa (2px de grosor) */}
+          {/* Líneas de Clave de Fa */}
           {bassLines.map((y, i) => (
             <line
               key={`bass-${i}`}
@@ -437,8 +446,8 @@ export function PianoGrandStaffView({
               strokeWidth="2"
             />
           ))}
-          {/* Símbolo Clave de Fa agrandado */}
-          <text x="66" y="282" fill="#cbd5e1" fontSize="48" fontFamily="serif">
+          {/* Clave de Fa con sus dos puntos abrazando la 4ª línea (F3 = 223) */}
+          <text x="66" y="246" fill="#cbd5e1" fontSize="50" fontFamily="serif">
             𝄢
           </text>
 
@@ -447,7 +456,7 @@ export function PianoGrandStaffView({
             x1={leftMargin - 30}
             y1="55"
             x2={leftMargin - 30}
-            y2="319"
+            y2="295"
             stroke="#94a3b8"
             strokeWidth="3"
           />
@@ -455,7 +464,7 @@ export function PianoGrandStaffView({
             x1={width - rightMargin}
             y1="55"
             x2={width - rightMargin}
-            y2="319"
+            y2="295"
             stroke="#94a3b8"
             strokeWidth="3"
           />
@@ -501,14 +510,32 @@ export function PianoGrandStaffView({
           })}
 
           {/* ============================================================ */}
-          {/* 3. NOTAS AGIGANTADAS CON PLICAS Y LÍNEAS ADICIONALES (C1-C8) */}
+          {/* 3. RENDERIZADO DE CABEZAS DE NOTA, ACCIDENTALES Y LEDGERS    */}
           {/* ============================================================ */}
           {normalizedNotes.map((n, idx) => {
             const cx = getXForStep(n.stepIndex);
-            const cy = getYForMidi(n.midiNumber);
+            const { y: cy, isAccidental, name } = getDiatonicInfo(n.midiNumber);
             const isTreble = n.midiNumber >= 60;
-            const isSharp = BLACK_KEY_OFFSETS.has(n.midiNumber % 12);
-            const noteLabel = `${CHROMATIC_NAMES[n.midiNumber % 12]}${Math.floor(n.midiNumber / 12) - 1}`;
+
+            // Determinar líneas adicionales necesarias
+            const ledgerLines: number[] = [];
+
+            // Do Central (C4 / C#4 = 175)
+            if (n.midiNumber === 60 || n.midiNumber === 61) {
+              ledgerLines.push(MIDDLE_C_Y);
+            }
+            // Notas por encima de la 5ª línea de Sol (y < 55)
+            else if (cy < 55) {
+              for (let lY = 55 - LINE_SPACING; lY >= cy - 6; lY -= LINE_SPACING) {
+                ledgerLines.push(lY);
+              }
+            }
+            // Notas por debajo de la 1ª línea de Fa (y > 295)
+            else if (cy > 295) {
+              for (let lY = 295 + LINE_SPACING; lY <= cy + 6; lY += LINE_SPACING) {
+                ledgerLines.push(lY);
+              }
+            }
 
             return (
               <g
@@ -521,18 +548,28 @@ export function PianoGrandStaffView({
                   onToggleNote(n.stepIndex, n.midiNumber, n.velocity);
                 }}
               >
-                <title>{`${noteLabel} (MIDI ${n.midiNumber}) - Paso #${n.stepIndex + 1}`}</title>
+                <title>{`${name} (MIDI ${n.midiNumber}) - Paso #${n.stepIndex + 1}`}</title>
 
-                {/* Líneas adicionales dinámicas (C4, sobreagudos > F5 y subgraves < G2) */}
-                {getLedgerLinesForNote(n.midiNumber, cy, cx)}
+                {/* Líneas adicionales si la nota está fuera de las 5 líneas */}
+                {ledgerLines.map((lY, lIdx) => (
+                  <line
+                    key={lIdx}
+                    x1={cx - 16}
+                    y1={lY}
+                    x2={cx + 16}
+                    y2={lY}
+                    stroke="#94a3b8"
+                    strokeWidth="2.5"
+                  />
+                ))}
 
-                {/* Símbolo de sostenido si es tecla negra */}
-                {isSharp && (
+                {/* Accidental si es sostenido (#) */}
+                {isAccidental && (
                   <text
                     x={cx - 18}
                     y={cy + 5}
-                    fill="#fbbf24"
-                    fontSize="14"
+                    fill="#f59e0b"
+                    fontSize="18"
                     fontWeight="bold"
                     fontFamily="serif"
                   >
@@ -540,17 +577,17 @@ export function PianoGrandStaffView({
                   </text>
                 )}
 
-                {/* Plica vertical más gruesa y visible */}
+                {/* Plica vertical */}
                 <line
                   x1={isTreble ? cx + 9 : cx - 9}
                   y1={cy}
                   x2={isTreble ? cx + 9 : cx - 9}
-                  y2={isTreble ? cy - 38 : cy + 38}
+                  y2={isTreble ? cy - 36 : cy + 36}
                   stroke="#f59e0b"
                   strokeWidth="2.5"
                 />
 
-                {/* Cabeza ovalada de la nota ampliada al tamaño real */}
+                {/* Cabeza de la nota */}
                 <ellipse
                   cx={cx}
                   cy={cy}
@@ -562,17 +599,17 @@ export function PianoGrandStaffView({
                   strokeWidth="1.5"
                 />
 
-                {/* Etiqueta de altura de la nota */}
+                {/* Etiqueta de la nota debajo para verificación pedagógica */}
                 <text
                   x={cx}
-                  y={isTreble ? cy + 18 : cy - 12}
+                  y={isTreble ? cy + 18 : cy - 14}
                   textAnchor="middle"
                   fill="#fde68a"
-                  fontSize="9"
-                  fontFamily="ui-monospace, monospace"
+                  fontSize="10"
                   fontWeight="bold"
+                  fontFamily="monospace"
                 >
-                  {noteLabel}
+                  {name}
                 </text>
               </g>
             );
@@ -585,7 +622,7 @@ export function PianoGrandStaffView({
             x1={getXForStep(effectiveCursorStep)}
             y1="45"
             x2={getXForStep(effectiveCursorStep)}
-            y2="335"
+            y2="310"
             stroke="#22d3ee"
             strokeWidth="3"
             filter="drop-shadow(0 0 8px rgba(34, 211, 238, 0.9))"
@@ -664,7 +701,7 @@ export function PianoGrandStaffView({
             })}
           </div>
 
-          {/* Teclas Negras / Sostenidos de la Octava Activa (Opcional rápido) */}
+          {/* Teclas Negras / Sostenidos de la Octava Activa */}
           {selectedOctave < 8 && (
             <div className="w-full flex items-center justify-center gap-1.5 overflow-x-auto no-scrollbar">
               {SHARP_NOTES.map((sharpItem) => {
