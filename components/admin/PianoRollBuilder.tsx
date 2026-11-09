@@ -4,6 +4,7 @@ import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { midiInputService } from '@/lib/audio/midiInputService';
 import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
 import { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
+import { PianoGrandStaffView } from './PianoGrandStaffView';
 import { Radio, Music2, Info, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
 
 export interface PianoNoteStep {
@@ -173,6 +174,8 @@ export interface PianoRollBuilderProps {
   playbackActiveStep?: number;
   measureStartStep?: number;
   timeSignature?: string;
+  editorViewMode?: 'pianoroll' | 'sheet';
+  onViewModeChange?: (mode: 'pianoroll' | 'sheet') => void;
 }
 
 // Rango de 4 octavas útiles: C2 (36) a C6 (84) -> 49 teclas ordenadas de agudo a grave
@@ -192,7 +195,15 @@ export function PianoRollBuilder({
   playbackActiveStep = 0,
   measureStartStep = 0,
   timeSignature = '4/4',
+  editorViewMode: controlledViewMode,
+  onViewModeChange,
 }: PianoRollBuilderProps) {
+  const [internalViewMode, setInternalViewMode] = useState<'pianoroll' | 'sheet'>('pianoroll');
+  const editorViewMode = controlledViewMode ?? internalViewMode;
+  const setEditorViewMode = (mode: 'pianoroll' | 'sheet') => {
+    setInternalViewMode(mode);
+    if (onViewModeChange) onViewModeChange(mode);
+  };
   const [activeMidiDevice, setActiveMidiDevice] = useState<string | null>(null);
   const [activeStepInput, setActiveStepInput] = useState<number>(0);
   const [autoAdvance, setAutoAdvance] = useState<boolean>(true);
@@ -321,9 +332,36 @@ export function PianoRollBuilder({
 
   return (
     <div className="w-full flex flex-col bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl select-none">
-      {/* 1. Barra Superior de Estado MIDI y Asistente de Grabación Paso a Paso */}
+      {/* 1. Barra Superior de Vista, Estado MIDI y Asistente de Grabación Paso a Paso */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-3 sm:px-4 py-2.5 bg-slate-900 border-b border-slate-800 text-xs">
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Conmutador de Modo de Visualización: Piano Roll vs Gran Pentagrama (Sol / Fa) */}
+          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+            <button
+              type="button"
+              onClick={() => setEditorViewMode('pianoroll')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                editorViewMode === 'pianoroll'
+                  ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>🎹 Piano Roll</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setEditorViewMode('sheet')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                editorViewMode === 'sheet'
+                  ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>🎼 Gran Pentagrama (Sol / Fa)</span>
+            </button>
+          </div>
+
           {/* Indicador de Conexión MIDI USB */}
           <div
             className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all ${
@@ -399,11 +437,30 @@ export function PianoRollBuilder({
         </div>
       </div>
 
-      {/* 2. Área del Piano Roll con scroll sincronizado (Horizontal & Vertical) */}
-      <div
-        ref={containerRef}
-        className="w-full max-h-[460px] overflow-y-auto overflow-x-auto flex flex-col no-scrollbar bg-[#0f1117]"
-      >
+      {/* 2. Renderizado Condicional: Piano Roll vs Gran Pentagrama (Clave de Sol y Fa) */}
+      {editorViewMode === 'sheet' ? (
+        <div className="p-3 sm:p-4 bg-[#0a0c12]">
+          <PianoGrandStaffView
+            totalSteps={totalSteps}
+            currentStep={isPlaying ? playbackStepInMeasure : activeStepInput}
+            notes={notes}
+            onToggleNote={(stepIdx, midiNum, vel) => {
+              if (toggleHandler) toggleHandler(stepIdx, midiNum, vel ?? 100);
+            }}
+            activeStepInput={activeStepInput}
+            onSelectStep={setActiveStepInput}
+            activeSubdivision={activeSubdivision}
+            timeSignature={timeSignature}
+            measureStartStep={measureStartStep}
+            isPlaying={isPlaying}
+          />
+        </div>
+      ) : (
+        /* Área del Piano Roll con scroll sincronizado (Horizontal & Vertical) */
+        <div
+          ref={containerRef}
+          className="w-full max-h-[460px] overflow-y-auto overflow-x-auto flex flex-col no-scrollbar bg-[#0f1117]"
+        >
         {/* Cabecera pegajosa con etiquetas rítmicas dinámicas */}
         <div className="flex sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 min-w-max shadow-md">
           {/* Esquina superior izquierda fija */}
@@ -540,6 +597,7 @@ export function PianoRollBuilder({
           })}
         </div>
       </div>
+      )}
     </div>
   );
 }

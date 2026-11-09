@@ -71,11 +71,10 @@ export class PianoAudioEngine {
     this.resume();
     if (!this.ctx || !this.compressor) return;
 
-    const isScheduledTime =
-      timeOffsetOrScheduleTime !== undefined && timeOffsetOrScheduleTime > this.ctx.currentTime;
-    const startTime = isScheduledTime
-      ? timeOffsetOrScheduleTime
-      : this.ctx.currentTime + (timeOffsetOrScheduleTime || 0);
+    const startTime =
+      timeOffsetOrScheduleTime !== undefined
+        ? Math.max(this.ctx.currentTime, timeOffsetOrScheduleTime)
+        : this.ctx.currentTime;
 
     const freq = this.midiToFrequency(midi);
     const vel = Math.max(0.1, Math.min(1.0, velocity));
@@ -151,20 +150,22 @@ export class PianoAudioEngine {
     this.resume();
     if (!this.ctx || !this.metronomeGain) return;
 
+    const startTime = Math.max(this.ctx.currentTime, time);
+
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(isDownbeat ? 1200 : 800, time);
+    osc.frequency.setValueAtTime(isDownbeat ? 1200 : 800, startTime);
 
-    gain.gain.setValueAtTime(isDownbeat ? 0.6 : 0.35, time);
-    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.04);
+    gain.gain.setValueAtTime(isDownbeat ? 0.6 : 0.35, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.04);
 
     osc.connect(gain);
     gain.connect(this.metronomeGain);
 
-    osc.start(time);
-    osc.stop(time + 0.05);
+    osc.start(startTime);
+    osc.stop(startTime + 0.05);
   }
 }
 

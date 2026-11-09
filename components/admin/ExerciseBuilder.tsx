@@ -110,6 +110,7 @@ export const ExerciseBuilder: React.FC = () => {
 
   // Modo Edición de Ejercicio Existente
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
+  const [editorViewMode, setEditorViewMode] = useState<'pianoroll' | 'sheet'>('pianoroll');
 
   // Leer query params si viene derivado desde Ruta Técnica o en Modo Edición
   useEffect(() => {
@@ -1444,6 +1445,8 @@ export const ExerciseBuilder: React.FC = () => {
           playbackActiveStep={playbackActiveStep}
           measureStartStep={activeMeasureStart}
           timeSignature={timeSignature}
+          editorViewMode={editorViewMode}
+          onViewModeChange={setEditorViewMode}
         />
       ) : (
       <div 
