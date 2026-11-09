@@ -4,18 +4,38 @@ import React, { useMemo, useState, useRef } from 'react';
 import { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
 import { getStepLabel } from './PianoRollBuilder';
 
+export type NoteDuration = 'whole' | 'half' | 'quarter' | 'eighth' | 'sixteenth';
+
+export interface StaffItem {
+  id?: string;
+  stepIndex: number;
+  midiNumber?: number; // Opcional si es silencio
+  isRest?: boolean;    // true si es un silencio
+  duration: NoteDuration;
+  velocity?: number;
+}
+
 export interface PianoGrandStaffNote {
   stepIndex?: number;
   step?: number;
   midiNumber?: number;
   velocity?: number;
+  duration?: NoteDuration;
+  durationSteps?: number;
+  isRest?: boolean;
 }
 
 export interface PianoGrandStaffProps {
   totalSteps: number;
   currentStep: number;
   notes: PianoGrandStaffNote[];
-  onToggleNote: (stepIndex: number, midiNumber: number, velocity?: number) => void;
+  onToggleNote: (
+    stepIndex: number,
+    midiNumber: number,
+    velocityOrDuration?: number | NoteDuration,
+    duration?: NoteDuration
+  ) => void;
+  onToggleRest?: (stepIndex: number, duration: NoteDuration) => void;
   activeStepInput: number;
   onSelectStep: (stepIndex: number) => void;
   activeSubdivision?: string;
@@ -23,6 +43,14 @@ export interface PianoGrandStaffProps {
   measureStartStep?: number;
   isPlaying?: boolean;
 }
+
+const DURATIONS: { id: NoteDuration; label: string; beats: number }[] = [
+  { id: 'whole', label: '𝅝 Redonda', beats: 4 },
+  { id: 'half', label: '𝅗𝅥 Blanca', beats: 2 },
+  { id: 'quarter', label: '♩ Negra', beats: 1 },
+  { id: 'eighth', label: '♪ Corchea', beats: 0.5 },
+  { id: 'sixteenth', label: '𝅘𝅥𝅯 Semicorchea', beats: 0.25 },
+];
 
 // Mapeo diatónico natural: C=0, D=1, E=2, F=3, G=4, A=5, B=6
 const SEMITONE_TO_DIATONIC: Record<number, { step: number; isAccidental: boolean; name: string }> = {
@@ -85,6 +113,17 @@ export function getDiatonicInfo(midi: number) {
   };
 }
 
+export function getMidiFromY(svgY: number): number {
+  const clickedDiatonicOffset = Math.round((MIDDLE_C_Y - svgY) / STEP_SPACING);
+  const targetDiatonicIndex = MIDDLE_C_DIATONIC + clickedDiatonicOffset;
+  const targetOctave = Math.floor(targetDiatonicIndex / 7);
+  const targetDiatonicStep = ((targetDiatonicIndex % 7) + 7) % 7;
+  return Math.max(
+    24,
+    Math.min(108, (targetOctave + 1) * 12 + DIATONIC_TO_SEMITONE[targetDiatonicStep])
+  );
+}
+
 const OCTAVES = [
   { num: 1, label: 'C1 - B1 (Subgrave)', baseMidi: 24, clefHint: 'Clave Fa' },
   { num: 2, label: 'C2 - B2 (Bajos Profundos)', baseMidi: 36, clefHint: 'Clave Fa' },
@@ -144,6 +183,7 @@ export function PianoGrandStaffView({
   currentStep,
   notes,
   onToggleNote,
+  onToggleRest,
   activeStepInput,
   onSelectStep,
   activeSubdivision = '1/16',
@@ -153,6 +193,13 @@ export function PianoGrandStaffView({
 }: PianoGrandStaffProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedOctave, setSelectedOctave] = useState<number>(4); // Octava activa (1 a 8)
+  const [selectedDuration, setSelectedDuration] = useState<NoteDuration>('quarter');
+  const [isRestMode, setIsRestMode] = useState<boolean>(false);
+
+  // Almacenamiento local de duraciones por nota y silencios por paso (para compatibilidad total)
+  const [noteDurationMap, setNoteDurationMap] = useState<Record<string, NoteDuration>>({});
+  const [localRestsMap, setLocalRestsMap] = useState<Record<number, NoteDuration>>({});
+
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Dimensiones del lienzo SVG optimizadas para llenar la pantalla
@@ -209,38 +256,85 @@ export function PianoGrandStaffView({
     }
   };
 
-  // Normalizar las notas para asegurar que tengan stepIndex relativo al compás actual (0 .. totalSteps - 1)
-  const normalizedNotes = useMemo(() => {
-    return notes
-      .map((n) => {
-        const localStep =
-          n.stepIndex !== undefined
-            ? n.stepIndex
-            : n.step !== undefined
-            ? n.step - measureStartStep
-            : -1;
-        return {
+  // Normalizar las notas y silencios para asegurar que tengan stepIndex relativo al compás actual (0 .. totalSteps - 1)
+  const normalizedItems = useMemo<StaffItem[]>(() => {
+    const items: StaffItem[] = [];
+
+    notes.forEach((n) => {
+      const localStep =
+        n.stepIndex !== undefined
+          ? n.stepIndex
+          : n.step !== undefined
+          ? n.step - measureStartStep
+          : -1;
+
+      if (localStep < 0 || localStep >= safeTotalSteps) return;
+
+      const globalOrLocalStep = n.step !== undefined ? n.step : measureStartStep + localStep;
+
+      if (n.isRest) {
+        items.push({
           stepIndex: localStep,
-          midiNumber: n.midiNumber ?? 60,
+          isRest: true,
+          duration: n.duration || localRestsMap[globalOrLocalStep] || 'quarter',
+        });
+        return;
+      }
+
+      if (n.midiNumber !== undefined) {
+        const key = `${globalOrLocalStep}-${n.midiNumber}`;
+        const inferredDuration: NoteDuration =
+          n.duration ||
+          noteDurationMap[key] ||
+          (n.durationSteps === 16
+            ? 'whole'
+            : n.durationSteps === 8
+            ? 'half'
+            : n.durationSteps === 2
+            ? 'eighth'
+            : n.durationSteps === 1 && safeTotalSteps === 16
+            ? 'quarter'
+            : 'quarter');
+
+        items.push({
+          stepIndex: localStep,
+          midiNumber: n.midiNumber,
+          isRest: false,
+          duration: inferredDuration,
           velocity: n.velocity ?? 100,
-        };
-      })
-      .filter(
-        (n) =>
-          n.stepIndex >= 0 &&
-          n.stepIndex < safeTotalSteps &&
-          n.midiNumber !== undefined
-      );
-  }, [notes, measureStartStep, safeTotalSteps]);
+        });
+      }
+    });
+
+    // Agregar silencios registrados localmente si el paso no tiene notas en `items`
+    Object.entries(localRestsMap).forEach(([globalStepStr, restDur]) => {
+      const globalStepNum = Number(globalStepStr);
+      const localStep = globalStepNum - measureStartStep;
+      if (
+        localStep >= 0 &&
+        localStep < safeTotalSteps &&
+        !items.some((it) => it.stepIndex === localStep)
+      ) {
+        items.push({
+          stepIndex: localStep,
+          isRest: true,
+          duration: restDur,
+        });
+      }
+    });
+
+    return items;
+  }, [notes, measureStartStep, safeTotalSteps, noteDurationMap, localRestsMap]);
 
   const getXForStep = (stepIdx: number) => leftMargin + (stepIdx + 0.5) * stepWidth;
 
   // Ajustar dinámicamente el viewBox vertical si existen notas en registros extremos (C1, C7, C8)
   const { viewBoxMinY, viewBoxHeight } = useMemo(() => {
-    if (normalizedNotes.length === 0) {
+    const pitchedNotes = normalizedItems.filter((n) => !n.isRest && n.midiNumber !== undefined);
+    if (pitchedNotes.length === 0) {
       return { viewBoxMinY: 0, viewBoxHeight: baseHeight };
     }
-    const ys = normalizedNotes.map((n) => getDiatonicInfo(n.midiNumber).y);
+    const ys = pitchedNotes.map((n) => getDiatonicInfo(n.midiNumber!).y);
     const minNoteY = Math.min(...ys);
     const maxNoteY = Math.max(...ys);
 
@@ -250,62 +344,124 @@ export function PianoGrandStaffView({
       viewBoxMinY: topBound,
       viewBoxHeight: bottomBound - topBound,
     };
-  }, [normalizedNotes]);
+  }, [normalizedItems]);
+
+  const handleToggleRestInternal = (targetStep: number, duration: NoteDuration = selectedDuration) => {
+    const globalStep = measureStartStep + targetStep;
+    setLocalRestsMap((prev) => {
+      const next = { ...prev };
+      if (next[globalStep]) {
+        delete next[globalStep];
+      } else {
+        next[globalStep] = duration;
+      }
+      return next;
+    });
+    if (onToggleRest) {
+      onToggleRest(targetStep, duration);
+    }
+  };
+
+  const handleToggleNoteWithDuration = (
+    targetStep: number,
+    midiNumber: number,
+    duration: NoteDuration = selectedDuration
+  ) => {
+    const globalStep = measureStartStep + targetStep;
+    const key = `${globalStep}-${midiNumber}`;
+
+    // Si había un silencio en este paso, limpiarlo al insertar una nota
+    setLocalRestsMap((prev) => {
+      if (!prev[globalStep]) return prev;
+      const next = { ...prev };
+      delete next[globalStep];
+      return next;
+    });
+
+    setNoteDurationMap((prev) => ({
+      ...prev,
+      [key]: duration,
+    }));
+
+    onToggleNote(targetStep, midiNumber, 100, duration);
+  };
 
   const handleStaffClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
+    const svg = e.currentTarget;
+    let svgX = 0;
+    let svgY = 0;
 
-    const relativeX = (clickX / rect.width) * width;
-    if (relativeX < leftMargin || relativeX > width - rightMargin) return;
+    // Transformación inversa exacta de matriz SVG para evitar desfase por preserveAspectRatio
+    const ctm = svg.getScreenCTM();
+    if (ctm) {
+      const pt = svg.createSVGPoint();
+      pt.x = e.clientX;
+      pt.y = e.clientY;
+      const transformed = pt.matrixTransform(ctm.inverse());
+      svgX = transformed.x;
+      svgY = transformed.y;
+    } else {
+      const rect = svg.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      svgX = (clickX / rect.width) * width;
+      svgY = viewBoxMinY + (clickY / rect.height) * viewBoxHeight;
+    }
 
-    const clickedStep = Math.min(
-      safeTotalSteps - 1,
-      Math.max(0, Math.floor((relativeX - leftMargin) / stepWidth))
-    );
-    onSelectStep(clickedStep);
+    // Si el clic está en la zona de las claves a la izquierda, seleccionar directamente el paso 0 (Tiempo 1)
+    if (svgX < leftMargin - 18) {
+      onSelectStep(0);
+      return;
+    }
+    if (svgX > width - rightMargin) return;
 
-    const relativeY = viewBoxMinY + (clickY / rect.height) * viewBoxHeight;
-    // Calcular el grado diatónico pulsado respecto a C4 (MIDDLE_C_Y = 175)
-    const clickedDiatonicOffset = Math.round((MIDDLE_C_Y - relativeY) / STEP_SPACING);
-    const targetDiatonicIndex = MIDDLE_C_DIATONIC + clickedDiatonicOffset;
-    const targetOctave = Math.floor(targetDiatonicIndex / 7);
-    const targetDiatonicStep = ((targetDiatonicIndex % 7) + 7) % 7;
-    const estimatedMidi = Math.max(
-      24,
-      Math.min(108, (targetOctave + 1) * 12 + DIATONIC_TO_SEMITONE[targetDiatonicStep])
-    );
+    // Cálculo matemático preciso con margen izquierdo (permitiendo pequeño margen hacia la izquierda del Tiempo 1)
+    const relativeX = Math.max(0, svgX - leftMargin);
+    const rawStep = Math.floor(relativeX / stepWidth);
+    const targetStep = Math.min(safeTotalSteps - 1, Math.max(0, rawStep));
 
-    const existingInStep = normalizedNotes
-      .filter((n) => n.stepIndex === clickedStep && n.midiNumber !== estimatedMidi)
-      .map((n) => n.midiNumber);
+    onSelectStep(targetStep);
+
+    if (isRestMode) {
+      handleToggleRestInternal(targetStep, selectedDuration);
+      return;
+    }
+
+    // Deducir MIDI diatónico según Y
+    const estimatedMidi = getMidiFromY(svgY);
+
+    const existingInStep = normalizedItems
+      .filter((n) => !n.isRest && n.stepIndex === targetStep && n.midiNumber !== estimatedMidi)
+      .map((n) => n.midiNumber!);
     const stepNotes = [...existingInStep, estimatedMidi];
-    pianoPreviewSynth.playChord(stepNotes, 1.5, 90);
-    onToggleNote(clickedStep, estimatedMidi, 100);
+    pianoPreviewSynth.playChord(stepNotes, 1.4, 90);
+
+    handleToggleNoteWithDuration(targetStep, estimatedMidi, selectedDuration);
   };
 
   const handleTouchNoteInput = (midiNumber: number) => {
+    if (isRestMode) {
+      handleToggleRestInternal(activeStepInput, selectedDuration);
+      return;
+    }
+
     const clampedMidi = Math.max(24, Math.min(108, midiNumber));
-    const alreadyExists = normalizedNotes.some(
-      (n) => n.stepIndex === activeStepInput && n.midiNumber === clampedMidi
+    const alreadyExists = normalizedItems.some(
+      (n) => !n.isRest && n.stepIndex === activeStepInput && n.midiNumber === clampedMidi
     );
-    const otherNotesInStep = normalizedNotes
-      .filter((n) => n.stepIndex === activeStepInput && n.midiNumber !== clampedMidi)
-      .map((n) => n.midiNumber);
+    const otherNotesInStep = normalizedItems
+      .filter((n) => !n.isRest && n.stepIndex === activeStepInput && n.midiNumber !== clampedMidi)
+      .map((n) => n.midiNumber!);
     const stepNotes = alreadyExists
       ? [clampedMidi]
       : [...otherNotesInStep, clampedMidi];
 
-    pianoPreviewSynth.playChord(stepNotes, 1.5, 90);
-    onToggleNote(activeStepInput, clampedMidi, 100);
+    pianoPreviewSynth.playChord(stepNotes, 1.4, 90);
+    handleToggleNoteWithDuration(activeStepInput, clampedMidi, selectedDuration);
   };
 
   const effectiveCursorStep = useMemo(() => {
     if (isPlaying && currentStep >= 0 && currentStep < safeTotalSteps) {
-      return currentStep;
-    }
-    if (currentStep >= 0 && currentStep < safeTotalSteps) {
       return currentStep;
     }
     return Math.max(0, Math.min(safeTotalSteps - 1, activeStepInput));
@@ -328,7 +484,7 @@ export function PianoGrandStaffView({
       }
     >
       {/* Cabecera del Gran Pentagrama con Botón de Pantalla Completa Horizontal */}
-      <div className="w-full flex flex-wrap items-center justify-between gap-2 text-xs mb-1.5 px-1 shrink-0">
+      <div className="w-full flex flex-wrap items-center justify-between gap-2 text-xs mb-2 px-1 shrink-0">
         <div className="flex items-center gap-2">
           <span className="font-bold text-amber-300 text-[11px] sm:text-xs">
             🎼 Gran Pentagrama (Sol / Fa)
@@ -377,6 +533,44 @@ export function PianoGrandStaffView({
         </div>
       </div>
 
+      {/* Paleta de Duraciones (Redonda, Blanca, Negra, Corchea, Semicorchea) y Modo Silencio */}
+      <div className="w-full flex flex-wrap items-center justify-between gap-2 bg-slate-950 p-2 rounded-xl border border-slate-800 text-xs mb-2 shrink-0">
+        {/* Selector de Figuras */}
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+          <span className="text-[10px] font-bold text-slate-400 mr-1 shrink-0">DURACIÓN:</span>
+          {DURATIONS.map((dur) => (
+            <button
+              key={dur.id}
+              type="button"
+              onClick={() => {
+                setSelectedDuration(dur.id);
+                setIsRestMode(false);
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 whitespace-nowrap ${
+                selectedDuration === dur.id && !isRestMode
+                  ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                  : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+              }`}
+            >
+              <span>{dur.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Conmutador de Silencio */}
+        <button
+          type="button"
+          onClick={() => setIsRestMode(!isRestMode)}
+          className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            isRestMode
+              ? 'bg-rose-500 text-white border-rose-400 font-black shadow-md'
+              : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
+          }`}
+        >
+          <span>𝄽 Modo Silencio: {isRestMode ? 'ON' : 'OFF'}</span>
+        </button>
+      </div>
+
       {/* Lienzo SVG del Gran Pentagrama con Mapeo Diatónico Exacto */}
       <div className="w-full flex-1 min-h-0 flex flex-col items-center justify-center select-none overflow-hidden">
         <svg
@@ -389,16 +583,18 @@ export function PianoGrandStaffView({
           onClick={handleStaffClick}
           preserveAspectRatio="xMidYMid meet"
         >
-          {/* Franja de resaltado de la columna del paso activo de grabación */}
+          {/* Franja de resaltado de la columna del paso activo de grabación (pointer-events-none estricto) */}
           <rect
             x={leftMargin + activeStepInput * stepWidth}
             y="42"
             width={stepWidth}
             height="268"
-            fill="rgba(34, 211, 238, 0.06)"
-            stroke="rgba(34, 211, 238, 0.22)"
+            fill="rgba(34, 211, 238, 0.05)"
+            stroke="rgba(34, 211, 238, 0.18)"
             strokeWidth="1"
             rx="4"
+            className="pointer-events-none"
+            style={{ pointerEvents: 'none' }}
           />
 
           {/* ============================================================ */}
@@ -412,12 +608,14 @@ export function PianoGrandStaffView({
             y2="295"
             stroke="#94a3b8"
             strokeWidth="4.5"
+            className="pointer-events-none"
           />
           <path
             d={`M ${leftMargin - 30} 55 Q ${leftMargin - 45} 175 ${leftMargin - 30} 175 Q ${leftMargin - 45} 175 ${leftMargin - 30} 295`}
             fill="none"
             stroke="#94a3b8"
             strokeWidth="3"
+            className="pointer-events-none"
           />
 
           {/* Líneas de Clave de Sol */}
@@ -430,10 +628,18 @@ export function PianoGrandStaffView({
               y2={y}
               stroke="#475569"
               strokeWidth="2"
+              className="pointer-events-none"
             />
           ))}
           {/* Clave de Sol centrada exactamente con su bucle envolviendo la 2ª línea (G4 = 127) */}
-          <text x="65" y="145" fill="#cbd5e1" fontSize="66" fontFamily="serif">
+          <text
+            x="65"
+            y="145"
+            fill="#cbd5e1"
+            fontSize="66"
+            fontFamily="serif"
+            className="pointer-events-none"
+          >
             𝄞
           </text>
 
@@ -446,6 +652,7 @@ export function PianoGrandStaffView({
             stroke="#334155"
             strokeDasharray="4 6"
             strokeWidth="1.5"
+            className="pointer-events-none"
           />
 
           {/* Líneas de Clave de Fa */}
@@ -458,10 +665,18 @@ export function PianoGrandStaffView({
               y2={y}
               stroke="#475569"
               strokeWidth="2"
+              className="pointer-events-none"
             />
           ))}
           {/* Clave de Fa con sus dos puntos abrazando la 4ª línea (F3 = 223) */}
-          <text x="66" y="246" fill="#cbd5e1" fontSize="50" fontFamily="serif">
+          <text
+            x="66"
+            y="246"
+            fill="#cbd5e1"
+            fontSize="50"
+            fontFamily="serif"
+            className="pointer-events-none"
+          >
             𝄢
           </text>
 
@@ -473,6 +688,7 @@ export function PianoGrandStaffView({
             y2="295"
             stroke="#94a3b8"
             strokeWidth="3"
+            className="pointer-events-none"
           />
           <line
             x1={width - rightMargin}
@@ -481,6 +697,7 @@ export function PianoGrandStaffView({
             y2="295"
             stroke="#94a3b8"
             strokeWidth="3"
+            className="pointer-events-none"
           />
 
           {/* ============================================================ */}
@@ -498,9 +715,9 @@ export function PianoGrandStaffView({
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelectStep(stepIdx);
-                  const stepNotes = normalizedNotes
-                    .filter((n) => n.stepIndex === stepIdx)
-                    .map((n) => n.midiNumber);
+                  const stepNotes = normalizedItems
+                    .filter((n) => !n.isRest && n.stepIndex === stepIdx && n.midiNumber !== undefined)
+                    .map((n) => n.midiNumber!);
                   if (stepNotes.length > 0) {
                     pianoPreviewSynth.playChord(stepNotes, 1.5, 90);
                   }
@@ -530,18 +747,57 @@ export function PianoGrandStaffView({
           })}
 
           {/* ============================================================ */}
-          {/* 3. RENDERIZADO DE CABEZAS DE NOTA, ACCIDENTALES Y LEDGERS    */}
+          {/* 3. RENDERIZADO DE FIGURAS RÍTMICAS, ACCIDENTALES Y SILENCIOS */}
           {/* ============================================================ */}
-          {normalizedNotes.map((n, idx) => {
+          {normalizedItems.map((n, idx) => {
             const cx = getXForStep(n.stepIndex);
-            const { y: cy, isAccidental, name } = getDiatonicInfo(n.midiNumber);
-            const isTreble = n.midiNumber >= 60;
+
+            if (n.isRest) {
+              const restGlyph =
+                n.duration === 'whole'
+                  ? '𝄻'
+                  : n.duration === 'half'
+                  ? '𝄼'
+                  : n.duration === 'quarter'
+                  ? '𝄽'
+                  : n.duration === 'eighth'
+                  ? '𝄾'
+                  : '𝄿';
+
+              return (
+                <g
+                  key={`rest-${n.stepIndex}-${idx}`}
+                  className="cursor-pointer select-none"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectStep(n.stepIndex);
+                    handleToggleRestInternal(n.stepIndex, n.duration);
+                  }}
+                >
+                  <title>{`Silencio (${n.duration}) - Paso #${n.stepIndex + 1}`}</title>
+                  <text
+                    x={cx}
+                    y="175"
+                    textAnchor="middle"
+                    fill="#f43f5e"
+                    fontSize="28"
+                    fontFamily="serif"
+                  >
+                    {restGlyph}
+                  </text>
+                </g>
+              );
+            }
+
+            const midiNum = n.midiNumber ?? 60;
+            const { y: cy, isAccidental, name } = getDiatonicInfo(midiNum);
+            const isTreble = midiNum >= 60;
 
             // Determinar líneas adicionales necesarias
             const ledgerLines: number[] = [];
 
             // Do Central (C4 / C#4 = 175)
-            if (n.midiNumber === 60 || n.midiNumber === 61) {
+            if (midiNum === 60 || midiNum === 61) {
               ledgerLines.push(MIDDLE_C_Y);
             }
             // Notas por encima de la 5ª línea de Sol (y < 55)
@@ -559,16 +815,16 @@ export function PianoGrandStaffView({
 
             return (
               <g
-                key={`${n.stepIndex}-${n.midiNumber}-${idx}`}
+                key={`note-${n.stepIndex}-${midiNum}-${idx}`}
                 className="cursor-pointer"
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelectStep(n.stepIndex);
-                  pianoPreviewSynth.playNote(n.midiNumber, 0.35, 95);
-                  onToggleNote(n.stepIndex, n.midiNumber, n.velocity);
+                  pianoPreviewSynth.playNote(midiNum, 0.8, 95);
+                  handleToggleNoteWithDuration(n.stepIndex, midiNum, n.duration);
                 }}
               >
-                <title>{`${name} (MIDI ${n.midiNumber}) - Paso #${n.stepIndex + 1}`}</title>
+                <title>{`${name} (${n.duration}) - Paso #${n.stepIndex + 1}`}</title>
 
                 {/* Líneas adicionales si la nota está fuera de las 5 líneas */}
                 {ledgerLines.map((lY, lIdx) => (
@@ -597,26 +853,66 @@ export function PianoGrandStaffView({
                   </text>
                 )}
 
-                {/* Plica vertical */}
-                <line
-                  x1={isTreble ? cx + 9 : cx - 9}
-                  y1={cy}
-                  x2={isTreble ? cx + 9 : cx - 9}
-                  y2={isTreble ? cy - 36 : cy + 36}
-                  stroke="#f59e0b"
-                  strokeWidth="2.5"
-                />
+                {/* Plica vertical (excepto redondas) */}
+                {n.duration !== 'whole' && (
+                  <line
+                    x1={isTreble ? cx + 9 : cx - 9}
+                    y1={cy}
+                    x2={isTreble ? cx + 9 : cx - 9}
+                    y2={isTreble ? cy - 36 : cy + 36}
+                    stroke="#f59e0b"
+                    strokeWidth="2.5"
+                  />
+                )}
 
-                {/* Cabeza de la nota */}
+                {/* Corchetes para Corchea (♪) y Semicorchea (𝅘𝅥𝅯) */}
+                {n.duration === 'eighth' && (
+                  <path
+                    d={
+                      isTreble
+                        ? `M ${cx + 9} ${cy - 36} Q ${cx + 18} ${cy - 24} ${cx + 16} ${cy - 16}`
+                        : `M ${cx - 9} ${cy + 36} Q ${cx} ${cy + 24} ${cx - 2} ${cy + 16}`
+                    }
+                    fill="none"
+                    stroke="#f59e0b"
+                    strokeWidth="2.5"
+                  />
+                )}
+                {n.duration === 'sixteenth' && (
+                  <>
+                    <path
+                      d={
+                        isTreble
+                          ? `M ${cx + 9} ${cy - 36} Q ${cx + 18} ${cy - 24} ${cx + 16} ${cy - 16}`
+                          : `M ${cx - 9} ${cy + 36} Q ${cx} ${cy + 24} ${cx - 2} ${cy + 16}`
+                      }
+                      fill="none"
+                      stroke="#f59e0b"
+                      strokeWidth="2.5"
+                    />
+                    <path
+                      d={
+                        isTreble
+                          ? `M ${cx + 9} ${cy - 28} Q ${cx + 18} ${cy - 16} ${cx + 16} ${cy - 8}`
+                          : `M ${cx - 9} ${cy + 28} Q ${cx} ${cy + 16} ${cx - 2} ${cy + 8}`
+                      }
+                      fill="none"
+                      stroke="#f59e0b"
+                      strokeWidth="2.5"
+                    />
+                  </>
+                )}
+
+                {/* Cabeza de la nota (hueca para redondas y blancas; sólida para negras, corcheas y semicorcheas) */}
                 <ellipse
                   cx={cx}
                   cy={cy}
                   rx="10"
                   ry="7.5"
                   transform={`rotate(-20 ${cx} ${cy})`}
-                  fill="#f59e0b"
-                  stroke="#d97706"
-                  strokeWidth="1.5"
+                  fill={['whole', 'half'].includes(n.duration) ? '#0f172a' : '#f59e0b'}
+                  stroke="#f59e0b"
+                  strokeWidth={['whole', 'half'].includes(n.duration) ? '2.5' : '1.5'}
                 />
 
                 {/* Etiqueta de la nota debajo para verificación pedagógica */}
@@ -636,18 +932,34 @@ export function PianoGrandStaffView({
           })}
 
           {/* ============================================================ */}
-          {/* 4. CURSOR ESCÁNER DE PASO ACTIVO / REPRODUCCIÓN             */}
+          {/* 4. CURSOR ESCÁNER NO INVASIVO (pointer-events-none)          */}
           {/* ============================================================ */}
-          <line
-            x1={getXForStep(effectiveCursorStep)}
-            y1="45"
-            x2={getXForStep(effectiveCursorStep)}
-            y2="310"
-            stroke="#22d3ee"
-            strokeWidth="3"
-            filter="drop-shadow(0 0 8px rgba(34, 211, 238, 0.9))"
-            className="pointer-events-none transition-all duration-75 ease-linear"
-          />
+          {isPlaying ? (
+            <line
+              x1={getXForStep(effectiveCursorStep)}
+              y1="45"
+              x2={getXForStep(effectiveCursorStep)}
+              y2="310"
+              stroke="#22d3ee"
+              strokeWidth="2.5"
+              filter="drop-shadow(0 0 8px rgba(34, 211, 238, 0.9))"
+              className="pointer-events-none transition-all duration-75 ease-linear"
+              style={{ pointerEvents: 'none' }}
+            />
+          ) : (
+            <line
+              x1={getXForStep(activeStepInput)}
+              y1="45"
+              x2={getXForStep(activeStepInput)}
+              y2="310"
+              stroke="#38bdf8"
+              strokeWidth="1.5"
+              strokeDasharray="3 3"
+              opacity="0.55"
+              className="pointer-events-none"
+              style={{ pointerEvents: 'none' }}
+            />
+          )}
         </svg>
       </div>
 
@@ -695,8 +1007,9 @@ export function PianoGrandStaffView({
             {NOTE_NAMES.map((noteItem) => {
               const currentMidi = activeOctaveMeta.baseMidi + noteItem.offset;
               if (currentMidi > 108) return null; // C8 es el tope superior del piano de 88 teclas
-              const isNoteActive = normalizedNotes.some(
+              const isNoteActive = normalizedItems.some(
                 (n) =>
+                  !n.isRest &&
                   n.stepIndex === activeStepInput &&
                   n.midiNumber === currentMidi
               );
@@ -726,8 +1039,9 @@ export function PianoGrandStaffView({
             <div className="w-full flex items-center justify-center gap-1.5 overflow-x-auto no-scrollbar">
               {SHARP_NOTES.map((sharpItem) => {
                 const currentMidi = activeOctaveMeta.baseMidi + sharpItem.offset;
-                const isNoteActive = normalizedNotes.some(
+                const isNoteActive = normalizedItems.some(
                   (n) =>
+                    !n.isRest &&
                     n.stepIndex === activeStepInput &&
                     n.midiNumber === currentMidi
                 );

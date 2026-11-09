@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { midiInputService } from '@/lib/audio/midiInputService';
 import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
 import { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
-import { PianoGrandStaffView } from './PianoGrandStaffView';
+import { PianoGrandStaffView, NoteDuration } from './PianoGrandStaffView';
 import { Radio, Music2, Info, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
 
 export interface PianoNoteStep {
@@ -13,6 +13,8 @@ export interface PianoNoteStep {
   midiNumber?: number;
   velocity?: number;
   durationSteps?: number;
+  duration?: NoteDuration;
+  isRest?: boolean;
 }
 
 /**
@@ -167,8 +169,19 @@ export interface PianoRollBuilderProps {
   totalSteps: number; // Pasos en este compás (ej: 4, 8, 12, 16, 20, 24, 28, 32)
   activeSubdivision?: string;
   notes: PianoNoteStep[];
-  onToggleNote?: (stepInMeasure: number, midiNumber: number, velocity?: number) => void;
-  onToggleSingleNote?: (stepInMeasure: number, midiNumber: number, velocity?: number) => void;
+  onToggleNote?: (
+    stepInMeasure: number,
+    midiNumber: number,
+    velocity?: number,
+    duration?: NoteDuration
+  ) => void;
+  onToggleSingleNote?: (
+    stepInMeasure: number,
+    midiNumber: number,
+    velocity?: number,
+    duration?: NoteDuration
+  ) => void;
+  onToggleRest?: (stepInMeasure: number, duration: NoteDuration) => void;
   onAddChordToStep?: (stepInMeasure: number, midiNumbers: number[], velocity?: number) => void;
   isPlaying?: boolean;
   playbackActiveStep?: number;
@@ -190,6 +203,7 @@ export function PianoRollBuilder({
   notes,
   onToggleNote,
   onToggleSingleNote,
+  onToggleRest,
   onAddChordToStep,
   isPlaying = false,
   playbackActiveStep = 0,
@@ -444,9 +458,12 @@ export function PianoRollBuilder({
             totalSteps={totalSteps}
             currentStep={isPlaying ? playbackStepInMeasure : activeStepInput}
             notes={notes}
-            onToggleNote={(stepIdx, midiNum, vel) => {
-              if (toggleHandler) toggleHandler(stepIdx, midiNum, vel ?? 100);
+            onToggleNote={(stepIdx, midiNum, velOrDur, dur) => {
+              const vel = typeof velOrDur === 'number' ? velOrDur : 100;
+              const resolvedDur = typeof velOrDur === 'string' ? velOrDur : dur;
+              if (toggleHandler) toggleHandler(stepIdx, midiNum, vel, resolvedDur);
             }}
+            onToggleRest={onToggleRest}
             activeStepInput={activeStepInput}
             onSelectStep={setActiveStepInput}
             activeSubdivision={activeSubdivision}

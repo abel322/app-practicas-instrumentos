@@ -41,6 +41,7 @@ import {
 import { getStepRhythmLabel } from './TablatureRuler';
 import { AVAILABLE_FRETS } from './NoteSelectorModal';
 import { PianoRollBuilder, getStepLabel } from './PianoRollBuilder';
+import { NoteDuration } from './PianoGrandStaffView';
 import { normalizeSubdivisionKey, getStepsForSubdivision } from '@/lib/music-theory/rhythmSubdivisions';
 import { normalizeInstrumentKey } from '@/lib/music-theory/instrumentUtils';
 
@@ -59,9 +60,11 @@ interface EditorNote {
   drumVoice?: DrumVoice; // Para batería
   accent?: boolean;
   sticking?: StickingType;
-  midiNumber?: number; // Para piano (36 a 84)
+  midiNumber?: number; // Para piano (24 a 108)
   velocity?: number;
   durationSteps?: number;
+  duration?: NoteDuration;
+  isRest?: boolean;
 }
 
 const DRUM_CATEGORIES = ['Rudimentos', 'Grooves', 'Independencia', 'Acentos & Síncopas'];
@@ -210,9 +213,11 @@ export const ExerciseBuilder: React.FC = () => {
               const pNotes = exerciseData.notesData || exerciseData.tabData || exerciseData.data;
               loadedNotes = pNotes.map((p: any) => ({
                 step: p.step !== undefined ? p.step : p.stepIndex !== undefined ? p.stepIndex : 0,
-                midiNumber: p.midiNumber,
+                midiNumber: p.midiNumber ?? 60,
                 velocity: p.velocity ?? 100,
                 durationSteps: p.durationSteps || 1,
+                duration: p.duration || 'quarter',
+                isRest: !!p.isRest,
               }));
             } else if (Array.isArray(exerciseData.tabData || exerciseData.data)) {
               const sNotes = exerciseData.tabData || exerciseData.data;
@@ -485,23 +490,60 @@ export const ExerciseBuilder: React.FC = () => {
   };
 
   const handleTogglePianoNote = useCallback(
-    (stepInMeasure: number, midiNumber: number, velocity: number = 100) => {
+    (
+      stepInMeasure: number,
+      midiNumber: number,
+      velocity: number = 100,
+      duration: NoteDuration = 'quarter'
+    ) => {
       const globalStep = currentMeasure * stepsPerMeasure + stepInMeasure;
+      const durationStepsMap: Record<NoteDuration, number> = {
+        whole: 16,
+        half: 8,
+        quarter: 4,
+        eighth: 2,
+        sixteenth: 1,
+      };
       setNotes((prev) => {
-        const existingIdx = prev.findIndex(
+        const withoutRest = prev.filter((n) => !(n.step === globalStep && n.isRest));
+        const existingIdx = withoutRest.findIndex(
           (n) => n.step === globalStep && n.midiNumber === midiNumber
         );
         if (existingIdx >= 0) {
-          return prev.filter((_, idx) => idx !== existingIdx);
+          return withoutRest.filter((_, idx) => idx !== existingIdx);
         } else {
           const newNote: EditorNote = {
             step: globalStep,
             midiNumber,
             velocity,
-            durationSteps: 1,
+            duration,
+            durationSteps: durationStepsMap[duration] || 1,
+            isRest: false,
           };
-          return [...prev, newNote];
+          return [...withoutRest, newNote];
         }
+      });
+    },
+    [currentMeasure, stepsPerMeasure]
+  );
+
+  const handleTogglePianoRest = useCallback(
+    (stepInMeasure: number, duration: NoteDuration = 'quarter') => {
+      const globalStep = currentMeasure * stepsPerMeasure + stepInMeasure;
+      setNotes((prev) => {
+        const existingRestIdx = prev.findIndex((n) => n.step === globalStep && n.isRest);
+        if (existingRestIdx >= 0) {
+          return prev.filter((_, idx) => idx !== existingRestIdx);
+        }
+        const withoutStepNotes = prev.filter((n) => n.step !== globalStep);
+        return [
+          ...withoutStepNotes,
+          {
+            step: globalStep,
+            isRest: true,
+            duration,
+          },
+        ];
       });
     },
     [currentMeasure, stepsPerMeasure]
@@ -605,7 +647,7 @@ export const ExerciseBuilder: React.FC = () => {
       } else if (instrument === 'piano') {
         const engine = getPianoAudioEngine();
         const stepNotes = notes
-          .filter((n) => n.step === stepNumber && n.midiNumber !== undefined)
+          .filter((n) => n.step === stepNumber && !n.isRest && n.midiNumber !== undefined)
           .map((n) => n.midiNumber!);
 
         if (stepNotes.length > 0) {
@@ -753,9 +795,9 @@ export const ExerciseBuilder: React.FC = () => {
     } else if (instrument === 'piano') {
       const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
       formattedData = notes
-        .filter((n) => n.midiNumber !== undefined)
+        .filter((n) => n.midiNumber !== undefined || n.isRest)
         .map((n) => {
-          const midi = n.midiNumber!;
+          const midi = n.midiNumber ?? 60;
           const noteName = `${NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
           const hand = midi < 60 ? 'left' : 'right';
           return {
@@ -764,6 +806,8 @@ export const ExerciseBuilder: React.FC = () => {
             noteName,
             velocity: n.velocity ?? 100,
             durationSteps: n.durationSteps ?? 1,
+            duration: n.duration ?? 'quarter',
+            isRest: !!n.isRest,
             hand,
             finger: n.finger ? parseInt(n.finger, 10) : undefined,
           };
@@ -1453,6 +1497,7 @@ export const ExerciseBuilder: React.FC = () => {
           notes={notes}
           onToggleNote={handleTogglePianoNote}
           onToggleSingleNote={handleTogglePianoNote}
+          onToggleRest={handleTogglePianoRest}
           onAddChordToStep={handleAddChordToPianoStep}
           isPlaying={isPlaying}
           playbackActiveStep={playbackActiveStep}
