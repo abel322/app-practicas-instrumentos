@@ -1,4 +1,4 @@
-// Motor de Audio Polifónico para Piano / Teclado (Web Audio API)
+// Motor de Audio Polifónico de Piano Acústico para Práctica y Secuenciadores (Web Audio API)
 
 export class PianoAudioEngine {
   private ctx: AudioContext | null = null;
@@ -9,7 +9,8 @@ export class PianoAudioEngine {
   constructor() {}
 
   public init() {
-    if (this.ctx) return;
+    if (typeof window === 'undefined') return;
+    if (this.ctx && this.ctx.state !== 'closed') return;
     const AudioContextClass =
       window.AudioContext ||
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -18,20 +19,20 @@ export class PianoAudioEngine {
 
     this.ctx = new AudioContextClass();
 
-    // Compresor para evitar distorsión en acordes polifónicos y pasajes densos
+    // Compresor de master para evitar saturación en acordes polifónicos de 4 o más notas
     this.compressor = this.ctx.createDynamicsCompressor();
     this.compressor.threshold.setValueAtTime(-12, this.ctx.currentTime);
-    this.compressor.knee.setValueAtTime(10, this.ctx.currentTime);
-    this.compressor.ratio.setValueAtTime(4, this.ctx.currentTime);
-    this.compressor.attack.setValueAtTime(0.002, this.ctx.currentTime);
-    this.compressor.release.setValueAtTime(0.12, this.ctx.currentTime);
+    this.compressor.knee.setValueAtTime(20, this.ctx.currentTime);
+    this.compressor.ratio.setValueAtTime(8, this.ctx.currentTime);
+    this.compressor.attack.setValueAtTime(0.003, this.ctx.currentTime);
+    this.compressor.release.setValueAtTime(0.25, this.ctx.currentTime);
 
     // Master Gain
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.setValueAtTime(0.85, this.ctx.currentTime);
 
-    this.compressor.connect(this.masterGain);
-    this.masterGain.connect(this.ctx.destination);
+    this.masterGain.connect(this.compressor);
+    this.compressor.connect(this.ctx.destination);
 
     // Ganancia independiente de metrónomo
     this.metronomeGain = this.ctx.createGain();
@@ -42,7 +43,7 @@ export class PianoAudioEngine {
   public resume() {
     if (!this.ctx) this.init();
     if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      this.ctx.resume().catch(() => {});
     }
   }
 
@@ -60,87 +61,106 @@ export class PianoAudioEngine {
   }
 
   /**
-   * Dispara una nota polifónica de piano acústico sintetizado
+   * Dispara una nota polifónica con modelado de piano acústico (cuerdas al unísono + martillo de fieltro)
    */
   public triggerNote(
     midi: number,
     timeOffsetOrScheduleTime?: number,
-    durationSec: number = 0.8,
+    durationSec: number = 1.4,
     velocity: number = 0.85
   ) {
     this.resume();
-    if (!this.ctx || !this.compressor) return;
+    if (!this.ctx || !this.masterGain) return;
 
-    const startTime =
+    const now =
       timeOffsetOrScheduleTime !== undefined
         ? Math.max(this.ctx.currentTime, timeOffsetOrScheduleTime)
         : this.ctx.currentTime;
 
     const freq = this.midiToFrequency(midi);
-    const vel = Math.max(0.1, Math.min(1.0, velocity));
+    // Soportar tanto velocidad normalizada (0..1) como MIDI (1..127)
+    const velNormalized =
+      velocity > 1.0
+        ? Math.min(1, Math.max(0.1, velocity / 127))
+        : Math.min(1, Math.max(0.1, velocity));
 
-    // Duración natural dependiente del registro: notas graves resuenan más tiempo
-    const naturalDecay = midi < 48 ? durationSec * 1.6 : midi > 72 ? durationSec * 0.7 : durationSec;
-    const stopTime = startTime + naturalDecay + 0.1;
+    const duration = Math.max(0.4, durationSec);
 
-    // Nodo de ganancia y envolvente ADSR de la nota
-    const noteGain = this.ctx.createGain();
-    noteGain.gain.setValueAtTime(0.0001, startTime);
-    // Ataque rápido de martillo
-    noteGain.gain.linearRampToValueAtTime(0.7 * vel, startTime + 0.003);
-    // Decaimiento exponencial inicial
-    noteGain.gain.exponentialRampToValueAtTime(0.4 * vel, startTime + 0.08);
-    // Caída gradual hacia el silencio
-    noteGain.gain.exponentialRampToValueAtTime(0.0001, startTime + naturalDecay);
+    // 1. Oscilador Principal (Cuerpo fundamental de la cuerda)
+    const osc1 = this.ctx.createOscillator();
+    osc1.type = 'triangle';
+    osc1.frequency.setValueAtTime(freq, now);
 
-    // Filtro Paso-Bajo que simula el apagado progresivo de armónicos en la cuerda de piano
+    // 2. Oscilador Secundario (Armónicos y doble cuerda con leve desafinación / detune)
+    const osc2 = this.ctx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(freq, now);
+    osc2.detune.setValueAtTime(midi < 48 ? 1.5 : 2.5, now);
+
+    // 3. Golpe de Martillo / Transitorio de Ataque
+    const hammer = this.ctx.createOscillator();
+    hammer.type = 'sine';
+    hammer.frequency.setValueAtTime(freq * 2.5, now);
+
+    const hammerGain = this.ctx.createGain();
+    hammerGain.gain.setValueAtTime(0.15 * velNormalized, now);
+    hammerGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.025);
+
+    // 4. Filtro Pasa-Bajas Dinámico (Dureza del fieltro del martillo)
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    const cutoff = Math.min(8000, freq * (3.5 + vel * 2.5));
-    filter.frequency.setValueAtTime(cutoff, startTime);
-    filter.frequency.exponentialRampToValueAtTime(Math.max(180, freq * 1.1), startTime + naturalDecay);
+    const baseCutoff = Math.min(8000, freq * 4 + 800 * velNormalized);
+    filter.frequency.setValueAtTime(baseCutoff, now);
+    filter.frequency.exponentialRampToValueAtTime(
+      Math.max(250, freq * 1.5),
+      now + duration * 0.8
+    );
 
-    // Oscilador 1: Fundamental cálida (onda senoidal con ataque percusivo)
-    const osc1 = this.ctx.createOscillator();
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(freq, startTime);
+    // 5. Envolvente Principal de Amplitud (ADSR acústico)
+    const noteGain = this.ctx.createGain();
+    const peakVolume = 0.35 * velNormalized;
 
-    // Oscilador 2: Armónicos metálicos y cuerpo de madera de piano (onda triangular)
-    const osc2 = this.ctx.createOscillator();
-    osc2.type = 'triangle';
-    osc2.frequency.setValueAtTime(freq * 2, startTime);
-    const osc2Gain = this.ctx.createGain();
-    osc2Gain.gain.setValueAtTime(0.28 * vel, startTime);
-    osc2Gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.25);
+    noteGain.gain.setValueAtTime(0.0001, now);
+    noteGain.gain.linearRampToValueAtTime(peakVolume, now + 0.004);
+    noteGain.gain.exponentialRampToValueAtTime(peakVolume * 0.6, now + 0.15);
+    noteGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
 
-    // Oscilador 3: Golpe percusivo de martillo (hammer click transitorio)
-    const hammerOsc = this.ctx.createOscillator();
-    hammerOsc.type = 'sine';
-    hammerOsc.frequency.setValueAtTime(freq * 4.5, startTime);
-    const hammerGain = this.ctx.createGain();
-    hammerGain.gain.setValueAtTime(0.18 * vel, startTime);
-    hammerGain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.025);
+    // Conexiones de señal
+    hammer.connect(hammerGain);
+    hammerGain.connect(filter);
 
-    // Conexiones de audio
-    osc1.connect(noteGain);
-
-    osc2.connect(osc2Gain);
-    osc2Gain.connect(noteGain);
-
-    hammerOsc.connect(hammerGain);
-    hammerGain.connect(noteGain);
-
-    noteGain.connect(filter);
-    filter.connect(this.compressor);
+    osc1.connect(filter);
+    osc2.connect(filter);
+    filter.connect(noteGain);
+    noteGain.connect(this.masterGain);
 
     // Inicio y parada de osciladores
-    osc1.start(startTime);
-    osc2.start(startTime);
-    hammerOsc.start(startTime);
+    osc1.start(now);
+    osc2.start(now);
+    hammer.start(now);
 
+    const stopTime = now + duration + 0.05;
     osc1.stop(stopTime);
     osc2.stop(stopTime);
-    hammerOsc.stop(startTime + 0.03);
+    hammer.stop(now + 0.03);
+  }
+
+  /**
+   * Reproduce un acorde polifónico simultáneo equilibrando la ganancia
+   */
+  public triggerChord(
+    midiNotes: number[],
+    scheduleTime?: number,
+    durationSec: number = 1.5,
+    velocity: number = 90
+  ) {
+    if (!midiNotes || midiNotes.length === 0) return;
+    const baseVel = velocity <= 1.0 ? velocity * 127 : velocity;
+    const scaledVelocity = Math.max(50, baseVel - midiNotes.length * 4);
+
+    midiNotes.forEach((midi) => {
+      this.triggerNote(midi, scheduleTime, durationSec, scaledVelocity / 127);
+    });
   }
 
   /**
@@ -177,4 +197,3 @@ export function getPianoAudioEngine(): PianoAudioEngine {
   }
   return pianoAudioInstance;
 }
-

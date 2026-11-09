@@ -277,13 +277,27 @@ export function PianoGrandStaffView({
       Math.min(108, (targetOctave + 1) * 12 + DIATONIC_TO_SEMITONE[targetDiatonicStep])
     );
 
-    pianoPreviewSynth.playNote(estimatedMidi, 0.35, 95);
+    const existingInStep = normalizedNotes
+      .filter((n) => n.stepIndex === clickedStep && n.midiNumber !== estimatedMidi)
+      .map((n) => n.midiNumber);
+    const stepNotes = [...existingInStep, estimatedMidi];
+    pianoPreviewSynth.playChord(stepNotes, 1.5, 90);
     onToggleNote(clickedStep, estimatedMidi, 100);
   };
 
   const handleTouchNoteInput = (midiNumber: number) => {
     const clampedMidi = Math.max(24, Math.min(108, midiNumber));
-    pianoPreviewSynth.playNote(clampedMidi, 0.35, 95);
+    const alreadyExists = normalizedNotes.some(
+      (n) => n.stepIndex === activeStepInput && n.midiNumber === clampedMidi
+    );
+    const otherNotesInStep = normalizedNotes
+      .filter((n) => n.stepIndex === activeStepInput && n.midiNumber !== clampedMidi)
+      .map((n) => n.midiNumber);
+    const stepNotes = alreadyExists
+      ? [clampedMidi]
+      : [...otherNotesInStep, clampedMidi];
+
+    pianoPreviewSynth.playChord(stepNotes, 1.5, 90);
     onToggleNote(activeStepInput, clampedMidi, 100);
   };
 
@@ -484,6 +498,12 @@ export function PianoGrandStaffView({
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelectStep(stepIdx);
+                  const stepNotes = normalizedNotes
+                    .filter((n) => n.stepIndex === stepIdx)
+                    .map((n) => n.midiNumber);
+                  if (stepNotes.length > 0) {
+                    pianoPreviewSynth.playChord(stepNotes, 1.5, 90);
+                  }
                 }}
               >
                 <line

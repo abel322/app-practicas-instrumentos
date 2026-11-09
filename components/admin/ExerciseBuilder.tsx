@@ -9,6 +9,7 @@ import { StringTechnique } from '@/types/strings';
 import { getAudioEngine } from '@/lib/drumAudioEngine';
 import { getStringsAudioEngine } from '@/lib/stringsAudioEngine';
 import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
+import { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
 import { saveExerciseAction } from '@/app/actions/save-exercise';
 import { addCustomMasteryLevel } from '@/lib/mastery/customLevelsStorage';
 import { toast } from '@/components/ui/ToastNotification';
@@ -603,11 +604,23 @@ export const ExerciseBuilder: React.FC = () => {
         }
       } else if (instrument === 'piano') {
         const engine = getPianoAudioEngine();
-        const pianoNotes = notes.filter((n) => n.step === stepNumber && n.midiNumber !== undefined);
-        pianoNotes.forEach((n) => {
-          const vel = n.velocity ? n.velocity / 127 : 0.85;
-          engine.triggerNote(n.midiNumber!, time, 0.8, vel);
-        });
+        const stepNotes = notes
+          .filter((n) => n.step === stepNumber && n.midiNumber !== undefined)
+          .map((n) => n.midiNumber!);
+
+        if (stepNotes.length > 0) {
+          const ctx = engine.getAudioContext();
+          const delayMs = ctx ? Math.max(0, (time - ctx.currentTime) * 1000) : 0;
+          if (delayMs <= 15) {
+            pianoPreviewSynth.playChord(stepNotes, 1.5, 90);
+          } else {
+            window.setTimeout(() => {
+              if (isPlayingRef.current) {
+                pianoPreviewSynth.playChord(stepNotes, 1.5, 90);
+              }
+            }, delayMs);
+          }
+        }
         if (isBeatStep(stepNumber)) {
           engine.playMetronome(time, stepNumber % stepsPerMeasure === 0);
         }
