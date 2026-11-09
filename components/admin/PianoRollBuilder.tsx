@@ -228,6 +228,12 @@ export function PianoRollBuilder({
   const chordBufferRef = useRef<Set<number>>(new Set());
   const releaseTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Referencia viva para las notas del compás activo en tiempo de ejecución
+  const activeNotesRef = useRef<PianoNoteStep[]>(notes);
+  useEffect(() => {
+    activeNotesRef.current = notes;
+  }, [notes]);
+
   // Referencias actualizadas para evitar re-suscripciones innecesarias en el stream MIDI
   const activeStepInputRef = useRef(activeStepInput);
   activeStepInputRef.current = activeStepInput;

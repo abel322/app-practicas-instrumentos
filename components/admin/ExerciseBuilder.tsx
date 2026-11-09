@@ -232,6 +232,7 @@ export const ExerciseBuilder: React.FC = () => {
             }
 
             if (loadedNotes.length > 0) {
+              activeNotesRef.current = loadedNotes;
               setNotes(loadedNotes);
               const maxStep = Math.max(...loadedNotes.map((n) => n.step), 0);
               const calculatedMeasures = Math.max(1, Math.ceil((maxStep + 1) / stepsInLoadedMeasure));
@@ -248,7 +249,7 @@ export const ExerciseBuilder: React.FC = () => {
   }, [searchParams]);
 
   // Gestión de Compases (1 a 8 compases)
-  const [totalMeasures, setTotalMeasures] = useState<number>(2);
+  const [totalMeasures, setTotalMeasures] = useState<number>(1);
   const [currentMeasure, setCurrentMeasure] = useState<number>(0);
 
   // Paleta de Articulación y Técnicas seleccionadas para nuevas notas
@@ -268,6 +269,14 @@ export const ExerciseBuilder: React.FC = () => {
     { step: 6, string: 4, fret: 3, technique: 'slap', finger: '1' },
     { step: 8, string: 2, fret: 5, technique: 'pop', finger: '3' },
   ]);
+
+  // Referencia viva para el motor de audio en tiempo de ejecución (Hot-Updating Sequencer)
+  const activeNotesRef = useRef<EditorNote[]>(notes);
+
+  // Actualizar la referencia viva cada vez que cambien las notas
+  useEffect(() => {
+    activeNotesRef.current = notes;
+  }, [notes]);
 
   // Estado de Celda Activa / Modal de Edición Rápida de Traste
   const [activeCell, setActiveCell] = useState<{ step: number; string?: number; voice?: DrumVoice } | null>(null);
@@ -325,7 +334,11 @@ export const ExerciseBuilder: React.FC = () => {
     }));
 
     setTotalMeasures((prev) => prev + 1);
-    setNotes((prev) => [...prev, ...duplicatedNotes]);
+    setNotes((prev) => {
+      const next = [...prev, ...duplicatedNotes];
+      activeNotesRef.current = next;
+      return next;
+    });
     setCurrentMeasure(newMeasureIdx);
   };
 
@@ -345,6 +358,7 @@ export const ExerciseBuilder: React.FC = () => {
         return n;
       });
 
+    activeNotesRef.current = updatedNotes;
     setNotes(updatedNotes);
     setTotalMeasures((prev) => prev - 1);
     if (currentMeasure >= totalMeasures - 1) {
@@ -363,7 +377,11 @@ export const ExerciseBuilder: React.FC = () => {
       const existingIdx = notes.findIndex((n) => n.step === globalStep && n.drumVoice === drumVoice);
       if (existingIdx >= 0) {
         // Eliminar nota existente
-        setNotes((prev) => prev.filter((_, idx) => idx !== existingIdx));
+        setNotes((prev) => {
+          const next = prev.filter((_, idx) => idx !== existingIdx);
+          activeNotesRef.current = next;
+          return next;
+        });
       } else {
         // Agregar nota de batería
         const newNote: EditorNote = {
@@ -372,7 +390,11 @@ export const ExerciseBuilder: React.FC = () => {
           accent: selectedAccent,
           sticking: selectedSticking,
         };
-        setNotes((prev) => [...prev, newNote]);
+        setNotes((prev) => {
+          const next = [...prev, newNote];
+          activeNotesRef.current = next;
+          return next;
+        });
         // Sonido de prueba inmediato
         const engine = getAudioEngine();
         engine.init();
@@ -393,7 +415,11 @@ export const ExerciseBuilder: React.FC = () => {
           technique: selectedTechnique,
           finger: selectedFinger,
         };
-        setNotes((prev) => [...prev, newNote]);
+        setNotes((prev) => {
+          const next = [...prev, newNote];
+          activeNotesRef.current = next;
+          return next;
+        });
         setActiveCell({ step: globalStep, string: stringNum });
 
         // Sonido de prueba inmediato
@@ -414,17 +440,21 @@ export const ExerciseBuilder: React.FC = () => {
   const handleUpdateFret = (globalStep: number, stringNum: number, fret: number) => {
     setNotes((prev) => {
       const filtered = prev.filter((n) => !(n.step === globalStep && n.string === stringNum));
-      if (fret < 0) return filtered; // -1 significa borrar
-      return [
-        ...filtered,
-        {
-          step: globalStep,
-          string: stringNum,
-          fret,
-          technique: selectedTechnique,
-          finger: selectedFinger,
-        },
-      ];
+      const next =
+        fret < 0
+          ? filtered
+          : [
+              ...filtered,
+              {
+                step: globalStep,
+                string: stringNum,
+                fret,
+                technique: selectedTechnique,
+                finger: selectedFinger,
+              },
+            ];
+      activeNotesRef.current = next;
+      return next;
     });
 
     if (fret >= 0) {
@@ -478,16 +508,40 @@ export const ExerciseBuilder: React.FC = () => {
 
 
   const handleClearNote = (globalStep: number, stringNum?: number, drumVoice?: DrumVoice) => {
-    setNotes((prev) =>
-      prev.filter((n) => {
+    setNotes((prev) => {
+      const next = prev.filter((n) => {
         if (instrument === 'drums') {
           return !(n.step === globalStep && n.drumVoice === drumVoice);
         }
         return !(n.step === globalStep && n.string === stringNum);
-      })
-    );
+      });
+      activeNotesRef.current = next;
+      return next;
+    });
     setActiveCell(null);
   };
+
+  // Referencias vivas adicionales para el secuenciador en caliente
+  const instrumentRef = useRef<InstrumentCategory>(instrument);
+  const stepsPerMeasureRef = useRef<number>(stepsPerMeasure);
+  const totalStepsRef = useRef<number>(totalSteps);
+  const totalMeasuresRef = useRef<number>(totalMeasures);
+  const currentMeasureRef = useRef<number>(currentMeasure);
+  const timeSignatureRef = useRef<'4/4' | '6/8' | '7/8'>(timeSignature);
+  const subdivisionRef = useRef<SubdivisionType>(subdivision);
+
+  useEffect(() => {
+    instrumentRef.current = instrument;
+  }, [instrument]);
+
+  useEffect(() => {
+    stepsPerMeasureRef.current = stepsPerMeasure;
+    totalStepsRef.current = totalSteps;
+    totalMeasuresRef.current = totalMeasures;
+    currentMeasureRef.current = currentMeasure;
+    timeSignatureRef.current = timeSignature;
+    subdivisionRef.current = subdivision;
+  }, [stepsPerMeasure, totalSteps, totalMeasures, currentMeasure, timeSignature, subdivision]);
 
   const handleTogglePianoNote = useCallback(
     (
@@ -496,7 +550,7 @@ export const ExerciseBuilder: React.FC = () => {
       velocity: number = 100,
       duration: NoteDuration = 'quarter'
     ) => {
-      const globalStep = currentMeasure * stepsPerMeasure + stepInMeasure;
+      const globalStep = currentMeasureRef.current * stepsPerMeasureRef.current + stepInMeasure;
       const durationStepsMap: Record<NoteDuration, number> = {
         whole: 16,
         half: 8,
@@ -509,49 +563,53 @@ export const ExerciseBuilder: React.FC = () => {
         const existingIdx = withoutRest.findIndex(
           (n) => n.step === globalStep && n.midiNumber === midiNumber
         );
-        if (existingIdx >= 0) {
-          return withoutRest.filter((_, idx) => idx !== existingIdx);
-        } else {
-          const newNote: EditorNote = {
-            step: globalStep,
-            midiNumber,
-            velocity,
-            duration,
-            durationSteps: durationStepsMap[duration] || 1,
-            isRest: false,
-          };
-          return [...withoutRest, newNote];
-        }
+        const next =
+          existingIdx >= 0
+            ? withoutRest.filter((_, idx) => idx !== existingIdx)
+            : [
+                ...withoutRest,
+                {
+                  step: globalStep,
+                  midiNumber,
+                  velocity,
+                  duration,
+                  durationSteps: durationStepsMap[duration] || 1,
+                  isRest: false,
+                },
+              ];
+        activeNotesRef.current = next;
+        return next;
       });
     },
-    [currentMeasure, stepsPerMeasure]
+    []
   );
 
   const handleTogglePianoRest = useCallback(
     (stepInMeasure: number, duration: NoteDuration = 'quarter') => {
-      const globalStep = currentMeasure * stepsPerMeasure + stepInMeasure;
+      const globalStep = currentMeasureRef.current * stepsPerMeasureRef.current + stepInMeasure;
       setNotes((prev) => {
         const existingRestIdx = prev.findIndex((n) => n.step === globalStep && n.isRest);
-        if (existingRestIdx >= 0) {
-          return prev.filter((_, idx) => idx !== existingRestIdx);
-        }
-        const withoutStepNotes = prev.filter((n) => n.step !== globalStep);
-        return [
-          ...withoutStepNotes,
-          {
-            step: globalStep,
-            isRest: true,
-            duration,
-          },
-        ];
+        const next =
+          existingRestIdx >= 0
+            ? prev.filter((_, idx) => idx !== existingRestIdx)
+            : [
+                ...prev.filter((n) => n.step !== globalStep),
+                {
+                  step: globalStep,
+                  isRest: true,
+                  duration,
+                },
+              ];
+        activeNotesRef.current = next;
+        return next;
       });
     },
-    [currentMeasure, stepsPerMeasure]
+    []
   );
 
   const handleAddChordToPianoStep = useCallback(
     (stepInMeasure: number, midiNumbers: number[], velocity: number = 100) => {
-      const globalStep = currentMeasure * stepsPerMeasure + stepInMeasure;
+      const globalStep = currentMeasureRef.current * stepsPerMeasureRef.current + stepInMeasure;
       setNotes((prev) => {
         const filtered = prev.filter(
           (n) => !(n.step === globalStep && midiNumbers.includes(n.midiNumber || -1))
@@ -562,14 +620,16 @@ export const ExerciseBuilder: React.FC = () => {
           velocity,
           durationSteps: 1,
         }));
-        return [...filtered, ...newNotes];
+        const next = [...filtered, ...newNotes];
+        activeNotesRef.current = next;
+        return next;
       });
     },
-    [currentMeasure, stepsPerMeasure]
+    []
   );
 
   // ============================================================================
-  // PREVISUALIZACIÓN DE AUDIO & RUNWAY EN TIEMPO REAL
+  // PREVISUALIZACIÓN DE AUDIO & RUNWAY EN TIEMPO REAL (HOT-UPDATING SEQUENCER)
   // ============================================================================
   const isPlayingRef = useRef(false);
   const nextNoteTimeRef = useRef(0);
@@ -582,36 +642,37 @@ export const ExerciseBuilder: React.FC = () => {
     bpmRef.current = bpm;
   }, [bpm]);
 
-  const isBeatStep = useCallback(
-    (stepNumber: number) => {
-      const stepInMeasure = stepNumber % stepsPerMeasure;
-      if (timeSignature === '6/8') {
-        const stepsPerDottedQuarter = stepsPerMeasure / 2;
-        return stepInMeasure % stepsPerDottedQuarter === 0;
-      }
-      if (timeSignature === '7/8') {
-        return stepInMeasure === 0;
-      }
-      const stepsPerBeat = Math.max(1, Math.round(stepsPerMeasure / 4));
-      return stepInMeasure % stepsPerBeat === 0;
-    },
-    [stepsPerMeasure, timeSignature]
-  );
+  const isBeatStep = useCallback((stepNumber: number) => {
+    const liveStepsPerMeasure = stepsPerMeasureRef.current;
+    const liveTimeSig = timeSignatureRef.current;
+    const stepInMeasure = stepNumber % liveStepsPerMeasure;
+    if (liveTimeSig === '6/8') {
+      const stepsPerDottedQuarter = liveStepsPerMeasure / 2;
+      return stepInMeasure % stepsPerDottedQuarter === 0;
+    }
+    if (liveTimeSig === '7/8') {
+      return stepInMeasure === 0;
+    }
+    const stepsPerBeat = Math.max(1, Math.round(liveStepsPerMeasure / 4));
+    return stepInMeasure % stepsPerBeat === 0;
+  }, []);
 
   const getStepDuration = useCallback(() => {
     const beatDuration = 60 / bpmRef.current;
+    const liveTimeSig = timeSignatureRef.current;
+    const liveSub = subdivisionRef.current;
 
-    if (timeSignature === '6/8') {
-      if (subdivision === '1/8') return beatDuration / 2;
-      if (subdivision === '1/32') return beatDuration / 8;
+    if (liveTimeSig === '6/8') {
+      if (liveSub === '1/8') return beatDuration / 2;
+      if (liveSub === '1/32') return beatDuration / 8;
       return beatDuration / 4;
     }
-    if (timeSignature === '7/8') {
-      if (subdivision === '1/8') return beatDuration / 2;
+    if (liveTimeSig === '7/8') {
+      if (liveSub === '1/8') return beatDuration / 2;
       return beatDuration / 4;
     }
 
-    switch (subdivision) {
+    switch (liveSub) {
       case '1/4':
         return beatDuration;
       case '1/8':
@@ -631,49 +692,69 @@ export const ExerciseBuilder: React.FC = () => {
       default:
         return beatDuration / 4;
     }
-  }, [timeSignature, subdivision]);
+  }, []);
+
+  const playStepAudio = useCallback((stepIdx: number) => {
+    // Obtener las notas en tiempo real sin importar si fueron añadidas durante la reproducción
+    const notesNow = activeNotesRef.current || [];
+
+    // Filtrar notas pertenecientes a este paso rítmico
+    const notesToPlay = notesNow
+      .filter(
+        (n: any) =>
+          (n.step === stepIdx || n.stepIndex === stepIdx) &&
+          !n.isRest &&
+          n.midiNumber !== undefined
+      )
+      .map((n: any) => n.midiNumber as number);
+
+    if (notesToPlay.length > 0) {
+      // Si es un acorde o nota individual, disparar con el sintetizador acústico
+      pianoPreviewSynth.playChord(notesToPlay, 1.2, 90);
+    }
+  }, []);
 
   const scheduleStep = useCallback(
     (stepNumber: number, time: number) => {
-      if (instrument === 'drums') {
+      const liveInstrument = instrumentRef.current;
+      const liveStepsPerMeasure = stepsPerMeasureRef.current;
+      const notesNow = activeNotesRef.current || [];
+
+      if (liveInstrument === 'drums') {
         const engine = getAudioEngine();
-        const hits = notes.filter((n) => n.step === stepNumber && n.drumVoice);
+        const hits = notesNow.filter((n) => n.step === stepNumber && n.drumVoice);
         hits.forEach((h) => {
           engine.trigger(h.drumVoice!, time, 0.85, !!h.accent);
         });
         if (isBeatStep(stepNumber)) {
-          engine.playMetronome(time, stepNumber % stepsPerMeasure === 0);
+          engine.playMetronome(time, stepNumber % liveStepsPerMeasure === 0);
         }
-      } else if (instrument === 'piano') {
+      } else if (liveInstrument === 'piano') {
         const engine = getPianoAudioEngine();
-        const stepNotes = notes
-          .filter((n) => n.step === stepNumber && !n.isRest && n.midiNumber !== undefined)
-          .map((n) => n.midiNumber!);
+        const ctx = engine.getAudioContext();
+        const delayMs = ctx ? Math.max(0, (time - ctx.currentTime) * 1000) : 0;
 
-        if (stepNotes.length > 0) {
-          const ctx = engine.getAudioContext();
-          const delayMs = ctx ? Math.max(0, (time - ctx.currentTime) * 1000) : 0;
-          if (delayMs <= 15) {
-            pianoPreviewSynth.playChord(stepNotes, 1.5, 90);
-          } else {
-            window.setTimeout(() => {
-              if (isPlayingRef.current) {
-                pianoPreviewSynth.playChord(stepNotes, 1.5, 90);
-              }
-            }, delayMs);
-          }
+        if (delayMs <= 15) {
+          playStepAudio(stepNumber);
+        } else {
+          window.setTimeout(() => {
+            if (isPlayingRef.current) {
+              playStepAudio(stepNumber);
+            }
+          }, delayMs);
         }
+
         if (isBeatStep(stepNumber)) {
-          engine.playMetronome(time, stepNumber % stepsPerMeasure === 0);
+          engine.playMetronome(time, stepNumber % liveStepsPerMeasure === 0);
         }
       } else {
         const engine = getStringsAudioEngine();
-        const stringNotes = notes.filter(
+        const stringNotes = notesNow.filter(
           (n) => n.step === stepNumber && n.string !== undefined && n.fret !== undefined
         );
         stringNotes.forEach((n) => {
           engine.triggerNote(
-            instrument === 'bass' ? 'bass_4' : 'guitar_6',
+            liveInstrument === 'bass' ? 'bass_4' : 'guitar_6',
             n.string!,
             n.fret!,
             time,
@@ -682,18 +763,21 @@ export const ExerciseBuilder: React.FC = () => {
           );
         });
         if (isBeatStep(stepNumber)) {
-          engine.playMetronome(time, stepNumber % stepsPerMeasure === 0);
+          engine.playMetronome(time, stepNumber % liveStepsPerMeasure === 0);
         }
       }
     },
-    [instrument, notes, isBeatStep, stepsPerMeasure]
+    [isBeatStep, playStepAudio]
   );
 
   const schedulerLoop = useCallback(() => {
+    const liveInstrument = instrumentRef.current;
+    const liveTotalSteps = Math.max(1, totalStepsRef.current);
+
     const audioCtx =
-      instrument === 'drums'
+      liveInstrument === 'drums'
         ? getAudioEngine().getAudioContext()
-        : instrument === 'piano'
+        : liveInstrument === 'piano'
         ? getPianoAudioEngine().getAudioContext()
         : getStringsAudioEngine().getAudioContext();
 
@@ -704,7 +788,7 @@ export const ExerciseBuilder: React.FC = () => {
 
       nextNoteTimeRef.current += getStepDuration();
       playStepRef.current += 1;
-      if (playStepRef.current >= totalSteps) {
+      if (playStepRef.current >= liveTotalSteps) {
         playStepRef.current = 0;
       }
     }
@@ -712,20 +796,26 @@ export const ExerciseBuilder: React.FC = () => {
     if (isPlayingRef.current) {
       timerIdRef.current = window.setTimeout(schedulerLoop, 25);
     }
-  }, [getStepDuration, instrument, scheduleStep, totalSteps]);
+  }, [getStepDuration, scheduleStep]);
 
   const updateVisualProgress = useCallback(() => {
     if (!isPlayingRef.current) return;
     setPlaybackActiveStep(playStepRef.current);
 
-    // Si el paso de reproducción está en otro compás, alternar visualmente el compás actual
-    const currentPlayingMeasure = Math.floor(playStepRef.current / stepsPerMeasure);
-    if (currentPlayingMeasure !== currentMeasure && currentPlayingMeasure < totalMeasures) {
+    const liveStepsPerMeasure = Math.max(1, stepsPerMeasureRef.current);
+    const liveTotalMeasures = Math.max(1, totalMeasuresRef.current);
+    const currentPlayingMeasure = Math.floor(playStepRef.current / liveStepsPerMeasure);
+
+    if (
+      currentPlayingMeasure !== currentMeasureRef.current &&
+      currentPlayingMeasure < liveTotalMeasures
+    ) {
+      currentMeasureRef.current = currentPlayingMeasure;
       setCurrentMeasure(currentPlayingMeasure);
     }
 
     rafIdRef.current = requestAnimationFrame(updateVisualProgress);
-  }, [currentMeasure, stepsPerMeasure, totalMeasures]);
+  }, []);
 
   const handleTogglePlay = () => {
     if (isPlaying) {
@@ -736,6 +826,10 @@ export const ExerciseBuilder: React.FC = () => {
     } else {
       setIsPlaying(true);
       isPlayingRef.current = true;
+
+      if (instrument === 'piano') {
+        pianoPreviewSynth.getAudioContext();
+      }
 
       const engine =
         instrument === 'drums'
@@ -1032,7 +1126,7 @@ export const ExerciseBuilder: React.FC = () => {
                 setInstrument('piano');
                 handleStop();
                 if (!notes.some((n) => n.midiNumber !== undefined)) {
-                  setNotes([
+                  const presetPianoNotes: EditorNote[] = [
                     { step: 0, midiNumber: 48, velocity: 90 }, // C3
                     { step: 0, midiNumber: 55, velocity: 85 }, // G3
                     { step: 0, midiNumber: 60, velocity: 95 }, // C4
@@ -1040,7 +1134,9 @@ export const ExerciseBuilder: React.FC = () => {
                     { step: 4, midiNumber: 67, velocity: 90 }, // G4
                     { step: 8, midiNumber: 71, velocity: 95 }, // B4
                     { step: 12, midiNumber: 72, velocity: 100 }, // C5
-                  ]);
+                  ];
+                  activeNotesRef.current = presetPianoNotes;
+                  setNotes(presetPianoNotes);
                 }
               }}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
@@ -1410,7 +1506,11 @@ export const ExerciseBuilder: React.FC = () => {
                 onClick={() => {
                   const sourceStart = currentMeasure * stepsPerMeasure;
                   const sourceEnd = sourceStart + stepsPerMeasure;
-                  setNotes((prev) => prev.filter((n) => n.step < sourceStart || n.step >= sourceEnd));
+                  setNotes((prev) => {
+                    const next = prev.filter((n) => n.step < sourceStart || n.step >= sourceEnd);
+                    activeNotesRef.current = next;
+                    return next;
+                  });
                 }}
                 className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-rose-500/10 border border-white/10 hover:border-rose-500/30 text-zinc-400 hover:text-rose-300 text-[11px] font-medium transition-colors"
                 title="Limpiar todas las notas de este compás"

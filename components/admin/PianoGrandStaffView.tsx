@@ -430,11 +430,15 @@ export function PianoGrandStaffView({
     // Deducir MIDI diatónico según Y
     const estimatedMidi = getMidiFromY(svgY);
 
+    // Pre-escucha instantánea al hacer clic en el pentagrama
+    pianoPreviewSynth.playNote(estimatedMidi, 0.9, 95);
+
     const existingInStep = normalizedItems
       .filter((n) => !n.isRest && n.stepIndex === targetStep && n.midiNumber !== estimatedMidi)
       .map((n) => n.midiNumber!);
-    const stepNotes = [...existingInStep, estimatedMidi];
-    pianoPreviewSynth.playChord(stepNotes, 1.4, 90);
+    if (existingInStep.length > 0) {
+      pianoPreviewSynth.playChord(existingInStep, 1.1, 80);
+    }
 
     handleToggleNoteWithDuration(targetStep, estimatedMidi, selectedDuration);
   };
@@ -446,17 +450,19 @@ export function PianoGrandStaffView({
     }
 
     const clampedMidi = Math.max(24, Math.min(108, midiNumber));
+    // Pre-escucha instantánea al pulsar la tecla en el asistente
+    pianoPreviewSynth.playNote(clampedMidi, 0.9, 95);
+
     const alreadyExists = normalizedItems.some(
       (n) => !n.isRest && n.stepIndex === activeStepInput && n.midiNumber === clampedMidi
     );
     const otherNotesInStep = normalizedItems
       .filter((n) => !n.isRest && n.stepIndex === activeStepInput && n.midiNumber !== clampedMidi)
       .map((n) => n.midiNumber!);
-    const stepNotes = alreadyExists
-      ? [clampedMidi]
-      : [...otherNotesInStep, clampedMidi];
+    if (!alreadyExists && otherNotesInStep.length > 0) {
+      pianoPreviewSynth.playChord(otherNotesInStep, 1.1, 80);
+    }
 
-    pianoPreviewSynth.playChord(stepNotes, 1.4, 90);
     handleToggleNoteWithDuration(activeStepInput, clampedMidi, selectedDuration);
   };
 
