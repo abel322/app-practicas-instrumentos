@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { StringExerciseData, StringTabNote } from '@/types/strings';
 import { getStringsAudioEngine } from '@/lib/stringsAudioEngine';
+import { bassPreviewSynth, getBassMidiFromString, BassTechnique } from '@/lib/audio/bassPreviewSynth';
 import { getSubdivisionConfig } from '@/lib/music-theory/rhythmSubdivisions';
 import { TablatureRunway } from './TablatureRunway';
 import { StringsLegend } from './StringsLegend';
@@ -112,14 +113,46 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
       // 1. Disparar notas en este paso
       const notes = notesByStep.current.get(stepNumber) || [];
       notes.forEach((note) => {
-        engine.triggerNote(
-          exercise.instrument,
-          note.string,
-          note.fret,
-          time,
-          note.technique || 'normal',
-          note.velocity ?? 0.8
-        );
+        if (exercise.instrument === 'bass_4') {
+          const ctx = engine.getAudioContext();
+          const delayMs = ctx ? Math.max(0, (time - ctx.currentTime) * 1000) : 0;
+          const calculatedMidi = getBassMidiFromString(note.string, note.fret || 0);
+          const tech: BassTechnique = (note.technique as BassTechnique) || 'normal';
+          const vel =
+            tech === 'pop' || tech === 'slap'
+              ? 120
+              : Math.round((note.velocity ?? 0.8) * 115);
+          const dur = (60 / bpmRef.current) * 0.8;
+
+          if (delayMs <= 15) {
+            bassPreviewSynth.playNote({
+              midi: calculatedMidi,
+              technique: tech,
+              duration: dur,
+              velocity: vel,
+            });
+          } else {
+            window.setTimeout(() => {
+              if (isPlayingRef.current) {
+                bassPreviewSynth.playNote({
+                  midi: calculatedMidi,
+                  technique: tech,
+                  duration: dur,
+                  velocity: vel,
+                });
+              }
+            }, delayMs);
+          }
+        } else {
+          engine.triggerNote(
+            exercise.instrument,
+            note.string,
+            note.fret,
+            time,
+            note.technique || 'normal',
+            note.velocity ?? 0.8
+          );
+        }
       });
 
       // 2. Metrónomo en tiempos fuertes según subdivisión

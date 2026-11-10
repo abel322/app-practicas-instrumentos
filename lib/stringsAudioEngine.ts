@@ -1,4 +1,5 @@
 import { StringInstrument, StringTechnique } from '@/types/strings';
+import { bassPreviewSynth, getBassMidiFromString, BassTechnique } from '@/lib/audio/bassPreviewSynth';
 
 // Frecuencias base de cuerdas al aire (Standard Tuning)
 // Cuerda 1 = más aguda, Cuerda 4/6 = más grave
@@ -89,14 +90,41 @@ export class StringsAudioEngine {
     if (!this.ctx) this.init();
     if (!this.ctx || !this.masterGain) return;
 
+    const isBass = instrument === 'bass_4';
+
+    if (isBass) {
+      const delayMs = time !== undefined ? Math.max(0, (time - this.ctx.currentTime) * 1000) : 0;
+      const calculatedMidi = getBassMidiFromString(stringNum, fret);
+      const tech: BassTechnique = (technique as BassTechnique) || 'normal';
+      const vel = tech === 'pop' || tech === 'slap' ? 120 : Math.round(velocity * 115);
+
+      if (delayMs <= 15) {
+        bassPreviewSynth.playNote({
+          midi: calculatedMidi,
+          technique: tech,
+          duration: 0.75,
+          velocity: vel,
+        });
+      } else {
+        window.setTimeout(() => {
+          bassPreviewSynth.playNote({
+            midi: calculatedMidi,
+            technique: tech,
+            duration: 0.75,
+            velocity: vel,
+          });
+        }, delayMs);
+      }
+      return;
+    }
+
     const playTime = time ?? this.ctx.currentTime;
     const freq = this.getNoteFrequency(instrument, stringNum, fret);
 
     // Ajuste de duración y filtro según técnica e instrumento
-    const isBass = instrument === 'bass_4';
-    let duration = isBass ? 0.65 : 0.5;
-    let initialFilterCutoff = isBass ? 1800 : 3500;
-    let gainLevel = velocity * (isBass ? 0.9 : 0.75);
+    let duration = 0.5;
+    let initialFilterCutoff = 3500;
+    let gainLevel = velocity * 0.75;
 
     if (technique === 'ghost') {
       duration = 0.08;

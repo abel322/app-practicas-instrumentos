@@ -10,6 +10,7 @@ import { getAudioEngine } from '@/lib/drumAudioEngine';
 import { getStringsAudioEngine } from '@/lib/stringsAudioEngine';
 import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
 import { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
+import { bassPreviewSynth, getBassMidiFromString, BassTechnique } from '@/lib/audio/bassPreviewSynth';
 import { saveExerciseAction } from '@/app/actions/save-exercise';
 import { addCustomMasteryLevel } from '@/lib/mastery/customLevelsStorage';
 import { toast } from '@/components/ui/ToastNotification';
@@ -404,8 +405,43 @@ export const ExerciseBuilder: React.FC = () => {
       // Para cuerdas:
       const existingIdx = notes.findIndex((n) => n.step === globalStep && n.string === stringNum);
       if (existingIdx >= 0) {
-        // Si ya existe nota, abrir selector o remover si es el mismo traste
+        const existingNote = notes[existingIdx];
+        const targetFret = existingNote.fret ?? selectedFret;
+        // Actualizar técnica/dedo si el usuario seleccionó otra articulación activa
+        if (existingNote.technique !== selectedTechnique || existingNote.finger !== selectedFinger) {
+          setNotes((prev) => {
+            const next = prev.map((n, idx) =>
+              idx === existingIdx
+                ? { ...n, technique: selectedTechnique, finger: selectedFinger }
+                : n
+            );
+            activeNotesRef.current = next;
+            return next;
+          });
+        }
         setActiveCell({ step: globalStep, string: stringNum });
+
+        // Pre-escucha inmediata con la técnica activa
+        if (instrument === 'bass') {
+          const calculatedMidi = getBassMidiFromString(stringNum!, targetFret);
+          bassPreviewSynth.playNote({
+            midi: calculatedMidi,
+            technique: (selectedTechnique as BassTechnique) || 'normal',
+            duration: (60 / bpmRef.current) * 0.8,
+            velocity: selectedTechnique === 'pop' || selectedTechnique === 'slap' ? 120 : 95,
+          });
+        } else {
+          const engine = getStringsAudioEngine();
+          engine.init();
+          engine.triggerNote(
+            'guitar_6',
+            stringNum!,
+            targetFret,
+            undefined,
+            selectedTechnique === 'pm' ? 'normal' : selectedTechnique,
+            0.85
+          );
+        }
       } else {
         // Agregar nota con el traste y técnica activos
         const newNote: EditorNote = {
@@ -422,17 +458,27 @@ export const ExerciseBuilder: React.FC = () => {
         });
         setActiveCell({ step: globalStep, string: stringNum });
 
-        // Sonido de prueba inmediato
-        const engine = getStringsAudioEngine();
-        engine.init();
-        engine.triggerNote(
-          instrument === 'bass' ? 'bass_4' : 'guitar_6',
-          stringNum!,
-          selectedFret,
-          undefined,
-          selectedTechnique === 'pm' ? 'normal' : selectedTechnique,
-          0.85
-        );
+        // Sonido de prueba inmediato con motor articulado
+        if (instrument === 'bass') {
+          const calculatedMidi = getBassMidiFromString(stringNum!, selectedFret);
+          bassPreviewSynth.playNote({
+            midi: calculatedMidi,
+            technique: (selectedTechnique as BassTechnique) || 'normal',
+            duration: (60 / bpmRef.current) * 0.8,
+            velocity: selectedTechnique === 'pop' || selectedTechnique === 'slap' ? 120 : 95,
+          });
+        } else {
+          const engine = getStringsAudioEngine();
+          engine.init();
+          engine.triggerNote(
+            'guitar_6',
+            stringNum!,
+            selectedFret,
+            undefined,
+            selectedTechnique === 'pm' ? 'normal' : selectedTechnique,
+            0.85
+          );
+        }
       }
     }
   };
@@ -458,16 +504,26 @@ export const ExerciseBuilder: React.FC = () => {
     });
 
     if (fret >= 0) {
-      const engine = getStringsAudioEngine();
-      engine.init();
-      engine.triggerNote(
-        instrument === 'bass' ? 'bass_4' : 'guitar_6',
-        stringNum,
-        fret,
-        undefined,
-        selectedTechnique === 'pm' ? 'normal' : selectedTechnique,
-        0.85
-      );
+      if (instrument === 'bass') {
+        const calculatedMidi = getBassMidiFromString(stringNum, fret);
+        bassPreviewSynth.playNote({
+          midi: calculatedMidi,
+          technique: (selectedTechnique as BassTechnique) || 'normal',
+          duration: (60 / bpmRef.current) * 0.8,
+          velocity: selectedTechnique === 'pop' || selectedTechnique === 'slap' ? 120 : 95,
+        });
+      } else {
+        const engine = getStringsAudioEngine();
+        engine.init();
+        engine.triggerNote(
+          'guitar_6',
+          stringNum,
+          fret,
+          undefined,
+          selectedTechnique === 'pm' ? 'normal' : selectedTechnique,
+          0.85
+        );
+      }
     }
   };
 
@@ -714,6 +770,41 @@ export const ExerciseBuilder: React.FC = () => {
     }
   }, []);
 
+  const playBassStep = useCallback((stepIndex: number) => {
+    const currentStepNotes =
+      activeNotesRef.current?.filter(
+        (n: any) =>
+          (n.step === stepIndex || n.stepIndex === stepIndex) &&
+          (n.string !== undefined || n.stringIndex !== undefined) &&
+          n.fret !== undefined
+      ) || [];
+
+    currentStepNotes.forEach((note: any) => {
+      // Convertir cuerda y traste a número MIDI (para bajo estándar de 4 cuerdas: E1, A1, D2, G2)
+      const baseMidiByString: Record<number, number> = {
+        0: 43, // 1ª cuerda: G2 (0-indexed)
+        1: 43, // 1ª cuerda: G2 (1-indexed)
+        2: 38, // 2ª cuerda: D2
+        3: 33, // 3ª cuerda: A1
+        4: 28, // 4ª cuerda: E1
+      };
+
+      const isZeroIndexed = note.string === undefined && note.stringIndex !== undefined;
+      const stringBase = isZeroIndexed
+        ? getBassMidiFromString(note.stringIndex, 0, true)
+        : baseMidiByString[note.string] ?? 28;
+      const calculatedMidi = stringBase + (note.fret || 0);
+      const tech: BassTechnique = (note.technique as BassTechnique) || 'normal';
+
+      bassPreviewSynth.playNote({
+        midi: calculatedMidi,
+        technique: tech,
+        duration: (60 / bpmRef.current) * 0.8,
+        velocity: tech === 'pop' || tech === 'slap' ? 120 : 95,
+      });
+    });
+  }, []);
+
   const scheduleStep = useCallback(
     (stepNumber: number, time: number) => {
       const liveInstrument = instrumentRef.current;
@@ -747,6 +838,24 @@ export const ExerciseBuilder: React.FC = () => {
         if (isBeatStep(stepNumber)) {
           engine.playMetronome(time, stepNumber % liveStepsPerMeasure === 0);
         }
+      } else if (liveInstrument === 'bass') {
+        const engine = getStringsAudioEngine();
+        const ctx = engine.getAudioContext();
+        const delayMs = ctx ? Math.max(0, (time - ctx.currentTime) * 1000) : 0;
+
+        if (delayMs <= 15) {
+          playBassStep(stepNumber);
+        } else {
+          window.setTimeout(() => {
+            if (isPlayingRef.current) {
+              playBassStep(stepNumber);
+            }
+          }, delayMs);
+        }
+
+        if (isBeatStep(stepNumber)) {
+          engine.playMetronome(time, stepNumber % liveStepsPerMeasure === 0);
+        }
       } else {
         const engine = getStringsAudioEngine();
         const stringNotes = notesNow.filter(
@@ -754,7 +863,7 @@ export const ExerciseBuilder: React.FC = () => {
         );
         stringNotes.forEach((n) => {
           engine.triggerNote(
-            liveInstrument === 'bass' ? 'bass_4' : 'guitar_6',
+            'guitar_6',
             n.string!,
             n.fret!,
             time,
@@ -767,7 +876,7 @@ export const ExerciseBuilder: React.FC = () => {
         }
       }
     },
-    [isBeatStep, playStepAudio]
+    [isBeatStep, playBassStep, playStepAudio]
   );
 
   const schedulerLoop = useCallback(() => {
@@ -829,6 +938,8 @@ export const ExerciseBuilder: React.FC = () => {
 
       if (instrument === 'piano') {
         pianoPreviewSynth.getAudioContext();
+      } else if (instrument === 'bass') {
+        bassPreviewSynth.getAudioContext();
       }
 
       const engine =
@@ -1538,7 +1649,42 @@ export const ExerciseBuilder: React.FC = () => {
               return (
                 <button
                   key={tech.id}
-                  onClick={() => setSelectedTechnique(tech.id as any)}
+                  onClick={() => {
+                    const newTech = tech.id as StringTechnique;
+                    setSelectedTechnique(newTech);
+
+                    let previewString = 4;
+                    let previewFret = selectedFret;
+
+                    if (activeCell && activeCell.string !== undefined) {
+                      previewString = activeCell.string;
+                      const activeNote = notes.find(
+                        (n) => n.step === activeCell.step && n.string === activeCell.string
+                      );
+                      if (activeNote) {
+                        previewFret = activeNote.fret ?? selectedFret;
+                        setNotes((prev) => {
+                          const next = prev.map((n) =>
+                            n.step === activeCell.step && n.string === activeCell.string
+                              ? { ...n, technique: newTech }
+                              : n
+                          );
+                          activeNotesRef.current = next;
+                          return next;
+                        });
+                      }
+                    }
+
+                    if (instrument === 'bass') {
+                      const calculatedMidi = getBassMidiFromString(previewString, previewFret);
+                      bassPreviewSynth.playNote({
+                        midi: calculatedMidi,
+                        technique: newTech as BassTechnique,
+                        duration: (60 / bpmRef.current) * 0.8,
+                        velocity: newTech === 'pop' || newTech === 'slap' ? 120 : 95,
+                      });
+                    }
+                  }}
                   className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 border transition-all ${
                     isSelected
                       ? 'bg-cyan-500 text-zinc-950 font-bold border-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.3)]'
