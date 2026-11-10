@@ -1,4 +1,4 @@
-// Motor de articulación para bajo eléctrico usando Web Audio API pura
+// Motor de Modelado Acústico y Articulaciones de Bajo Eléctrico (Web Audio API)
 
 export type BassTechnique =
   | 'normal'
@@ -17,12 +17,11 @@ export interface BassNoteEvent {
   duration?: number;
   velocity?: number;
   technique?: BassTechnique;
-  targetMidi?: number; // Para slides de traste
-  scheduleTime?: number; // Tiempo opcional de programación en AudioContext
+  targetMidi?: number;
+  scheduleTime?: number;
 }
 
-// Mapa MIDI para bajo estándar de 4 cuerdas:
-// Soporta numeración 1..4 (1=G2, 2=D2, 3=A1, 4=E1) y 0..3 (0=G2, 1=D2, 2=A1, 3=E1)
+// Conversión de cuerda y traste a MIDI para bajo de 4 cuerdas (E1=28, A1=33, D2=38, G2=43)
 export function getBassMidiFromString(
   stringNumOrIndex: number,
   fret: number = 0,
@@ -48,10 +47,10 @@ export function getBassMidiFromString(
   return baseMidi + Math.max(0, fret);
 }
 
-class BassArticulatedSynth {
+class RealisticBassSynth {
   private ctx: AudioContext | null = null;
+  private cabinetInput: GainNode | null = null;
   private masterGain: GainNode | null = null;
-  private compressor: DynamicsCompressorNode | null = null;
 
   private init() {
     if (typeof window === 'undefined') return;
@@ -60,19 +59,61 @@ class BassArticulatedSynth {
       if (!AudioCtx) return;
       this.ctx = new AudioCtx();
 
-      // Compresor de bus master para pegada y control de picos en Slap/Pop
-      this.compressor = this.ctx.createDynamicsCompressor();
-      this.compressor.threshold.setValueAtTime(-14, this.ctx.currentTime);
-      this.compressor.knee.setValueAtTime(15, this.ctx.currentTime);
-      this.compressor.ratio.setValueAtTime(6, this.ctx.currentTime);
-      this.compressor.attack.setValueAtTime(0.002, this.ctx.currentTime);
-      this.compressor.release.setValueAtTime(0.18, this.ctx.currentTime);
+      // 1. Entrada al bus de cabina
+      this.cabinetInput = this.ctx.createGain();
+      this.cabinetInput.gain.setValueAtTime(1.0, this.ctx.currentTime);
 
+      // 2. Preamp: Saturación cálida a bulbos (WaveShaper)
+      const saturator = this.ctx.createWaveShaper();
+      saturator.curve = this.createSaturationCurve(1024);
+      saturator.oversample = '2x';
+
+      // 3. Simulación de Pantalla 4x10" (EQ de Altavoz de Bajo)
+      const bassPunch = this.ctx.createBiquadFilter();
+      bassPunch.type = 'lowshelf';
+      bassPunch.frequency.setValueAtTime(90, this.ctx.currentTime);
+      bassPunch.gain.setValueAtTime(3.5, this.ctx.currentTime);
+
+      const midScoop = this.ctx.createBiquadFilter();
+      midScoop.type = 'peaking';
+      midScoop.frequency.setValueAtTime(450, this.ctx.currentTime);
+      midScoop.gain.setValueAtTime(-2.5, this.ctx.currentTime);
+      midScoop.Q.setValueAtTime(1.2, this.ctx.currentTime);
+
+      const attackBite = this.ctx.createBiquadFilter();
+      attackBite.type = 'peaking';
+      attackBite.frequency.setValueAtTime(2400, this.ctx.currentTime);
+      attackBite.gain.setValueAtTime(3.0, this.ctx.currentTime);
+      attackBite.Q.setValueAtTime(1.8, this.ctx.currentTime);
+
+      // Corte superior de cono de bajo (elimina el zumbido de sintetizador)
+      const cabLowpass = this.ctx.createBiquadFilter();
+      cabLowpass.type = 'lowpass';
+      cabLowpass.frequency.setValueAtTime(4200, this.ctx.currentTime);
+      cabLowpass.Q.setValueAtTime(0.7, this.ctx.currentTime);
+
+      // 4. Compresor de estudio para bajo
+      const compressor = this.ctx.createDynamicsCompressor();
+      compressor.threshold.setValueAtTime(-14, this.ctx.currentTime);
+      compressor.knee.setValueAtTime(12, this.ctx.currentTime);
+      compressor.ratio.setValueAtTime(5, this.ctx.currentTime);
+      compressor.attack.setValueAtTime(0.003, this.ctx.currentTime);
+      compressor.release.setValueAtTime(0.18, this.ctx.currentTime);
+
+      // 5. Ganancia de salida general
       this.masterGain = this.ctx.createGain();
       this.masterGain.gain.setValueAtTime(0.9, this.ctx.currentTime);
 
-      this.masterGain.connect(this.compressor);
-      this.compressor.connect(this.ctx.destination);
+      // Ruteo de la cadena de amplificación:
+      this.cabinetInput
+        .connect(saturator)
+        .connect(bassPunch)
+        .connect(midScoop)
+        .connect(attackBite)
+        .connect(cabLowpass)
+        .connect(compressor)
+        .connect(this.masterGain)
+        .connect(this.ctx.destination);
     }
 
     if (this.ctx.state === 'suspended') {
@@ -85,54 +126,27 @@ class BassArticulatedSynth {
     return this.ctx;
   }
 
+  // Curva de saturación analógica suave (función tanh)
+  private createSaturationCurve(samples: number): Float32Array<ArrayBuffer> {
+    const buffer = new ArrayBuffer(samples * 4);
+    const curve = new Float32Array(buffer);
+    for (let i = 0; i < samples; i++) {
+      const x = (i * 2) / samples - 1;
+      curve[i] = Math.tanh(x * 1.6);
+    }
+    return curve;
+  }
+
   private midiToFreq(midi: number): number {
     return 440 * Math.pow(2, (midi - 69) / 12);
   }
 
   /**
-   * Generador de ruido filtrado para el click de cuerdas o Ghost Notes
-   */
-  private triggerNoiseClick(
-    time: number,
-    centerFreq: number,
-    duration: number,
-    gainLevel: number
-  ) {
-    if (!this.ctx || !this.masterGain) return;
-
-    const bufferSize = Math.max(1, Math.floor(this.ctx.sampleRate * duration));
-    const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const output = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      output[i] = Math.random() * 2 - 1;
-    }
-
-    const whiteNoise = this.ctx.createBufferSource();
-    whiteNoise.buffer = noiseBuffer;
-
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(centerFreq, time);
-    filter.Q.setValueAtTime(3.0, time);
-
-    const gainNode = this.ctx.createGain();
-    gainNode.gain.setValueAtTime(Math.max(0.0001, gainLevel), time);
-    gainNode.gain.exponentialRampToValueAtTime(0.0001, time + duration);
-
-    whiteNoise.connect(filter);
-    filter.connect(gainNode);
-    gainNode.connect(this.masterGain);
-
-    whiteNoise.start(time);
-    whiteNoise.stop(time + duration);
-  }
-
-  /**
-   * Dispara una nota aplicando modelado de articulación real
+   * Reproduce una nota con articulación y modelado acústico
    */
   public playNote(event: BassNoteEvent) {
     this.init();
-    if (!this.ctx || !this.masterGain) return;
+    if (!this.ctx || !this.cabinetInput) return;
 
     const now =
       event.scheduleTime !== undefined
@@ -141,7 +155,7 @@ class BassArticulatedSynth {
 
     const {
       midi,
-      duration = 0.8,
+      duration = 0.7,
       velocity = 100,
       technique = 'normal',
       targetMidi,
@@ -149,164 +163,209 @@ class BassArticulatedSynth {
 
     const safeDuration = Math.max(0.08, duration);
     const freq = this.midiToFreq(midi);
-    const velNormalized =
+    const velNorm =
       velocity <= 1.0
-        ? Math.min(1, Math.max(0.1, velocity))
-        : Math.min(1, Math.max(0.1, velocity / 127));
+        ? Math.min(1, Math.max(0.15, velocity))
+        : Math.min(1, Math.max(0.15, velocity / 127));
 
     // =========================================================================
-    // 1. TÉCNICA: GHOST NOTE (Nota muerta / X)
-    // Sin oscilador tonal, solo chasquido de cuerda apagada contra el mástil
+    // 1. ARTICULACIÓN: GHOST NOTE (NOTA MUERTA / X) - CERO RUIDO BLANCO
+    // Simula el golpe sordo de cuerda apagada contra madera y traste
     // =========================================================================
     if (technique === 'ghost') {
-      this.triggerNoiseClick(now, 450, 0.05, 0.5 * velNormalized);
-      this.triggerNoiseClick(now, 1800, 0.03, 0.3 * velNormalized);
+      // A. Cuerpo grave de la madera (Doppler percusivo de 135Hz a 48Hz)
+      const thumpOsc = this.ctx.createOscillator();
+      const thumpGain = this.ctx.createGain();
+
+      thumpOsc.type = 'sine';
+      thumpOsc.frequency.setValueAtTime(135, now);
+      thumpOsc.frequency.exponentialRampToValueAtTime(48, now + 0.038);
+
+      thumpGain.gain.setValueAtTime(0.75 * velNorm, now);
+      thumpGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.045);
+
+      thumpOsc.connect(thumpGain);
+      thumpGain.connect(this.cabinetInput);
+
+      // B. Resonancia de traste y diapasón (Fret-thud a 850 Hz con Q pronunciado)
+      const clackOsc = this.ctx.createOscillator();
+      const clackGain = this.ctx.createGain();
+      const clackFilter = this.ctx.createBiquadFilter();
+
+      clackOsc.type = 'triangle';
+      clackOsc.frequency.setValueAtTime(850, now);
+      clackFilter.type = 'bandpass';
+      clackFilter.frequency.setValueAtTime(850, now);
+      clackFilter.Q.setValueAtTime(4.2, now);
+
+      clackGain.gain.setValueAtTime(0.55 * velNorm, now);
+      clackGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.032);
+
+      clackOsc.connect(clackFilter);
+      clackFilter.connect(clackGain);
+      clackGain.connect(this.cabinetInput);
+
+      thumpOsc.start(now);
+      thumpOsc.stop(now + 0.05);
+      clackOsc.start(now);
+      clackOsc.stop(now + 0.04);
       return;
     }
 
-    // Configuración base de osciladores para bajo eléctrico
-    const oscMain = this.ctx.createOscillator();
-    const oscSub = this.ctx.createOscillator();
-    const filter = this.ctx.createBiquadFilter();
+    // =========================================================================
+    // 2. CUERPO DE LA NOTA TONAL (NORMAL, SLAP, POP, LEGATO)
+    // =========================================================================
+    // Oscilador 1: Fundamental con peso orgánico
+    const osc1 = this.ctx.createOscillator();
+    osc1.type = 'triangle';
+    osc1.frequency.setValueAtTime(freq, now);
+
+    // Oscilador 2: Armónicos entorchados (sawtooth suave con desafinación microtonal)
+    const osc2 = this.ctx.createOscillator();
+    osc2.type = 'sawtooth';
+    osc2.frequency.setValueAtTime(freq, now);
+    osc2.detune.setValueAtTime(1.8, now);
+
+    // Filtro dinámico de cuerda
+    const stringFilter = this.ctx.createBiquadFilter();
+    stringFilter.type = 'lowpass';
+
+    // Envolvente de volumen de la nota
     const noteGain = this.ctx.createGain();
 
-    oscMain.type = 'sawtooth'; // Armónicos ricos de bajo
-    oscSub.type = 'triangle'; // Graves fundamentales limpios
-
-    oscMain.frequency.setValueAtTime(freq, now);
-    oscSub.frequency.setValueAtTime(freq, now);
-
-    filter.type = 'lowpass';
-
-    // =========================================================================
-    // 2. PARÁMETROS ESPECÍFICOS SEGÚN LA TÉCNICA
-    // =========================================================================
-    let peakVolume = 0.45 * velNormalized;
-    let attackTime = 0.004;
-    let decayDuration = safeDuration;
-    let initialFilterCutoff = 1200;
-    let endFilterCutoff = 250;
+    let peakGain = 0.5 * velNorm;
+    let attackTime = 0.005;
+    let decayTime = safeDuration;
+    let initialFilterCutoff = 1500;
+    let endFilterCutoff = 280;
 
     switch (technique) {
       case 'slap': {
-        // Golpe con el pulgar: ataque percusivo agresivo con chasquido de traste
-        peakVolume = 0.6 * velNormalized;
+        // Golpe de pulgar: pegada rápida, leve caída de tono inicial (15ms) y chasquido metálico
+        peakGain = 0.65 * velNorm;
         attackTime = 0.002;
-        initialFilterCutoff = 4200; // Mucho brillo inicial (cuerda chocando)
-        endFilterCutoff = 350;
-        decayDuration = Math.min(safeDuration, 0.5); // Decay percusivo más rápido
+        initialFilterCutoff = 3600;
+        endFilterCutoff = 320;
+        decayTime = Math.min(safeDuration, 0.45);
 
-        // Click percusivo de traste (Fret Buzz Attack)
-        this.triggerNoiseClick(now, 3200, 0.02, 0.45 * velNormalized);
-        this.triggerNoiseClick(now, 180, 0.04, 0.6 * velNormalized);
+        osc1.frequency.setValueAtTime(freq * 1.06, now);
+        osc1.frequency.exponentialRampToValueAtTime(freq, now + 0.015);
+        osc2.frequency.setValueAtTime(freq * 1.06, now);
+        osc2.frequency.exponentialRampToValueAtTime(freq, now + 0.015);
+
+        // Golpe percusivo de traste (fret clack)
+        const clack = this.ctx.createOscillator();
+        const clackG = this.ctx.createGain();
+        clack.type = 'triangle';
+        clack.frequency.setValueAtTime(3200, now);
+        clackG.gain.setValueAtTime(0.35 * velNorm, now);
+        clackG.gain.exponentialRampToValueAtTime(0.0001, now + 0.02);
+        clack.connect(clackG);
+        clackG.connect(this.cabinetInput);
+        clack.start(now);
+        clack.stop(now + 0.025);
         break;
       }
 
       case 'pop': {
-        // Tirón de cuerda con dedo índice/medio: ataque cortante y twang metálico
-        peakVolume = 0.65 * velNormalized;
+        // Tirón de cuerda: twang muy brillante y ataque seco
+        peakGain = 0.7 * velNorm;
         attackTime = 0.0015;
-        initialFilterCutoff = 5500; // Pico agudo extremo
-        endFilterCutoff = 400;
-        decayDuration = Math.min(safeDuration, 0.4);
+        initialFilterCutoff = 4500;
+        endFilterCutoff = 360;
+        decayTime = Math.min(safeDuration, 0.38);
 
-        // Chasquido seco agudo de cuerda liberada
-        this.triggerNoiseClick(now, 4200, 0.025, 0.55 * velNormalized);
+        // Chasquido metálico agudo de cuerda liberada contra el traste
+        const popSnap = this.ctx.createOscillator();
+        const popSnapG = this.ctx.createGain();
+        popSnap.type = 'triangle';
+        popSnap.frequency.setValueAtTime(3800, now);
+        popSnap.frequency.exponentialRampToValueAtTime(1400, now + 0.018);
+        popSnapG.gain.setValueAtTime(0.38 * velNorm, now);
+        popSnapG.gain.exponentialRampToValueAtTime(0.0001, now + 0.018);
+        popSnap.connect(popSnapG);
+        popSnapG.connect(this.cabinetInput);
+        popSnap.start(now);
+        popSnap.stop(now + 0.022);
         break;
       }
 
-      case 'hammer': {
-        // Ligado ascendente: la nota entra sin golpe de púa/dedo de mano derecha
-        peakVolume = 0.38 * velNormalized;
-        attackTime = 0.02; // Ataque suave, sin transitorio de golpe
-        initialFilterCutoff = 900;
-        endFilterCutoff = 220;
-        break;
-      }
-
+      case 'hammer':
       case 'pulloff':
       case 'pull': {
-        // Ligado descendente: ataque sutil con cuerda liberada por mano izquierda
-        peakVolume = 0.4 * velNormalized;
-        attackTime = 0.012;
+        // Ligados: entrada amortiguada sin golpe de dedo
+        peakGain = 0.42 * velNorm;
+        attackTime = 0.018;
         initialFilterCutoff = 1100;
         endFilterCutoff = 240;
         break;
       }
 
       case 'slide': {
-        // Arrastre continuo de traste (Pitch Glide)
-        const destinationMidi = targetMidi ?? midi + 2;
-        const destinationFreq = this.midiToFreq(destinationMidi);
-        oscMain.frequency.linearRampToValueAtTime(destinationFreq, now + safeDuration * 0.7);
-        oscSub.frequency.linearRampToValueAtTime(destinationFreq, now + safeDuration * 0.7);
+        const destMidi = targetMidi || midi + 2;
+        const destFreq = this.midiToFreq(destMidi);
+        osc1.frequency.exponentialRampToValueAtTime(destFreq, now + safeDuration * 0.65);
+        osc2.frequency.exponentialRampToValueAtTime(destFreq, now + safeDuration * 0.65);
         initialFilterCutoff = 1800;
-        endFilterCutoff = 300;
         break;
       }
 
       case 'vibrato': {
-        // LFO que modula suavemente el tono tras un retardo de 80ms
         const lfo = this.ctx.createOscillator();
-        const lfoGain = this.ctx.createGain();
-
-        lfo.frequency.setValueAtTime(5.8, now); // 5.8 Hz de velocidad de vibrato
-        lfoGain.gain.setValueAtTime(0, now);
-        lfoGain.gain.setValueAtTime(0, now + 0.08);
-        lfoGain.gain.linearRampToValueAtTime(30, now + 0.25); // Amplitud en Cents
-
-        lfo.connect(lfoGain);
-        lfoGain.connect(oscMain.detune);
-        lfoGain.connect(oscSub.detune);
-
+        const lfoG = this.ctx.createGain();
+        lfo.frequency.setValueAtTime(5.5, now);
+        lfoG.gain.setValueAtTime(0, now);
+        lfoG.gain.setValueAtTime(0, now + 0.09);
+        lfoG.gain.linearRampToValueAtTime(32, now + 0.28);
+        lfo.connect(lfoG);
+        lfoG.connect(osc1.detune);
+        lfoG.connect(osc2.detune);
         lfo.start(now);
         lfo.stop(now + safeDuration);
-        initialFilterCutoff = 1400;
+        initialFilterCutoff = 1600;
         break;
       }
 
       case 'normal':
       default: {
-        initialFilterCutoff = 1600;
-        endFilterCutoff = 280;
+        initialFilterCutoff = 1700;
+        endFilterCutoff = 290;
         break;
       }
     }
 
-    // Envolvente de filtro dinámico
-    filter.frequency.setValueAtTime(initialFilterCutoff, now);
-    filter.frequency.exponentialRampToValueAtTime(
+    // Envolvente del filtro
+    stringFilter.frequency.setValueAtTime(initialFilterCutoff, now);
+    stringFilter.frequency.exponentialRampToValueAtTime(
       Math.max(80, endFilterCutoff),
-      now + decayDuration * 0.85
+      now + decayTime * 0.75
     );
 
-    // Envolvente de ganancia (ADSR de bajo eléctrico)
+    // Envolvente de volumen (ADSR)
     noteGain.gain.setValueAtTime(0.0001, now);
-    noteGain.gain.linearRampToValueAtTime(peakVolume, now + attackTime);
+    noteGain.gain.linearRampToValueAtTime(peakGain, now + attackTime);
     noteGain.gain.exponentialRampToValueAtTime(
-      Math.max(0.0002, peakVolume * 0.5),
+      Math.max(0.0002, peakGain * 0.55),
       now + attackTime + 0.12
     );
     noteGain.gain.exponentialRampToValueAtTime(
       0.0001,
-      now + Math.max(attackTime + 0.15, decayDuration)
+      now + Math.max(attackTime + 0.15, decayTime)
     );
 
-    // Ruteo de audio
-    oscMain.connect(filter);
-    oscSub.connect(filter);
-    filter.connect(noteGain);
-    noteGain.connect(this.masterGain);
+    // Conexión
+    osc1.connect(stringFilter);
+    osc2.connect(stringFilter);
+    stringFilter.connect(noteGain);
+    noteGain.connect(this.cabinetInput);
 
-    // Iniciar y finalizar osciladores
-    oscMain.start(now);
-    oscSub.start(now);
+    osc1.start(now);
+    osc2.start(now);
 
-    const stopTime = now + Math.max(attackTime + 0.15, decayDuration) + 0.05;
-    oscMain.stop(stopTime);
-    oscSub.stop(stopTime);
+    const stopTime = now + Math.max(attackTime + 0.15, decayTime) + 0.04;
+    osc1.stop(stopTime);
+    osc2.stop(stopTime);
   }
 }
 
-export const bassPreviewSynth = new BassArticulatedSynth();
-
+export const bassPreviewSynth = new RealisticBassSynth();
