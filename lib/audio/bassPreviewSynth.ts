@@ -1,4 +1,4 @@
-// Motor de Modelado Acústico y Articulaciones de Bajo Eléctrico (Web Audio API)
+// Motor de Audio Basado en Muestras Reales de Bajo Eléctrico (Sample-Based Engine)
 
 export type BassTechnique =
   | 'normal'
@@ -47,73 +47,56 @@ export function getBassMidiFromString(
   return baseMidi + Math.max(0, fret);
 }
 
-class RealisticBassSynth {
+class SampledBassEngine {
   private ctx: AudioContext | null = null;
-  private cabinetInput: GainNode | null = null;
+  private sampleCache: Map<string, AudioBuffer> = new Map();
+  private isLoadingSamples: boolean = false;
+  private isLoaded: boolean = false;
   private masterGain: GainNode | null = null;
+  private compressor: DynamicsCompressorNode | null = null;
 
-  private init() {
+  // URLs de grabaciones reales de bajo eléctrico (CDN público de alta velocidad y baja latencia)
+  private sampleUrls: Record<string, string> = {
+    // Slap real grabado (cuerda E1 / A1 con pulgar)
+    slap: 'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/slap_bass_1-mp3/E2.mp3',
+    // Pop real grabado (cuerda D2 / G2 jalada)
+    pop: 'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/slap_bass_2-mp3/G3.mp3',
+    // Bajo de dedos tradicional (Fingerstyle real)
+    finger:
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/electric_bass_finger-mp3/E2.mp3',
+    fingerHigh:
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/electric_bass_finger-mp3/G3.mp3',
+  };
+
+  // Nota MIDI base de cada muestra de referencia
+  private baseMidis: Record<string, number> = {
+    slap: 40, // E2
+    pop: 55, // G3
+    finger: 40, // E2
+    fingerHigh: 55, // G3
+  };
+
+  private initContext() {
     if (typeof window === 'undefined') return;
     if (!this.ctx || this.ctx.state === 'closed') {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) return;
       this.ctx = new AudioCtx();
 
-      // 1. Entrada al bus de cabina
-      this.cabinetInput = this.ctx.createGain();
-      this.cabinetInput.gain.setValueAtTime(1.0, this.ctx.currentTime);
+      this.compressor = this.ctx.createDynamicsCompressor();
+      this.compressor.threshold.setValueAtTime(-12, this.ctx.currentTime);
+      this.compressor.knee.setValueAtTime(15, this.ctx.currentTime);
+      this.compressor.ratio.setValueAtTime(4, this.ctx.currentTime);
+      this.compressor.attack.setValueAtTime(0.003, this.ctx.currentTime);
+      this.compressor.release.setValueAtTime(0.15, this.ctx.currentTime);
 
-      // 2. Preamp: Saturación cálida a bulbos (WaveShaper)
-      const saturator = this.ctx.createWaveShaper();
-      saturator.curve = this.createSaturationCurve(1024);
-      saturator.oversample = '2x';
-
-      // 3. Simulación de Pantalla 4x10" (EQ de Altavoz de Bajo)
-      const bassPunch = this.ctx.createBiquadFilter();
-      bassPunch.type = 'lowshelf';
-      bassPunch.frequency.setValueAtTime(90, this.ctx.currentTime);
-      bassPunch.gain.setValueAtTime(3.5, this.ctx.currentTime);
-
-      const midScoop = this.ctx.createBiquadFilter();
-      midScoop.type = 'peaking';
-      midScoop.frequency.setValueAtTime(450, this.ctx.currentTime);
-      midScoop.gain.setValueAtTime(-2.5, this.ctx.currentTime);
-      midScoop.Q.setValueAtTime(1.2, this.ctx.currentTime);
-
-      const attackBite = this.ctx.createBiquadFilter();
-      attackBite.type = 'peaking';
-      attackBite.frequency.setValueAtTime(2400, this.ctx.currentTime);
-      attackBite.gain.setValueAtTime(3.0, this.ctx.currentTime);
-      attackBite.Q.setValueAtTime(1.8, this.ctx.currentTime);
-
-      // Corte superior de cono de bajo (elimina el zumbido de sintetizador)
-      const cabLowpass = this.ctx.createBiquadFilter();
-      cabLowpass.type = 'lowpass';
-      cabLowpass.frequency.setValueAtTime(4200, this.ctx.currentTime);
-      cabLowpass.Q.setValueAtTime(0.7, this.ctx.currentTime);
-
-      // 4. Compresor de estudio para bajo
-      const compressor = this.ctx.createDynamicsCompressor();
-      compressor.threshold.setValueAtTime(-14, this.ctx.currentTime);
-      compressor.knee.setValueAtTime(12, this.ctx.currentTime);
-      compressor.ratio.setValueAtTime(5, this.ctx.currentTime);
-      compressor.attack.setValueAtTime(0.003, this.ctx.currentTime);
-      compressor.release.setValueAtTime(0.18, this.ctx.currentTime);
-
-      // 5. Ganancia de salida general
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.setValueAtTime(0.9, this.ctx.currentTime);
+      this.masterGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
 
-      // Ruteo de la cadena de amplificación:
-      this.cabinetInput
-        .connect(saturator)
-        .connect(bassPunch)
-        .connect(midScoop)
-        .connect(attackBite)
-        .connect(cabLowpass)
-        .connect(compressor)
-        .connect(this.masterGain)
-        .connect(this.ctx.destination);
+      this.masterGain.connect(this.compressor);
+      this.compressor.connect(this.ctx.destination);
+
+      this.preloadSamples();
     }
 
     if (this.ctx.state === 'suspended') {
@@ -122,31 +105,95 @@ class RealisticBassSynth {
   }
 
   public getAudioContext(): AudioContext | null {
-    this.init();
+    this.initContext();
     return this.ctx;
   }
 
-  // Curva de saturación analógica suave (función tanh)
-  private createSaturationCurve(samples: number): Float32Array<ArrayBuffer> {
-    const buffer = new ArrayBuffer(samples * 4);
-    const curve = new Float32Array(buffer);
-    for (let i = 0; i < samples; i++) {
-      const x = (i * 2) / samples - 1;
-      curve[i] = Math.tanh(x * 1.6);
-    }
-    return curve;
-  }
+  /**
+   * Pre-carga y decodifica las muestras reales en AudioBuffers en memoria
+   */
+  public async preloadSamples() {
+    if (this.isLoadingSamples || this.isLoaded || !this.ctx) return;
+    this.isLoadingSamples = true;
 
-  private midiToFreq(midi: number): number {
-    return 440 * Math.pow(2, (midi - 69) / 12);
+    try {
+      const entries = Object.entries(this.sampleUrls);
+      await Promise.all(
+        entries.map(async ([key, url]) => {
+          try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const arrayBuffer = await res.arrayBuffer();
+            const audioBuffer = await this.ctx!.decodeAudioData(arrayBuffer);
+            this.sampleCache.set(key, audioBuffer);
+          } catch (e) {
+            console.warn(`No se pudo cargar la muestra de bajo (${key}), usando fallback local`, e);
+          }
+        })
+      );
+      if (this.sampleCache.size > 0) {
+        this.isLoaded = true;
+      }
+    } catch (err) {
+      console.error('Error precargando muestras de bajo:', err);
+    } finally {
+      this.isLoadingSamples = false;
+    }
   }
 
   /**
-   * Reproduce una nota con articulación y modelado acústico
+   * Genera el impacto percusivo orgánico de Ghost Note real
+   */
+  private triggerAcousticGhost(time: number, velocityNorm: number) {
+    if (!this.ctx || !this.masterGain) return;
+
+    // Si hay muestra de slap cargada, reproducimos un fragmento ultracorto (30ms) con ataque amortiguado
+    const slapBuf = this.sampleCache.get('slap');
+    if (slapBuf) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = slapBuf;
+      src.playbackRate.setValueAtTime(0.7, time);
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(320, time);
+      filter.Q.setValueAtTime(2.5, time);
+
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.85 * velocityNorm, time);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
+
+      src.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain);
+
+      src.start(time);
+      src.stop(time + 0.055);
+      return;
+    }
+
+    // Fallback acústico percusivo de cuerda apagada (sin oscilador continuo)
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(95, time);
+    osc.frequency.exponentialRampToValueAtTime(38, time + 0.04);
+
+    g.gain.setValueAtTime(0.9 * velocityNorm, time);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.045);
+
+    osc.connect(g);
+    g.connect(this.masterGain);
+    osc.start(time);
+    osc.stop(time + 0.05);
+  }
+
+  /**
+   * Reproduce una nota con audio real muestreado
    */
   public playNote(event: BassNoteEvent) {
-    this.init();
-    if (!this.ctx || !this.cabinetInput) return;
+    this.initContext();
+    if (!this.ctx || !this.masterGain) return;
 
     const now =
       event.scheduleTime !== undefined
@@ -161,211 +208,109 @@ class RealisticBassSynth {
       targetMidi,
     } = event;
 
-    const safeDuration = Math.max(0.08, duration);
-    const freq = this.midiToFreq(midi);
-    const velNorm =
-      velocity <= 1.0
-        ? Math.min(1, Math.max(0.15, velocity))
-        : Math.min(1, Math.max(0.15, velocity / 127));
+    const velNorm = Math.min(1.2, Math.max(0.2, velocity / 100));
 
     // =========================================================================
-    // 1. ARTICULACIÓN: GHOST NOTE (NOTA MUERTA / X) - CERO RUIDO BLANCO
-    // Simula el golpe sordo de cuerda apagada contra madera y traste
+    // 1. GHOST NOTE
     // =========================================================================
     if (technique === 'ghost') {
-      // A. Cuerpo grave de la madera (Doppler percusivo de 135Hz a 48Hz)
-      const thumpOsc = this.ctx.createOscillator();
-      const thumpGain = this.ctx.createGain();
-
-      thumpOsc.type = 'sine';
-      thumpOsc.frequency.setValueAtTime(135, now);
-      thumpOsc.frequency.exponentialRampToValueAtTime(48, now + 0.038);
-
-      thumpGain.gain.setValueAtTime(0.75 * velNorm, now);
-      thumpGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.045);
-
-      thumpOsc.connect(thumpGain);
-      thumpGain.connect(this.cabinetInput);
-
-      // B. Resonancia de traste y diapasón (Fret-thud a 850 Hz con Q pronunciado)
-      const clackOsc = this.ctx.createOscillator();
-      const clackGain = this.ctx.createGain();
-      const clackFilter = this.ctx.createBiquadFilter();
-
-      clackOsc.type = 'triangle';
-      clackOsc.frequency.setValueAtTime(850, now);
-      clackFilter.type = 'bandpass';
-      clackFilter.frequency.setValueAtTime(850, now);
-      clackFilter.Q.setValueAtTime(4.2, now);
-
-      clackGain.gain.setValueAtTime(0.55 * velNorm, now);
-      clackGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.032);
-
-      clackOsc.connect(clackFilter);
-      clackFilter.connect(clackGain);
-      clackGain.connect(this.cabinetInput);
-
-      thumpOsc.start(now);
-      thumpOsc.stop(now + 0.05);
-      clackOsc.start(now);
-      clackOsc.stop(now + 0.04);
+      this.triggerAcousticGhost(now, velNorm);
       return;
     }
 
     // =========================================================================
-    // 2. CUERPO DE LA NOTA TONAL (NORMAL, SLAP, POP, LEGATO)
+    // 2. SELECCIÓN DE MUESTRA REAL SEGÚN TÉCNICA Y REGISTRO
     // =========================================================================
-    // Oscilador 1: Fundamental con peso orgánico
-    const osc1 = this.ctx.createOscillator();
-    osc1.type = 'triangle';
-    osc1.frequency.setValueAtTime(freq, now);
+    let sampleKey = 'finger';
+    let baseMidi = this.baseMidis.finger;
 
-    // Oscilador 2: Armónicos entorchados (sawtooth suave con desafinación microtonal)
-    const osc2 = this.ctx.createOscillator();
-    osc2.type = 'sawtooth';
-    osc2.frequency.setValueAtTime(freq, now);
-    osc2.detune.setValueAtTime(1.8, now);
-
-    // Filtro dinámico de cuerda
-    const stringFilter = this.ctx.createBiquadFilter();
-    stringFilter.type = 'lowpass';
-
-    // Envolvente de volumen de la nota
-    const noteGain = this.ctx.createGain();
-
-    let peakGain = 0.5 * velNorm;
-    let attackTime = 0.005;
-    let decayTime = safeDuration;
-    let initialFilterCutoff = 1500;
-    let endFilterCutoff = 280;
-
-    switch (technique) {
-      case 'slap': {
-        // Golpe de pulgar: pegada rápida, leve caída de tono inicial (15ms) y chasquido metálico
-        peakGain = 0.65 * velNorm;
-        attackTime = 0.002;
-        initialFilterCutoff = 3600;
-        endFilterCutoff = 320;
-        decayTime = Math.min(safeDuration, 0.45);
-
-        osc1.frequency.setValueAtTime(freq * 1.06, now);
-        osc1.frequency.exponentialRampToValueAtTime(freq, now + 0.015);
-        osc2.frequency.setValueAtTime(freq * 1.06, now);
-        osc2.frequency.exponentialRampToValueAtTime(freq, now + 0.015);
-
-        // Golpe percusivo de traste (fret clack)
-        const clack = this.ctx.createOscillator();
-        const clackG = this.ctx.createGain();
-        clack.type = 'triangle';
-        clack.frequency.setValueAtTime(3200, now);
-        clackG.gain.setValueAtTime(0.35 * velNorm, now);
-        clackG.gain.exponentialRampToValueAtTime(0.0001, now + 0.02);
-        clack.connect(clackG);
-        clackG.connect(this.cabinetInput);
-        clack.start(now);
-        clack.stop(now + 0.025);
-        break;
-      }
-
-      case 'pop': {
-        // Tirón de cuerda: twang muy brillante y ataque seco
-        peakGain = 0.7 * velNorm;
-        attackTime = 0.0015;
-        initialFilterCutoff = 4500;
-        endFilterCutoff = 360;
-        decayTime = Math.min(safeDuration, 0.38);
-
-        // Chasquido metálico agudo de cuerda liberada contra el traste
-        const popSnap = this.ctx.createOscillator();
-        const popSnapG = this.ctx.createGain();
-        popSnap.type = 'triangle';
-        popSnap.frequency.setValueAtTime(3800, now);
-        popSnap.frequency.exponentialRampToValueAtTime(1400, now + 0.018);
-        popSnapG.gain.setValueAtTime(0.38 * velNorm, now);
-        popSnapG.gain.exponentialRampToValueAtTime(0.0001, now + 0.018);
-        popSnap.connect(popSnapG);
-        popSnapG.connect(this.cabinetInput);
-        popSnap.start(now);
-        popSnap.stop(now + 0.022);
-        break;
-      }
-
-      case 'hammer':
-      case 'pulloff':
-      case 'pull': {
-        // Ligados: entrada amortiguada sin golpe de dedo
-        peakGain = 0.42 * velNorm;
-        attackTime = 0.018;
-        initialFilterCutoff = 1100;
-        endFilterCutoff = 240;
-        break;
-      }
-
-      case 'slide': {
-        const destMidi = targetMidi || midi + 2;
-        const destFreq = this.midiToFreq(destMidi);
-        osc1.frequency.exponentialRampToValueAtTime(destFreq, now + safeDuration * 0.65);
-        osc2.frequency.exponentialRampToValueAtTime(destFreq, now + safeDuration * 0.65);
-        initialFilterCutoff = 1800;
-        break;
-      }
-
-      case 'vibrato': {
-        const lfo = this.ctx.createOscillator();
-        const lfoG = this.ctx.createGain();
-        lfo.frequency.setValueAtTime(5.5, now);
-        lfoG.gain.setValueAtTime(0, now);
-        lfoG.gain.setValueAtTime(0, now + 0.09);
-        lfoG.gain.linearRampToValueAtTime(32, now + 0.28);
-        lfo.connect(lfoG);
-        lfoG.connect(osc1.detune);
-        lfoG.connect(osc2.detune);
-        lfo.start(now);
-        lfo.stop(now + safeDuration);
-        initialFilterCutoff = 1600;
-        break;
-      }
-
-      case 'normal':
-      default: {
-        initialFilterCutoff = 1700;
-        endFilterCutoff = 290;
-        break;
-      }
+    if (technique === 'slap') {
+      sampleKey = 'slap';
+      baseMidi = this.baseMidis.slap;
+    } else if (technique === 'pop') {
+      sampleKey = 'pop';
+      baseMidi = this.baseMidis.pop;
+    } else if (midi > 48) {
+      sampleKey = 'fingerHigh';
+      baseMidi = this.baseMidis.fingerHigh;
     }
 
-    // Envolvente del filtro
-    stringFilter.frequency.setValueAtTime(initialFilterCutoff, now);
-    stringFilter.frequency.exponentialRampToValueAtTime(
-      Math.max(80, endFilterCutoff),
-      now + decayTime * 0.75
-    );
+    const audioBuffer = this.sampleCache.get(sampleKey) || this.sampleCache.get('finger');
 
-    // Envolvente de volumen (ADSR)
-    noteGain.gain.setValueAtTime(0.0001, now);
-    noteGain.gain.linearRampToValueAtTime(peakGain, now + attackTime);
-    noteGain.gain.exponentialRampToValueAtTime(
-      Math.max(0.0002, peakGain * 0.55),
-      now + attackTime + 0.12
-    );
-    noteGain.gain.exponentialRampToValueAtTime(
-      0.0001,
-      now + Math.max(attackTime + 0.15, decayTime)
-    );
+    // Si aún se está descargando el primer buffer, esperamos o usamos tono acústico temporal
+    if (!audioBuffer) {
+      this.preloadSamples();
+      return;
+    }
 
-    // Conexión
-    osc1.connect(stringFilter);
-    osc2.connect(stringFilter);
-    stringFilter.connect(noteGain);
-    noteGain.connect(this.cabinetInput);
+    // =========================================================================
+    // 3. REPRODUCCIÓN Y PITCH-SHIFTING CON MUESTRA REAL
+    // =========================================================================
+    const source = this.ctx.createBufferSource();
+    source.buffer = audioBuffer;
 
-    osc1.start(now);
-    osc2.start(now);
+    // Cálculo del ratio de velocidad para afinar la muestra al traste exacto
+    const semitoneDistance = midi - baseMidi;
+    const initialPlaybackRate = Math.pow(2, semitoneDistance / 12);
+    source.playbackRate.setValueAtTime(initialPlaybackRate, now);
 
-    const stopTime = now + Math.max(attackTime + 0.15, decayTime) + 0.04;
-    osc1.stop(stopTime);
-    osc2.stop(stopTime);
+    // Slide: Deslizar la afinación hacia el traste destino
+    if (technique === 'slide') {
+      const destMidi = targetMidi || midi + 2;
+      const destDistance = destMidi - baseMidi;
+      const targetRate = Math.pow(2, destDistance / 12);
+      source.playbackRate.exponentialRampToValueAtTime(targetRate, now + duration * 0.7);
+    } else if (technique === 'vibrato') {
+      const lfo = this.ctx.createOscillator();
+      const lfoGain = this.ctx.createGain();
+      lfo.frequency.setValueAtTime(5.5, now);
+      lfoGain.gain.setValueAtTime(0, now);
+      lfoGain.gain.setValueAtTime(0, now + 0.08);
+      lfoGain.gain.linearRampToValueAtTime(28, now + 0.25);
+      lfo.connect(lfoGain);
+      lfoGain.connect(source.detune);
+      lfo.start(now);
+      lfo.stop(now + duration);
+    }
+
+    // Filtro y Envolvente dinámica según articulación
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+
+    const noteGain = this.ctx.createGain();
+
+    let cutoff = 6500;
+    let decayLength = duration;
+    let peakVol = 0.9 * velNorm;
+
+    if (technique === 'slap') {
+      cutoff = 8500;
+      decayLength = Math.min(duration, 0.6);
+      peakVol = 1.1 * velNorm;
+    } else if (technique === 'pop') {
+      cutoff = 10000;
+      decayLength = Math.min(duration, 0.45);
+      peakVol = 1.15 * velNorm;
+    } else if (technique === 'hammer' || technique === 'pulloff' || technique === 'pull') {
+      cutoff = 4000;
+      peakVol = 0.75 * velNorm;
+    }
+
+    filter.frequency.setValueAtTime(cutoff, now);
+    filter.frequency.exponentialRampToValueAtTime(1200, now + decayLength * 0.8);
+
+    noteGain.gain.setValueAtTime(0.001, now);
+    noteGain.gain.linearRampToValueAtTime(peakVol, now + 0.005);
+    noteGain.gain.exponentialRampToValueAtTime(peakVol * 0.6, now + 0.15);
+    noteGain.gain.exponentialRampToValueAtTime(0.0001, now + decayLength);
+
+    source.connect(filter);
+    filter.connect(noteGain);
+    noteGain.connect(this.masterGain);
+
+    source.start(now);
+    source.stop(now + decayLength + 0.05);
   }
 }
 
-export const bassPreviewSynth = new RealisticBassSynth();
+export const bassPreviewSynth = new SampledBassEngine();
