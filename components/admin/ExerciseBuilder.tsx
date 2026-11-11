@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DrumVoice, StickingType } from '@/types/drum';
-import { StringTechnique } from '@/types/strings';
+import { StringTechnique, BendType, BendAmount } from '@/types/strings';
 import { getAudioEngine } from '@/lib/drumAudioEngine';
 import { getStringsAudioEngine } from '@/lib/stringsAudioEngine';
 import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
@@ -60,6 +60,8 @@ interface EditorNote {
   string?: number;     // 1 to 4/6 (para cuerdas)
   fret?: number;       // 0 to 24 (para cuerdas)
   technique?: StringTechnique | 'pm';
+  bendType?: BendType;
+  bendAmount?: BendAmount;
   finger?: string;     // '1', '2', '3', '4', 'T'
   drumVoice?: DrumVoice; // Para batería
   accent?: boolean;
@@ -159,6 +161,19 @@ export const getTechniqueBadge = (tech?: string, inst?: string): string | null =
     }
   }
 };
+
+export const BEND_TYPES: { id: BendType; label: string; badge: string }[] = [
+  { id: 'standard', label: 'Bend', badge: 'b' },
+  { id: 'bend_release', label: 'Bend & Rel.', badge: 'b/r' },
+  { id: 'pre_bend', label: 'Pre-Bend', badge: 'pb' },
+];
+
+export const BEND_AMOUNTS: { id: BendAmount; label: string; badge: string; cents: number }[] = [
+  { id: '1/4', label: '1/4', badge: '¼', cents: 50 },
+  { id: '1/2', label: '1/2', badge: '½', cents: 100 },
+  { id: '1', label: 'Full (1)', badge: '1', cents: 200 },
+  { id: '1.5', label: '1 1/2', badge: '1½', cents: 300 },
+];
 
 export const ExerciseBuilder: React.FC = () => {
   const searchParams = useSearchParams();
@@ -347,6 +362,8 @@ export const ExerciseBuilder: React.FC = () => {
                 string: s.string,
                 fret: s.fret,
                 technique: s.technique || 'normal',
+                bendType: s.bendType,
+                bendAmount: s.bendAmount,
                 finger: s.finger || '1',
                 velocity: s.velocity ?? 0.85,
               }));
@@ -375,6 +392,8 @@ export const ExerciseBuilder: React.FC = () => {
 
   // Paleta de Articulación y Técnicas seleccionadas para nuevas notas
   const [selectedTechnique, setSelectedTechnique] = useState<StringTechnique | 'pm'>('normal');
+  const [selectedBendType, setSelectedBendType] = useState<BendType>('standard');
+  const [selectedBendAmount, setSelectedBendAmount] = useState<BendAmount>('1');
   const [selectedFinger, setSelectedFinger] = useState<string>('1');
   const [selectedFret, setSelectedFret] = useState<number>(0);
   const [selectedDrumVoice, setSelectedDrumVoice] = useState<DrumVoice>('snare');
@@ -407,7 +426,7 @@ export const ExerciseBuilder: React.FC = () => {
         { step: 2, string: 5, fret: 2, technique: 'hammer', finger: '2' },
         { step: 4, string: 4, fret: 2, technique: 'normal', finger: '2' },
         { step: 6, string: 3, fret: 0, technique: 'normal', finger: '1' },
-        { step: 8, string: 2, fret: 3, technique: 'bend', finger: '3' },
+        { step: 8, string: 2, fret: 3, technique: 'bend', bendType: 'standard', bendAmount: '1', finger: '3' },
       ];
     }
     return [];
@@ -721,17 +740,28 @@ export const ExerciseBuilder: React.FC = () => {
           }
         }
 
+        const targetBendType = noteTech === 'bend' ? (existingNote.bendType || selectedBendType) : undefined;
+        const targetBendAmount = noteTech === 'bend' ? (existingNote.bendAmount || selectedBendAmount) : undefined;
+
         // Actualizar técnica/dedo si el usuario seleccionó otra articulación activa
         setNotes((prev) => {
           const next = prev.map((n, idx) =>
             idx === existingIdx
-              ? { ...n, technique: noteTech, finger: selectedFinger }
+              ? {
+                  ...n,
+                  technique: noteTech,
+                  bendType: targetBendType,
+                  bendAmount: targetBendAmount,
+                  finger: selectedFinger,
+                }
               : n
           );
           activeNotesRef.current = next;
           return next;
         });
         setActiveCell({ step: globalStep, string: stringNum });
+        if (existingNote.bendType) setSelectedBendType(existingNote.bendType);
+        if (existingNote.bendAmount) setSelectedBendAmount(existingNote.bendAmount);
 
         // Pre-escucha inmediata con la técnica activa y motor dedicado
         if (instrument === 'bass') {
@@ -750,6 +780,8 @@ export const ExerciseBuilder: React.FC = () => {
           guitarPreviewSynth.playNote({
             midi: calculatedMidi,
             technique: guitarTech || 'normal',
+            bendType: guitarTech === 'bend' ? targetBendType : undefined,
+            bendAmount: guitarTech === 'bend' ? targetBendAmount : undefined,
             duration: (60 / bpmRef.current) * 0.8,
             velocity: noteTech === 'natural_harmonic' || noteTech === 'pinch_harmonic' ? 115 : 100,
           });
@@ -790,6 +822,8 @@ export const ExerciseBuilder: React.FC = () => {
           string: stringNum,
           fret: selectedFret,
           technique: noteTech,
+          bendType: noteTech === 'bend' ? selectedBendType : undefined,
+          bendAmount: noteTech === 'bend' ? selectedBendAmount : undefined,
           finger: selectedFinger,
         };
         setNotes((prev) => {
@@ -816,6 +850,8 @@ export const ExerciseBuilder: React.FC = () => {
           guitarPreviewSynth.playNote({
             midi: calculatedMidi,
             technique: guitarTech || 'normal',
+            bendType: guitarTech === 'bend' ? selectedBendType : undefined,
+            bendAmount: guitarTech === 'bend' ? selectedBendAmount : undefined,
             duration: (60 / bpmRef.current) * 0.8,
             velocity: noteTech === 'natural_harmonic' || noteTech === 'pinch_harmonic' ? 115 : 100,
           });
@@ -866,6 +902,8 @@ export const ExerciseBuilder: React.FC = () => {
                 string: stringNum,
                 fret,
                 technique: noteTech,
+                bendType: noteTech === 'bend' ? (existing?.bendType || selectedBendType) : undefined,
+                bendAmount: noteTech === 'bend' ? (existing?.bendAmount || selectedBendAmount) : undefined,
                 finger: existing?.finger || selectedFinger,
               },
             ];
@@ -890,6 +928,8 @@ export const ExerciseBuilder: React.FC = () => {
         guitarPreviewSynth.playNote({
           midi: calculatedMidi,
           technique: guitarTech || 'normal',
+          bendType: guitarTech === 'bend' ? selectedBendType : undefined,
+          bendAmount: guitarTech === 'bend' ? selectedBendAmount : undefined,
           duration: (60 / bpmRef.current) * 0.8,
           velocity: finalTech === 'natural_harmonic' || finalTech === 'pinch_harmonic' ? 115 : 100,
         });
@@ -938,11 +978,21 @@ export const ExerciseBuilder: React.FC = () => {
 
         setSelectedTechnique(finalTech);
 
+        const targetBendType = finalTech === 'bend' ? (activeNote.bendType || selectedBendType) : undefined;
+        const targetBendAmount = finalTech === 'bend' ? (activeNote.bendAmount || selectedBendAmount) : undefined;
+        if (activeNote.bendType) setSelectedBendType(activeNote.bendType);
+        if (activeNote.bendAmount) setSelectedBendAmount(activeNote.bendAmount);
+
         const previewFret = activeNote.fret ?? selectedFret;
         setNotes((prev) => {
           const next = prev.map((n) =>
             n.step === activeCell.step && n.string === activeCell.string
-              ? { ...n, technique: finalTech }
+              ? {
+                  ...n,
+                  technique: finalTech,
+                  bendType: targetBendType,
+                  bendAmount: targetBendAmount,
+                }
               : n
           );
           activeNotesRef.current = next;
@@ -965,6 +1015,8 @@ export const ExerciseBuilder: React.FC = () => {
           guitarPreviewSynth.playNote({
             midi: calculatedMidi,
             technique: guitarTech,
+            bendType: guitarTech === 'bend' ? targetBendType : undefined,
+            bendAmount: guitarTech === 'bend' ? targetBendAmount : undefined,
             duration: (60 / bpmRef.current) * 0.8,
             velocity: finalTech === 'natural_harmonic' || finalTech === 'pinch_harmonic' ? 115 : 100,
           });
@@ -1279,6 +1331,8 @@ export const ExerciseBuilder: React.FC = () => {
       guitarPreviewSynth.playNote({
         midi: calculatedMidi,
         technique: tech,
+        bendType: note.bendType,
+        bendAmount: note.bendAmount,
         duration: stepDuration * 3.5,
         velocity: tech === 'natural_harmonic' || tech === 'pinch_harmonic' ? 115 : 100,
       });
@@ -1523,6 +1577,8 @@ export const ExerciseBuilder: React.FC = () => {
           string: n.string,
           fret: n.fret,
           technique: n.technique ?? 'normal',
+          bendType: n.bendType,
+          bendAmount: n.bendAmount,
           finger: n.finger ?? '1',
           velocity: 0.85,
         }));
@@ -2193,6 +2249,105 @@ export const ExerciseBuilder: React.FC = () => {
                 className="w-10 text-center text-xs font-mono font-bold bg-white dark:bg-slate-800 text-teal-800 dark:text-cyan-300 rounded-lg py-0.5 border border-slate-300 dark:border-slate-700 focus:outline-none focus:border-cyan-500"
               />
             </div>
+
+            {/* Sub-Barra Contextual de Bending para Guitarra */}
+            {instrument === 'guitar' && selectedTechnique === 'bend' && (
+              <div className="w-full flex flex-wrap items-center gap-3 bg-slate-950/95 px-3 py-2 rounded-xl border border-emerald-500/30 mt-2">
+                {/* Selector de Modo de Bend */}
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] font-black text-emerald-400 uppercase tracking-wider mr-1">
+                    MODO:
+                  </span>
+                  {BEND_TYPES.map((type) => (
+                    <button
+                      key={type.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedBendType(type.id);
+                        if (activeCell && activeCell.string !== undefined) {
+                          setNotes((prev) => {
+                            const next: EditorNote[] = prev.map((n) =>
+                              n.step === activeCell.step && n.string === activeCell.string
+                                ? { ...n, technique: 'bend' as StringTechnique, bendType: type.id }
+                                : n
+                            );
+                            activeNotesRef.current = next;
+                            return next;
+                          });
+                          const activeNote = notes.find(n => n.step === activeCell.step && n.string === activeCell.string);
+                          if (activeNote) {
+                            const calculatedMidi = getGuitarMidiFromString(activeCell.string, activeNote.fret ?? selectedFret);
+                            guitarPreviewSynth.playNote({
+                              midi: calculatedMidi,
+                              technique: 'bend',
+                              bendType: type.id,
+                              bendAmount: activeNote.bendAmount || selectedBendAmount,
+                              duration: (60 / bpmRef.current) * 0.8,
+                              velocity: 100,
+                            });
+                          }
+                        }
+                      }}
+                      className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all border ${
+                        selectedBendType === type.id
+                          ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black shadow-sm'
+                          : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                      }`}
+                    >
+                      {type.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="h-4 w-px bg-slate-800" />
+
+                {/* Selector de Recorrido / Tono */}
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] font-black text-teal-400 uppercase tracking-wider mr-1">
+                    TONO:
+                  </span>
+                  {BEND_AMOUNTS.map((amt) => (
+                    <button
+                      key={amt.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedBendAmount(amt.id);
+                        if (activeCell && activeCell.string !== undefined) {
+                          setNotes((prev) => {
+                            const next: EditorNote[] = prev.map((n) =>
+                              n.step === activeCell.step && n.string === activeCell.string
+                                ? { ...n, technique: 'bend' as StringTechnique, bendAmount: amt.id }
+                                : n
+                            );
+                            activeNotesRef.current = next;
+                            return next;
+                          });
+                          const activeNote = notes.find(n => n.step === activeCell.step && n.string === activeCell.string);
+                          if (activeNote) {
+                            const calculatedMidi = getGuitarMidiFromString(activeCell.string, activeNote.fret ?? selectedFret);
+                            guitarPreviewSynth.playNote({
+                              midi: calculatedMidi,
+                              technique: 'bend',
+                              bendType: activeNote.bendType || selectedBendType,
+                              bendAmount: amt.id,
+                              duration: (60 / bpmRef.current) * 0.8,
+                              velocity: 100,
+                            });
+                          }
+                        }
+                      }}
+                      className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all border ${
+                        selectedBendAmount === amt.id
+                          ? 'bg-teal-400 text-slate-950 border-teal-300 font-black shadow-sm'
+                          : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                      }`}
+                    >
+                      {amt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2426,6 +2581,111 @@ export const ExerciseBuilder: React.FC = () => {
                           </g>
                         );
                       })}
+
+                    {/* Capa SVG de Bending (Standard Bend, Bend & Release, Pre-Bend) */}
+                    {notes
+                      .filter(
+                        (n) =>
+                          n.string === str.num &&
+                          n.step >= activeMeasureStart &&
+                          n.step < activeMeasureStart + stepsPerMeasure &&
+                          n.technique === 'bend'
+                      )
+                      .map((note, idx) => {
+                        const stepInMeasure = note.step - activeMeasureStart;
+                        const cx = (stepInMeasure + 0.5) * 100;
+                        const cy = 24;
+                        const isRelease = note.bendType === 'bend_release';
+                        const isPreBend = note.bendType === 'pre_bend';
+                        const amountLabel =
+                          note.bendAmount === '1/4'
+                            ? '¼'
+                            : note.bendAmount === '1/2'
+                            ? '½'
+                            : note.bendAmount === '1.5'
+                            ? '1½'
+                            : 'Full';
+
+                        return (
+                          <g key={`bend-svg-${str.num}-${idx}`} className="pointer-events-none select-none">
+                            {/* 1. Standard Bend (Flecha Curva Ascendente) */}
+                            {!isRelease && !isPreBend && (
+                              <>
+                                <path
+                                  d={`M ${cx + 10} ${cy} Q ${cx + 16} ${cy - 14} ${cx + 14} ${cy - 22}`}
+                                  fill="none"
+                                  stroke="#10b981"
+                                  strokeWidth="2.2"
+                                  strokeLinecap="round"
+                                />
+                                <polygon
+                                  points={`${cx + 14},${cy - 26} ${cx + 11},${cy - 20} ${cx + 17},${cy - 20}`}
+                                  fill="#10b981"
+                                />
+                              </>
+                            )}
+
+                            {/* 2. Bend & Release (Curva Parabólica Subida y Bajada) */}
+                            {isRelease && (
+                              <>
+                                <path
+                                  d={`M ${cx + 6} ${cy} Q ${cx + 14} ${cy - 26} ${cx + 22} ${cy}`}
+                                  fill="none"
+                                  stroke="#10b981"
+                                  strokeWidth="2.2"
+                                  strokeLinecap="round"
+                                />
+                                <polygon
+                                  points={`${cx + 22},${cy + 2} ${cx + 19},${cy - 4} ${cx + 25},${cy - 4}`}
+                                  fill="#10b981"
+                                />
+                              </>
+                            )}
+
+                            {/* 3. Pre-Bend (Flecha Vertical con Caída) */}
+                            {isPreBend && (
+                              <>
+                                <line
+                                  x1={cx + 12}
+                                  y1={cy - 24}
+                                  x2={cx + 12}
+                                  y2={cy}
+                                  stroke="#10b981"
+                                  strokeWidth="2"
+                                  strokeDasharray="3 3"
+                                />
+                                <polygon
+                                  points={`${cx + 12},${cy + 2} ${cx + 9},${cy - 4} ${cx + 15},${cy - 4}`}
+                                  fill="#10b981"
+                                />
+                              </>
+                            )}
+
+                            {/* Insignia tipográfica superior con el valor */}
+                            <rect
+                              x={cx - 16}
+                              y={cy - 34}
+                              width="32"
+                              height="14"
+                              rx="3"
+                              fill="#022c22"
+                              stroke="#10b981"
+                              strokeWidth="1"
+                            />
+                            <text
+                              x={cx}
+                              y={cy - 24}
+                              textAnchor="middle"
+                              fill="#6ee7b7"
+                              fontSize="9"
+                              fontWeight="900"
+                              fontFamily="ui-monospace, monospace"
+                            >
+                              {isPreBend ? `pb ${amountLabel}` : isRelease ? `b/r ${amountLabel}` : amountLabel}
+                            </text>
+                          </g>
+                        );
+                      })}
                   </svg>
 
                   {Array.from({ length: stepsPerMeasure }).map((_, stepIdx) => {
@@ -2448,7 +2708,8 @@ export const ExerciseBuilder: React.FC = () => {
                               note.technique !== 'normal' &&
                               note.technique !== 'hammer' &&
                               note.technique !== 'pull' &&
-                              (note.technique as any) !== 'pulloff' && (
+                              (note.technique as any) !== 'pulloff' &&
+                              note.technique !== 'bend' && (
                                 <span className="absolute -top-3.5 text-[9px] font-mono font-black text-amber-300 bg-amber-500/30 px-1 rounded border border-amber-400/40 shadow-sm whitespace-nowrap">
                                   {getTechniqueBadge(note.technique, instrument)}
                                 </span>

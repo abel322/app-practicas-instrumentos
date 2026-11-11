@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { StringExerciseData, StringTabNote } from '@/types/strings';
 import { getStringsAudioEngine } from '@/lib/stringsAudioEngine';
 import { bassPreviewSynth, getBassMidiFromString, BassTechnique } from '@/lib/audio/bassPreviewSynth';
+import { guitarPreviewSynth, getGuitarMidiFromString, GuitarTechnique } from '@/lib/audio/guitarPreviewSynth';
 import { getSubdivisionConfig } from '@/lib/music-theory/rhythmSubdivisions';
 import { TablatureRunway } from './TablatureRunway';
 import { StringsLegend } from './StringsLegend';
@@ -47,6 +48,8 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
   useEffect(() => {
     if (isBass) {
       bassPreviewSynth.initContext();
+    } else {
+      guitarPreviewSynth.init();
     }
   }, [isBass]);
 
@@ -146,6 +149,41 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
                   midi: calculatedMidi,
                   technique: tech,
                   stringIndex: resolvedStringIndex,
+                  duration: dur,
+                  velocity: vel,
+                });
+              }
+            }, delayMs);
+          }
+        } else if (exercise.instrument === 'guitar_6') {
+          const ctx = engine.getAudioContext();
+          const delayMs = ctx ? Math.max(0, (time - ctx.currentTime) * 1000) : 0;
+          const calculatedMidi = getGuitarMidiFromString(note.string, note.fret || 0);
+          const rawTech = (note.technique || 'normal').toLowerCase();
+          const tech = (rawTech === 'pull' ? 'pulloff' : rawTech) as GuitarTechnique;
+          const vel =
+            tech === 'natural_harmonic' || tech === 'pinch_harmonic'
+              ? 115
+              : Math.round((note.velocity ?? 0.85) * 115);
+          const dur = getSecondsPerStep(bpmRef.current) * 3.5;
+
+          if (delayMs <= 15) {
+            guitarPreviewSynth.playNote({
+              midi: calculatedMidi,
+              technique: tech,
+              bendType: note.bendType,
+              bendAmount: note.bendAmount,
+              duration: dur,
+              velocity: vel,
+            });
+          } else {
+            window.setTimeout(() => {
+              if (isPlayingRef.current) {
+                guitarPreviewSynth.playNote({
+                  midi: calculatedMidi,
+                  technique: tech,
+                  bendType: note.bendType,
+                  bendAmount: note.bendAmount,
                   duration: dur,
                   velocity: vel,
                 });

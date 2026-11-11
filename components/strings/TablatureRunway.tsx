@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { StringInstrument, StringTabNote } from '@/types/strings';
+import { StringInstrument, StringTabNote, BendType, BendAmount } from '@/types/strings';
 import { getSubdivisionConfig } from '@/lib/music-theory/rhythmSubdivisions';
 
 export interface RenderedNote {
@@ -10,6 +10,8 @@ export interface RenderedNote {
   string: number;
   fret: number;
   technique?: string;
+  bendType?: BendType;
+  bendAmount?: BendAmount;
   finger?: string;
 }
 
@@ -132,6 +134,8 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
         string: n.stringIndex !== undefined ? n.stringIndex + 1 : (n.string || 1),
         fret: n.fret,
         technique: n.technique,
+        bendType: n.bendType,
+        bendAmount: n.bendAmount,
         finger: n.finger,
       }));
     }
@@ -145,6 +149,8 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
           string: note.string,
           fret: note.fret,
           technique: note.technique,
+          bendType: note.bendType,
+          bendAmount: note.bendAmount,
           finger: note.finger,
         }));
     }
@@ -463,6 +469,105 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
               })}
 
               {/* ============================================================== */}
+              {/* CAPA DE BENDING (Standard Bend, Bend & Release, Pre-Bend)      */}
+              {/* ============================================================== */}
+              {notesInCurrentMeasure.map((note, idx) => {
+                if ((note.technique || '').toLowerCase() !== 'bend') return null;
+                const cx = leftPadding + (note.stepInMeasure + 0.5) * stepWidth;
+                const cy = getStringY(note.string);
+                const isRelease = note.bendType === 'bend_release';
+                const isPreBend = note.bendType === 'pre_bend';
+                const amountLabel =
+                  note.bendAmount === '1/4'
+                    ? '¼'
+                    : note.bendAmount === '1/2'
+                    ? '½'
+                    : note.bendAmount === '1.5'
+                    ? '1½'
+                    : 'Full';
+
+                return (
+                  <g key={`runway-bend-${note.id || idx}`} className="pointer-events-none select-none">
+                    {/* 1. Standard Bend (Flecha Curva Ascendente) */}
+                    {!isRelease && !isPreBend && (
+                      <>
+                        <path
+                          d={`M ${cx + 8} ${cy} Q ${cx + 14} ${cy - 14} ${cx + 12} ${cy - 22}`}
+                          fill="none"
+                          stroke="#10b981"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        />
+                        <polygon
+                          points={`${cx + 12},${cy - 26} ${cx + 9},${cy - 20} ${cx + 15},${cy - 20}`}
+                          fill="#10b981"
+                        />
+                      </>
+                    )}
+
+                    {/* 2. Bend & Release (Curva Parabólica Subida y Bajada) */}
+                    {isRelease && (
+                      <>
+                        <path
+                          d={`M ${cx + 4} ${cy} Q ${cx + 12} ${cy - 24} ${cx + 20} ${cy}`}
+                          fill="none"
+                          stroke="#10b981"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        />
+                        <polygon
+                          points={`${cx + 20},${cy + 2} ${cx + 17},${cy - 4} ${cx + 23},${cy - 4}`}
+                          fill="#10b981"
+                        />
+                      </>
+                    )}
+
+                    {/* 3. Pre-Bend (Flecha Vertical con Caída) */}
+                    {isPreBend && (
+                      <>
+                        <line
+                          x1={cx + 10}
+                          y1={cy - 22}
+                          x2={cx + 10}
+                          y2={cy}
+                          stroke="#10b981"
+                          strokeWidth="2"
+                          strokeDasharray="2 2"
+                        />
+                        <polygon
+                          points={`${cx + 10},${cy + 2} ${cx + 7},${cy - 4} ${cx + 13},${cy - 4}`}
+                          fill="#10b981"
+                        />
+                      </>
+                    )}
+
+                    {/* Insignia tipográfica superior con el valor */}
+                    <rect
+                      x={cx - 15}
+                      y={cy - 30}
+                      width="30"
+                      height="12"
+                      rx="3"
+                      fill="#022c22"
+                      stroke="#10b981"
+                      strokeWidth="1"
+                    />
+                    <text
+                      x={cx}
+                      y={cy - 21}
+                      textAnchor="middle"
+                      fill="#6ee7b7"
+                      fontSize="8.5"
+                      fontWeight="900"
+                      fontFamily="ui-monospace, monospace"
+                    >
+                      {isPreBend ? `pb ${amountLabel}` : isRelease ? `b/r ${amountLabel}` : amountLabel}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* ============================================================== */}
               {/* NOTAS DE TABLATURA EN ESTE COMPÁS                              */}
               {/* ============================================================== */}
               {Array.from({ length: effectiveStepsPerMeasure }).map((_, s) => {
@@ -524,7 +629,8 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                           {techBadge &&
                             note.technique !== 'hammer' &&
                             note.technique !== 'pull' &&
-                            note.technique !== 'pulloff' && (
+                            note.technique !== 'pulloff' &&
+                            note.technique !== 'bend' && (
                               <g transform={`translate(${noteX}, ${noteY - 14})`}>
                               <rect
                                 x="-6"

@@ -1,5 +1,8 @@
 // Motor de Síntesis y Articulaciones Específicas para Guitarra Eléctrica/Acústica
 
+export type BendType = 'standard' | 'bend_release' | 'pre_bend';
+export type BendAmount = '1/4' | '1/2' | '1' | '1.5';
+
 export type GuitarTechnique =
   | 'normal'
   | 'hammer'
@@ -17,6 +20,8 @@ export interface GuitarNoteEvent {
   duration?: number;
   velocity?: number;
   technique?: GuitarTechnique | string;
+  bendType?: BendType;
+  bendAmount?: BendAmount;
   targetMidi?: number;
   stringIndex?: number;
   scheduleTime?: number;
@@ -126,13 +131,84 @@ class GuitarPreviewSynth {
 
     // ARTICULACIONES ESPECÍFICAS
     if (normTech === 'bend') {
-      // Bending: rampa ascendente de 1 tono (+200 cents) a mitad de la nota
-      osc1.detune.setValueAtTime(0, now);
-      osc2.detune.setValueAtTime(0, now);
-      osc1.detune.linearRampToValueAtTime(100, now + 0.08); // Inicio de subida
-      osc1.detune.linearRampToValueAtTime(200, now + 0.28); // Cima del bend (+1 tono)
-      osc2.detune.linearRampToValueAtTime(100, now + 0.08);
-      osc2.detune.linearRampToValueAtTime(200, now + 0.28);
+      const { bendType = 'standard', bendAmount = '1' } = event;
+
+      // Cálculo de Cents según recorrido
+      let targetCents = 200; // Full por defecto
+      if (bendAmount === '1/4') targetCents = 50;
+      else if (bendAmount === '1/2') targetCents = 100;
+      else if (bendAmount === '1.5') targetCents = 300;
+
+      // =======================================================================
+      // A. STANDARD BEND: Sube y se sostiene arriba con micro-vibrato
+      // =======================================================================
+      if (bendType === 'standard') {
+        osc1.detune.setValueAtTime(0, now);
+        osc2.detune.setValueAtTime(0, now);
+
+        const bendStart = now + 0.04;
+        const bendPeak = now + Math.min(0.28, duration * 0.55);
+
+        osc1.detune.setValueAtTime(0, bendStart);
+        osc2.detune.setValueAtTime(0, bendStart);
+
+        osc1.detune.linearRampToValueAtTime(targetCents, bendPeak);
+        osc2.detune.linearRampToValueAtTime(targetCents, bendPeak);
+
+        // Micro-vibrato de dedos al llegar a la cima
+        const lfo = this.ctx.createOscillator();
+        const lfoGain = this.ctx.createGain();
+        lfo.frequency.setValueAtTime(5.8, now);
+        lfoGain.gain.setValueAtTime(0, now);
+        lfoGain.gain.setValueAtTime(0, bendPeak);
+        lfoGain.gain.linearRampToValueAtTime(14, bendPeak + 0.12);
+
+        lfo.connect(lfoGain);
+        lfoGain.connect(osc1.detune);
+        lfoGain.connect(osc2.detune);
+        lfo.start(bendPeak);
+        lfo.stop(now + decayLength);
+      }
+
+      // =======================================================================
+      // B. BEND & RELEASE: Sube a la cima y regresa al tono base
+      // =======================================================================
+      else if (bendType === 'bend_release') {
+        const peakTime = now + duration * 0.42;
+        const releaseTime = now + duration * 0.82;
+
+        osc1.detune.setValueAtTime(0, now);
+        osc2.detune.setValueAtTime(0, now);
+
+        // Subida al tono estirado
+        osc1.detune.linearRampToValueAtTime(targetCents, peakTime);
+        osc2.detune.linearRampToValueAtTime(targetCents, peakTime);
+
+        // Descenso a la altura original
+        osc1.detune.linearRampToValueAtTime(0, releaseTime);
+        osc2.detune.linearRampToValueAtTime(0, releaseTime);
+      }
+
+      // =======================================================================
+      // C. PRE-BEND: Golpea ya estirado y desciende al traste original
+      // =======================================================================
+      else if (bendType === 'pre_bend') {
+        // Inicia instantáneamente en la afinación elevada
+        osc1.detune.setValueAtTime(targetCents, now);
+        osc2.detune.setValueAtTime(targetCents, now);
+
+        // Desciende hacia la afinación base
+        const releaseStart = now + duration * 0.25;
+        const releaseEnd = now + duration * 0.75;
+
+        osc1.detune.setValueAtTime(targetCents, releaseStart);
+        osc2.detune.setValueAtTime(targetCents, releaseStart);
+
+        osc1.detune.linearRampToValueAtTime(0, releaseEnd);
+        osc2.detune.linearRampToValueAtTime(0, releaseEnd);
+      }
+
+      cutoff = 7500; // Preservar armónicos de cuerda tensada
     } else if (normTech === 'vibrato') {
       // Vibrato de guitarra: rápido y expresivo
       const lfo = this.ctx.createOscillator();
@@ -178,3 +254,4 @@ class GuitarPreviewSynth {
 }
 
 export const guitarPreviewSynth = new GuitarPreviewSynth();
+
