@@ -286,17 +286,34 @@ class SampledBassEngine {
       const destDistance = destMidi - baseMidi;
       const targetRate = Math.pow(2, destDistance / 12);
       source.playbackRate.exponentialRampToValueAtTime(targetRate, now + duration * 0.7);
-    } else if (technique === 'vibrato') {
+    }
+
+    // =========================================================================
+    // 3. ARTICULACIÓN DE VIBRATO ORGÁNICO MEDIANTE LFO SOBRE SOURCE.DETUNE
+    // =========================================================================
+    let decayLength = duration;
+
+    if (technique === 'vibrato') {
+      // Extender el sustain para que el vibrato cante en la cuerda
+      decayLength = Math.max(duration * 1.25, 0.95);
+
       const lfo = this.ctx.createOscillator();
       const lfoGain = this.ctx.createGain();
-      lfo.frequency.setValueAtTime(5.5, now);
+
+      lfo.type = 'sine';
+      lfo.frequency.setValueAtTime(5.2, now); // 5.2 Hz: cadencia de vibrato manual natural
+
+      // Retardo acústico: la nota arranca afinada y firme en 0 cents
       lfoGain.gain.setValueAtTime(0, now);
-      lfoGain.gain.setValueAtTime(0, now + 0.08);
-      lfoGain.gain.linearRampToValueAtTime(28, now + 0.25);
+      lfoGain.gain.setValueAtTime(0, now + 0.14); // 140ms de ataque plano
+      // Entrada progresiva del vaivén hasta 38 cents de amplitud
+      lfoGain.gain.linearRampToValueAtTime(38 * velNorm, now + 0.36);
+
       lfo.connect(lfoGain);
       lfoGain.connect(source.detune);
+
       lfo.start(now);
-      lfo.stop(now + duration);
+      lfo.stop(now + decayLength + 0.1);
     }
 
     const filter = this.ctx.createBiquadFilter();
@@ -306,7 +323,6 @@ class SampledBassEngine {
 
     let cutoff = 6500;
     let peakVol = 1.05 * velNorm;
-    let decayLength = duration;
     let sampleOffset = 0;
     let attackTime = 0.003;
 
@@ -325,6 +341,9 @@ class SampledBassEngine {
       cutoff = 11000;
       peakVol = 1.35 * velNorm;
       decayLength = Math.min(duration, 0.42);
+    } else if (technique === 'vibrato') {
+      cutoff = 7500; // Abre los armónicos para que la modulación destaque con calidez
+      peakVol = 1.1 * velNorm;
     }
 
     filter.frequency.setValueAtTime(cutoff, now);
@@ -335,7 +354,7 @@ class SampledBassEngine {
 
     noteGain.gain.setValueAtTime(0.001, now);
     noteGain.gain.linearRampToValueAtTime(peakVol, now + attackTime);
-    noteGain.gain.exponentialRampToValueAtTime(peakVol * 0.6, now + 0.12);
+    noteGain.gain.exponentialRampToValueAtTime(peakVol * 0.65, now + 0.15);
     noteGain.gain.exponentialRampToValueAtTime(0.0001, now + decayLength);
 
     source.connect(filter);
