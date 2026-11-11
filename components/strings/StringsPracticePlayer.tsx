@@ -44,6 +44,12 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
 
   const isBass = exercise.instrument === 'bass_4';
 
+  useEffect(() => {
+    if (isBass) {
+      bassPreviewSynth.initContext();
+    }
+  }, [isBass]);
+
   // Subdivisión rítmica dinámica (ej. 1/8 Corcheas, 1/16 Semicorcheas, 1/8T Tresillos)
   const subdivisionKey =
     exercise.subdivision ||

@@ -1,4 +1,4 @@
-// Motor de Audio de Muestras Reales con Articulación Avanzada para Bajo Eléctrico
+// Motor de Muestras Reales Calibrado para Bajo Eléctrico (E1 Base y Ghost Notes Cohesivas)
 
 export type BassTechnique =
   | 'normal'
@@ -18,7 +18,7 @@ export interface BassNoteEvent {
   velocity?: number;
   technique?: BassTechnique;
   targetMidi?: number;
-  stringIndex?: number; // 0: Cuerda G, 1: D, 2: A, 3: E
+  stringIndex?: number; // 0: G, 1: D, 2: A, 3: E
   scheduleTime?: number;
 }
 
@@ -56,39 +56,47 @@ class SampledBassEngine {
   private masterGain: GainNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
 
+  // Muestras calibradas a las octavas reales de un bajo de 4 cuerdas (E1 = MIDI 28, G2 = MIDI 43, G3 = MIDI 55)
   private sampleUrls: Record<string, string> = {
-    slap: 'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/slap_bass_1-mp3/E2.mp3',
+    // Slap en E1 real (la nota más grave de la 4ª cuerda)
+    slapLow:
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/slap_bass_1-mp3/E1.mp3',
+    slapMid:
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/slap_bass_1-mp3/E2.mp3',
+    // Pop en cuerda aguda real (G3)
     pop: 'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/slap_bass_2-mp3/G3.mp3',
-    finger:
-      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/electric_bass_finger-mp3/E2.mp3',
-    fingerHigh:
-      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/electric_bass_finger-mp3/G3.mp3',
+    // Dedos en E1 y D2
+    fingerLow:
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/electric_bass_finger-mp3/E1.mp3',
+    fingerMid:
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/electric_bass_finger-mp3/D2.mp3',
   };
 
   private baseMidis: Record<string, number> = {
-    slap: 40, // E2
+    slapLow: 28, // E1 (4ª cuerda al aire real)
+    slapMid: 40, // E2 (traste 9 de la 3ª cuerda o 14 de la 4ª)
     pop: 55, // G3
-    finger: 40, // E2
-    fingerHigh: 55, // G3
+    fingerLow: 28, // E1
+    fingerMid: 38, // D2
   };
 
-  private initContext() {
+  public initContext() {
     if (typeof window === 'undefined') return;
     if (!this.ctx || this.ctx.state === 'closed') {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) return;
       this.ctx = new AudioCtx();
 
-      // Compresor de bus master para pegada sin saturación
+      // Compresor de master para empastar slap y pops con pegada consistente
       this.compressor = this.ctx.createDynamicsCompressor();
-      this.compressor.threshold.setValueAtTime(-14, this.ctx.currentTime);
-      this.compressor.knee.setValueAtTime(12, this.ctx.currentTime);
-      this.compressor.ratio.setValueAtTime(5, this.ctx.currentTime);
+      this.compressor.threshold.setValueAtTime(-12, this.ctx.currentTime);
+      this.compressor.knee.setValueAtTime(14, this.ctx.currentTime);
+      this.compressor.ratio.setValueAtTime(4.5, this.ctx.currentTime);
       this.compressor.attack.setValueAtTime(0.002, this.ctx.currentTime);
-      this.compressor.release.setValueAtTime(0.16, this.ctx.currentTime);
+      this.compressor.release.setValueAtTime(0.15, this.ctx.currentTime);
 
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.setValueAtTime(1.15, this.ctx.currentTime);
+      this.masterGain.gain.setValueAtTime(1.1, this.ctx.currentTime);
 
       this.masterGain.connect(this.compressor);
       this.compressor.connect(this.ctx.destination);
@@ -121,7 +129,7 @@ class SampledBassEngine {
             const audioBuffer = await this.ctx!.decodeAudioData(arrayBuffer);
             this.sampleCache.set(key, audioBuffer);
           } catch (e) {
-            console.warn(`Error precargando muestra de bajo: ${key}`, e);
+            console.warn(`Error precargando muestra: ${key}`, e);
           }
         })
       );
@@ -129,88 +137,74 @@ class SampledBassEngine {
         this.isLoaded = true;
       }
     } catch (err) {
-      console.error('Error precargando muestras:', err);
+      console.error('Error precargando banco de bajo:', err);
     } finally {
       this.isLoadingSamples = false;
     }
   }
 
   /**
-   * Generador de Ghost Notes con pegada real y distinción acústica
+   * Generador de Ghost Note Cohesiva y Homogénea:
+   * Mantiene el mismo carácter percusivo orgánico (cuerpo de madera + golpe de traste)
+   * variando la afinación de forma sutil según la cuerda, sin sonar como dos instrumentos distintos.
    */
-  private triggerGhostNote(time: number, isPopGhost: boolean, velNorm: number) {
+  private triggerUnifiedGhost(
+    time: number,
+    midi: number,
+    stringIndex: number | undefined,
+    velNorm: number
+  ) {
     if (!this.ctx || !this.masterGain) return;
 
-    const targetBuffer = isPopGhost
-      ? this.sampleCache.get('pop') || this.sampleCache.get('fingerHigh')
-      : this.sampleCache.get('slap') || this.sampleCache.get('finger');
+    // Usar la muestra de slapLow como cuerpo percusivo base
+    const baseBuffer = this.sampleCache.get('slapLow') || this.sampleCache.get('fingerLow');
 
-    const filter = this.ctx.createBiquadFilter();
-    const ghostGain = this.ctx.createGain();
+    // Afinación relativa sutil: las cuerdas agudas son ligeramente más claras, pero dentro del mismo timbre
+    const stringOffset = stringIndex !== undefined ? (3 - stringIndex) * 2 : (midi - 28) * 0.3;
+    const playbackRate = Math.max(0.85, Math.min(1.35, 1.0 + stringOffset * 0.05));
 
-    if (targetBuffer) {
-      const source = this.ctx.createBufferSource();
-      source.buffer = targetBuffer;
-      // Ajustar velocidad de reproducción para dar carácter de percusión apagada
-      source.playbackRate.setValueAtTime(isPopGhost ? 1.2 : 0.85, time);
+    if (baseBuffer) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = baseBuffer;
+      src.playbackRate.setValueAtTime(playbackRate, time);
 
-      if (isPopGhost) {
-        // GHOST NOTE DE POP (Tirón en cuerdas agudas): Chasquido brillante y seco
-        filter.type = 'bandpass';
-        filter.frequency.setValueAtTime(2800, time);
-        filter.Q.setValueAtTime(2.2, time);
+      // Filtro percusivo equilibrado: deja pasar el golpe de madera y el click metálico del traste
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(1400 + stringOffset * 150, time);
+      filter.Q.setValueAtTime(1.8, time);
 
-        ghostGain.gain.setValueAtTime(1.65 * velNorm, time);
-        ghostGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.045);
-      } else {
-        // GHOST NOTE DE SLAP (Pulgar en cuerdas graves): Golpe percusivo con peso y thud
-        filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(1200, time);
-        filter.Q.setValueAtTime(1.5, time);
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(1.5 * velNorm, time);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.055);
 
-        ghostGain.gain.setValueAtTime(1.85 * velNorm, time);
-        ghostGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.065);
+      src.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain);
 
-        // Añadir componente de cuerpo de madera subgrave
-        const subOsc = this.ctx.createOscillator();
-        const subGain = this.ctx.createGain();
-        subOsc.type = 'sine';
-        subOsc.frequency.setValueAtTime(120, time);
-        subOsc.frequency.exponentialRampToValueAtTime(45, time + 0.04);
-        subGain.gain.setValueAtTime(1.1 * velNorm, time);
-        subGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
-
-        subOsc.connect(subGain);
-        subGain.connect(this.masterGain);
-        subOsc.start(time);
-        subOsc.stop(time + 0.055);
-      }
-
-      source.connect(filter);
-      filter.connect(ghostGain);
-      ghostGain.connect(this.masterGain);
-
-      source.start(time);
-      source.stop(time + (isPopGhost ? 0.05 : 0.07));
-      return;
+      src.start(time);
+      src.stop(time + 0.06);
     }
 
-    // Fallback inmediato si las muestras aún están descargando
-    const fallbackOsc = this.ctx.createOscillator();
-    const fallbackGain = this.ctx.createGain();
-    fallbackOsc.type = isPopGhost ? 'triangle' : 'sine';
-    fallbackOsc.frequency.setValueAtTime(isPopGhost ? 420 : 120, time);
-    fallbackOsc.frequency.exponentialRampToValueAtTime(isPopGhost ? 140 : 45, time + 0.04);
-    fallbackGain.gain.setValueAtTime(1.2 * velNorm, time);
-    fallbackGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
-    fallbackOsc.connect(fallbackGain);
-    fallbackGain.connect(this.masterGain);
-    fallbackOsc.start(time);
-    fallbackOsc.stop(time + 0.055);
+    // Componente acústico sordo de diapasón (thump natural)
+    const thump = this.ctx.createOscillator();
+    const thumpG = this.ctx.createGain();
+    thump.type = 'triangle';
+    thump.frequency.setValueAtTime(90 + stringOffset * 8, time);
+    thump.frequency.exponentialRampToValueAtTime(45, time + 0.035);
+
+    thumpG.gain.setValueAtTime(0.7 * velNorm, time);
+    thumpG.gain.exponentialRampToValueAtTime(0.0001, time + 0.04);
+
+    thump.connect(thumpG);
+    thumpG.connect(this.masterGain);
+
+    thump.start(time);
+    thump.stop(time + 0.045);
   }
 
   /**
-   * Reproduce notas con modelado de articulación real
+   * Reproducción articulada de notas
    */
   public playNote(event: BassNoteEvent) {
     this.initContext();
@@ -233,34 +227,46 @@ class SampledBassEngine {
     const velNorm = Math.min(1.3, Math.max(0.2, velocity / 100));
 
     // =========================================================================
-    // 1. GHOST NOTE CON DISTINCIÓN SLAP VS POP
+    // 1. GHOST NOTE (HOMOGÉNEA Y CON PRESENCIA)
     // =========================================================================
     if (technique === 'ghost') {
-      // Si la nota está en cuerdas 0 o 1 (G o D) o midi >= 50 -> Pop Ghost
-      // Si está en cuerdas 2 o 3 (A o E) o midi < 50 -> Slap Ghost
-      const isPopGhost = stringIndex !== undefined ? stringIndex <= 1 : midi >= 50;
-      this.triggerGhostNote(now, isPopGhost, velNorm);
+      this.triggerUnifiedGhost(now, midi, stringIndex, velNorm);
       return;
     }
 
     // =========================================================================
-    // 2. SELECCIÓN DE BUFFER REAL
+    // 2. SELECCIÓN DE LA MUESTRA MÁS CERCANA (Cero estiramiento de octava)
     // =========================================================================
-    let sampleKey = 'finger';
-    let baseMidi = this.baseMidis.finger;
+    let sampleKey = 'fingerLow';
+    let baseMidi = this.baseMidis.fingerLow;
 
     if (technique === 'slap') {
-      sampleKey = 'slap';
-      baseMidi = this.baseMidis.slap;
+      // Si la nota es grave (4ª o 3ª cuerda: MIDI < 38), usar slapLow (E1 real)
+      if (midi < 38) {
+        sampleKey = 'slapLow';
+        baseMidi = this.baseMidis.slapLow;
+      } else {
+        sampleKey = 'slapMid';
+        baseMidi = this.baseMidis.slapMid;
+      }
     } else if (technique === 'pop') {
       sampleKey = 'pop';
       baseMidi = this.baseMidis.pop;
-    } else if (midi > 48) {
-      sampleKey = 'fingerHigh';
-      baseMidi = this.baseMidis.fingerHigh;
+    } else {
+      // Normal / Legato
+      if (midi >= 36) {
+        sampleKey = 'fingerMid';
+        baseMidi = this.baseMidis.fingerMid;
+      } else {
+        sampleKey = 'fingerLow';
+        baseMidi = this.baseMidis.fingerLow;
+      }
     }
 
-    const audioBuffer = this.sampleCache.get(sampleKey) || this.sampleCache.get('finger');
+    const audioBuffer =
+      this.sampleCache.get(sampleKey) ||
+      this.sampleCache.get('slapLow') ||
+      this.sampleCache.get('fingerLow');
     if (!audioBuffer) {
       this.preloadSamples();
       return;
@@ -269,6 +275,7 @@ class SampledBassEngine {
     const source = this.ctx.createBufferSource();
     source.buffer = audioBuffer;
 
+    // Afinación de precisión
     const semitoneDistance = midi - baseMidi;
     const initialPlaybackRate = Math.pow(2, semitoneDistance / 12);
     source.playbackRate.setValueAtTime(initialPlaybackRate, now);
@@ -297,40 +304,35 @@ class SampledBassEngine {
 
     const noteGain = this.ctx.createGain();
 
-    // =========================================================================
-    // 3. PARÁMETROS DINÁMICOS Y TRATAMIENTO DE PULL-OFF / HAMMER-ON
-    // =========================================================================
-    let cutoff = 6000;
-    let peakVol = 1.0 * velNorm;
+    let cutoff = 6500;
+    let peakVol = 1.05 * velNorm;
     let decayLength = duration;
-    let sampleOffset = 0; // Descarte de transitorio de púa para ligados
-    let attackTime = 0.004;
+    let sampleOffset = 0;
+    let attackTime = 0.003;
 
     if (technique === 'pulloff' || technique === 'pull' || technique === 'hammer') {
-      // Ligados: La mano derecha NO pulsa la cuerda.
-      // Descartamos los primeros 28ms del archivo para eliminar el ataque de dedo/púa.
-      sampleOffset = 0.028;
-      cutoff = 2600; // Tono más cálido y redondo
+      // Descartar el ataque de dedo para legato auténtico
+      sampleOffset = 0.032;
+      cutoff = 2800;
       peakVol = 0.85 * velNorm;
-      attackTime = 0.018; // Envolvente suave sin click
+      attackTime = 0.016;
       decayLength = duration * 0.85;
     } else if (technique === 'slap') {
-      cutoff = 8500;
-      peakVol = 1.25 * velNorm;
+      cutoff = 9000;
+      peakVol = 1.3 * velNorm;
       decayLength = Math.min(duration, 0.55);
     } else if (technique === 'pop') {
-      cutoff = 10500;
+      cutoff = 11000;
       peakVol = 1.35 * velNorm;
       decayLength = Math.min(duration, 0.42);
     }
 
     filter.frequency.setValueAtTime(cutoff, now);
     filter.frequency.exponentialRampToValueAtTime(
-      Math.max(300, cutoff * 0.2),
-      now + decayLength * 0.75
+      Math.max(280, cutoff * 0.2),
+      now + decayLength * 0.8
     );
 
-    // Envolvente de Ganancia
     noteGain.gain.setValueAtTime(0.001, now);
     noteGain.gain.linearRampToValueAtTime(peakVol, now + attackTime);
     noteGain.gain.exponentialRampToValueAtTime(peakVol * 0.6, now + 0.12);
@@ -340,7 +342,6 @@ class SampledBassEngine {
     filter.connect(noteGain);
     noteGain.connect(this.masterGain);
 
-    // Arrancar la muestra descartando el transitorio en ligados
     source.start(now, sampleOffset);
     source.stop(now + decayLength + 0.05);
   }

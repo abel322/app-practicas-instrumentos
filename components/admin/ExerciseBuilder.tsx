@@ -279,6 +279,11 @@ export const ExerciseBuilder: React.FC = () => {
     activeNotesRef.current = notes;
   }, [notes]);
 
+  // Inicializar y precargar el AudioContext de muestras de bajo para que el tiempo 1 suene nítido al dar Play
+  useEffect(() => {
+    bassPreviewSynth.initContext();
+  }, []);
+
   // Estado de Celda Activa / Modal de Edición Rápida de Traste
   const [activeCell, setActiveCell] = useState<{ step: number; string?: number; voice?: DrumVoice } | null>(null);
 
