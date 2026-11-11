@@ -95,6 +95,7 @@ export class StringsAudioEngine {
     if (isBass) {
       const delayMs = time !== undefined ? Math.max(0, (time - this.ctx.currentTime) * 1000) : 0;
       const calculatedMidi = getBassMidiFromString(stringNum, fret);
+      const resolvedStringIndex = Math.max(0, (stringNum || 4) - 1);
       const tech: BassTechnique = (technique as BassTechnique) || 'normal';
       const vel = tech === 'pop' || tech === 'slap' ? 120 : Math.round(velocity * 115);
 
@@ -102,6 +103,7 @@ export class StringsAudioEngine {
         bassPreviewSynth.playNote({
           midi: calculatedMidi,
           technique: tech,
+          stringIndex: resolvedStringIndex,
           duration: 0.75,
           velocity: vel,
         });
@@ -110,6 +112,7 @@ export class StringsAudioEngine {
           bassPreviewSynth.playNote({
             midi: calculatedMidi,
             technique: tech,
+            stringIndex: resolvedStringIndex,
             duration: 0.75,
             velocity: vel,
           });

@@ -117,17 +117,19 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
           const ctx = engine.getAudioContext();
           const delayMs = ctx ? Math.max(0, (time - ctx.currentTime) * 1000) : 0;
           const calculatedMidi = getBassMidiFromString(note.string, note.fret || 0);
+          const resolvedStringIndex = Math.max(0, (note.string || 4) - 1); // 0 = G, 1 = D, 2 = A, 3 = E
           const tech: BassTechnique = (note.technique as BassTechnique) || 'normal';
           const vel =
             tech === 'pop' || tech === 'slap'
               ? 120
               : Math.round((note.velocity ?? 0.8) * 115);
-          const dur = (60 / bpmRef.current) * 0.8;
+          const dur = (60 / bpmRef.current) * 0.85;
 
           if (delayMs <= 15) {
             bassPreviewSynth.playNote({
               midi: calculatedMidi,
               technique: tech,
+              stringIndex: resolvedStringIndex,
               duration: dur,
               velocity: vel,
             });
@@ -137,6 +139,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
                 bassPreviewSynth.playNote({
                   midi: calculatedMidi,
                   technique: tech,
+                  stringIndex: resolvedStringIndex,
                   duration: dur,
                   velocity: vel,
                 });
@@ -216,6 +219,9 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
     const engine = getStringsAudioEngine();
     engine.init();
     engine.resume();
+    if (isBass) {
+      bassPreviewSynth.getAudioContext();
+    }
 
     if (isPlaying) {
       setIsPlaying(false);

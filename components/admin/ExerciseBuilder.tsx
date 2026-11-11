@@ -427,6 +427,7 @@ export const ExerciseBuilder: React.FC = () => {
           bassPreviewSynth.playNote({
             midi: calculatedMidi,
             technique: (selectedTechnique as BassTechnique) || 'normal',
+            stringIndex: Math.max(0, (stringNum || 4) - 1),
             duration: (60 / bpmRef.current) * 0.8,
             velocity: selectedTechnique === 'pop' || selectedTechnique === 'slap' ? 120 : 95,
           });
@@ -464,6 +465,7 @@ export const ExerciseBuilder: React.FC = () => {
           bassPreviewSynth.playNote({
             midi: calculatedMidi,
             technique: (selectedTechnique as BassTechnique) || 'normal',
+            stringIndex: Math.max(0, (stringNum || 4) - 1),
             duration: (60 / bpmRef.current) * 0.8,
             velocity: selectedTechnique === 'pop' || selectedTechnique === 'slap' ? 120 : 95,
           });
@@ -509,6 +511,7 @@ export const ExerciseBuilder: React.FC = () => {
         bassPreviewSynth.playNote({
           midi: calculatedMidi,
           technique: (selectedTechnique as BassTechnique) || 'normal',
+          stringIndex: Math.max(0, stringNum - 1),
           duration: (60 / bpmRef.current) * 0.8,
           velocity: selectedTechnique === 'pop' || selectedTechnique === 'slap' ? 120 : 95,
         });
@@ -790,6 +793,9 @@ export const ExerciseBuilder: React.FC = () => {
       };
 
       const isZeroIndexed = note.string === undefined && note.stringIndex !== undefined;
+      const resolvedStringIndex = isZeroIndexed
+        ? note.stringIndex
+        : Math.max(0, (note.string || 4) - 1); // 0 = G, 1 = D, 2 = A, 3 = E
       const stringBase = isZeroIndexed
         ? getBassMidiFromString(note.stringIndex, 0, true)
         : baseMidiByString[note.string] ?? 28;
@@ -799,7 +805,8 @@ export const ExerciseBuilder: React.FC = () => {
       bassPreviewSynth.playNote({
         midi: calculatedMidi,
         technique: tech,
-        duration: (60 / bpmRef.current) * 0.8,
+        stringIndex: resolvedStringIndex,
+        duration: (60 / bpmRef.current) * 0.85,
         velocity: tech === 'pop' || tech === 'slap' ? 120 : 95,
       });
     });
@@ -1680,6 +1687,7 @@ export const ExerciseBuilder: React.FC = () => {
                       bassPreviewSynth.playNote({
                         midi: calculatedMidi,
                         technique: newTech as BassTechnique,
+                        stringIndex: Math.max(0, (previewString || 4) - 1),
                         duration: (60 / bpmRef.current) * 0.8,
                         velocity: newTech === 'pop' || newTech === 'slap' ? 120 : 95,
                       });
