@@ -70,6 +70,7 @@ export { ExtendedScoreView } from '@/components/studio/ExtendedScoreView';
 export type { ScoreMeasure, ScoreNote, ExtendedScoreViewProps } from '@/components/studio/ExtendedScoreView';
 export { PrintableScoreModal } from '@/components/studio/PrintableScoreModal';
 export type { PrintableScoreModalProps } from '@/components/studio/PrintableScoreModal';
+export { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
 
 export const StudioBuilderView = ExerciseBuilder;
 export default ExerciseBuilder;

@@ -457,8 +457,11 @@ export const ExerciseBuilder: React.FC = () => {
     activeNotesRef.current = notes;
   }, [notes]);
 
-  // Inicializar y precargar el AudioContext de muestras de bajo y guitarra para latencia cero
+  // Inicializar y precargar el AudioContext de muestras de piano, bajo y guitarra para latencia cero
   useEffect(() => {
+    // Pre-cargar muestras de piano acústico para disponibilidad inmediata sin latencia
+    pianoPreviewSynth.initContext();
+    pianoPreviewSynth.preloadSamples();
     bassPreviewSynth.initContext();
     guitarPreviewSynth.init();
   }, []);

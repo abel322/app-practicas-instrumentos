@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
 
 export interface MidiDeviceState {
   isSupported: boolean;
@@ -59,6 +60,12 @@ export function useWebMidi(
       });
       if (onNoteOffRef.current) {
         onNoteOffRef.current(noteNumber);
+      }
+    } else if (command === 11) {
+      // Control Change (CC)
+      if (noteNumber === 64) {
+        // CC 64 = Sustain / Damper Pedal
+        pianoPreviewSynth.setSustain(velocity >= 64);
       }
     }
   }, []);

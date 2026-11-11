@@ -512,9 +512,14 @@ export function PianoRollBuilder({
     [commitNotesToStep, advanceStepRecording]
   );
 
+  const handleIncomingMidiNoteOff = useCallback((midi: number) => {
+    pianoPreviewSynth.noteOff(midi);
+  }, []);
+
   // Hook Web MIDI API con Auto-Detección y Reconexión reactiva
   const { midiState, requestMidiAgain, activeNotes: pressedMidiKeys } = useWebMidi(
-    handleIncomingMidiNote
+    handleIncomingMidiNote,
+    handleIncomingMidiNoteOff
   );
 
   // Función para reajustar automáticamente todas las notas existentes del compás activo
