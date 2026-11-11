@@ -404,6 +404,58 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
               )}
 
               {/* ============================================================== */}
+              {/* CAPA DE ARCOS DE LIGADURA (Hammer-on / Pull-off)               */}
+              {/* ============================================================== */}
+              {notesInCurrentMeasure.map((note, idx, arr) => {
+                const tech = (note.technique || '').toLowerCase();
+                if (tech !== 'hammer' && tech !== 'pulloff' && tech !== 'pull') return null;
+
+                // Encontrar la nota precedente más cercana en la misma cuerda dentro de este compás
+                const prevNote = arr
+                  .filter((n) => n.string === note.string && n.stepInMeasure < note.stepInMeasure)
+                  .sort((a, b) => b.stepInMeasure - a.stepInMeasure)[0];
+
+                if (!prevNote) return null;
+
+                const x1 = leftPadding + (prevNote.stepInMeasure + 0.5) * stepWidth;
+                const x2 = leftPadding + (note.stepInMeasure + 0.5) * stepWidth;
+                const stringY = getStringY(note.string);
+
+                // Posicionar la curva justo por encima de los trastes
+                const y = stringY - 14;
+                const midX = (x1 + x2) / 2;
+                const arcControlY = y - Math.min(18, Math.abs(x2 - x1) * 0.22);
+
+                const isHammer = tech === 'hammer';
+                const color = isHammer ? '#38bdf8' : '#fbbf24'; // Cyan para Hammer, Ámbar para Pull-off
+
+                return (
+                  <g key={`legato-slur-${note.id || idx}`} className="pointer-events-none select-none">
+                    {/* Arco Curvo de Ligadura */}
+                    <path
+                      d={`M ${x1} ${y} Q ${midX} ${arcControlY} ${x2} ${y}`}
+                      fill="none"
+                      stroke={color}
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                    />
+                    {/* Insignia tipográfica 'h' o 'p' */}
+                    <text
+                      x={midX}
+                      y={arcControlY - 3}
+                      textAnchor="middle"
+                      fill={color}
+                      fontSize="11"
+                      fontWeight="900"
+                      fontFamily="ui-monospace, monospace"
+                    >
+                      {isHammer ? 'h' : 'p'}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* ============================================================== */}
               {/* NOTAS DE TABLATURA EN ESTE COMPÁS                              */}
               {/* ============================================================== */}
               {Array.from({ length: effectiveStepsPerMeasure }).map((_, s) => {
@@ -462,8 +514,11 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                           </text>
 
                           {/* Insignia de técnica (Slap 'S', Pop 'P', Slide '/', etc.) */}
-                          {techBadge && (
-                            <g transform={`translate(${noteX}, ${noteY - 14})`}>
+                          {techBadge &&
+                            note.technique !== 'hammer' &&
+                            note.technique !== 'pull' &&
+                            note.technique !== 'pulloff' && (
+                              <g transform={`translate(${noteX}, ${noteY - 14})`}>
                               <rect
                                 x="-6"
                                 y="-6"

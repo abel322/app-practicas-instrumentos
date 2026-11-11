@@ -330,17 +330,25 @@ class SampledBassEngine {
 
     const noteGain = this.ctx.createGain();
 
+    const isLegato =
+      normalizedTech === 'hammer' ||
+      normalizedTech === 'pulloff' ||
+      normalizedTech === 'pull';
+
     let cutoff = 6500;
     let peakVol = 1.05 * velNorm;
     let sampleOffset = 0;
     let attackTime = 0.003;
+    decayLength = duration;
 
-    if (normalizedTech === 'pulloff' || normalizedTech === 'pull' || normalizedTech === 'hammer') {
-      // Descartar el ataque de dedo para legato auténtico
-      sampleOffset = 0.032;
-      cutoff = 2800;
-      peakVol = 0.85 * velNorm;
-      attackTime = 0.016;
+    if (isLegato) {
+      // 1. Eliminar por completo el impacto de púa/dedo de mano derecha
+      sampleOffset = 0.036;
+      // 2. Rampa suave de cuerda que recibe el golpe del dedo izquierdo
+      attackTime = 0.022;
+      // 3. Tono cálido de cuerda sin choque metálico inicial
+      cutoff = 2600;
+      peakVol = 0.82 * velNorm; // Pérdida de inercia natural
       decayLength = duration * 0.85;
     } else if (normalizedTech === 'slap') {
       cutoff = 9000;
@@ -353,11 +361,12 @@ class SampledBassEngine {
     } else if (normalizedTech === 'vibrato') {
       cutoff = 8000; // Preservar armónicos para resaltar la oscilación
       peakVol = 1.15 * velNorm;
+      decayLength = Math.max(duration * 1.35, 0.85);
     }
 
     filter.frequency.setValueAtTime(cutoff, now);
     filter.frequency.exponentialRampToValueAtTime(
-      Math.max(280, cutoff * 0.25),
+      Math.max(260, cutoff * 0.25),
       now + decayLength * 0.85
     );
 
@@ -371,7 +380,7 @@ class SampledBassEngine {
       noteGain.gain.exponentialRampToValueAtTime(peakVol * 0.65, now + decayLength * 0.75);
       noteGain.gain.exponentialRampToValueAtTime(0.0001, now + decayLength);
     } else {
-      noteGain.gain.exponentialRampToValueAtTime(peakVol * 0.55, now + 0.12);
+      noteGain.gain.exponentialRampToValueAtTime(peakVol * 0.6, now + attackTime + 0.14);
       noteGain.gain.exponentialRampToValueAtTime(0.0001, now + decayLength);
     }
 
