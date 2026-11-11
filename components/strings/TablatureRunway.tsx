@@ -181,7 +181,14 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
       case 'hammer':
         return { label: 'H', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.2)' };
       case 'pull':
+      case 'pulloff':
         return { label: 'P', color: '#f472b6', bg: 'rgba(244, 114, 182, 0.2)' };
+      case 'bend':
+        return { label: 'b', color: '#10b981', bg: 'rgba(16, 185, 129, 0.2)' };
+      case 'natural_harmonic':
+        return { label: 'N.H.', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.2)' };
+      case 'pinch_harmonic':
+        return { label: 'A.H.', color: '#eab308', bg: 'rgba(234, 179, 8, 0.2)' };
       case 'slide':
         return { label: '/', color: '#34d399', bg: 'rgba(52, 211, 153, 0.2)' };
       case 'vibrato':

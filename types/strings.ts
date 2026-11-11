@@ -7,8 +7,12 @@ export type StringTechnique =
   | 'ghost'
   | 'hammer'
   | 'pull'
+  | 'pulloff'
+  | 'bend'
   | 'slide'
-  | 'vibrato';
+  | 'vibrato'
+  | 'natural_harmonic'
+  | 'pinch_harmonic';
 
 export interface StringTabNote {
   id?: string;

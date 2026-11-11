@@ -11,6 +11,7 @@ import { getStringsAudioEngine } from '@/lib/stringsAudioEngine';
 import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
 import { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
 import { bassPreviewSynth, getBassMidiFromString, BassTechnique } from '@/lib/audio/bassPreviewSynth';
+import { guitarPreviewSynth, getGuitarMidiFromString, GuitarTechnique } from '@/lib/audio/guitarPreviewSynth';
 import { saveExerciseAction } from '@/app/actions/save-exercise';
 import { addCustomMasteryLevel } from '@/lib/mastery/customLevelsStorage';
 import { toast } from '@/components/ui/ToastNotification';
@@ -99,11 +100,85 @@ const DRUM_ROWS: { voice: DrumVoice; label: string; sub: string }[] = [
   { voice: 'kick', label: 'Bombo (Kick)', sub: 'Pulso de pedal' },
 ];
 
+const ACTIVE_INSTRUMENT_KEY = 'studio_builder_active_instrument';
+
+export interface TechniqueOption {
+  id: string;
+  label: string;
+  symbol: string;
+  color: string;
+}
+
+export const GUITAR_TECHNIQUES: TechniqueOption[] = [
+  { id: 'normal', label: 'Normal', symbol: '', color: 'bg-slate-800 text-white' },
+  { id: 'hammer', label: 'Hammer-on', symbol: 'h', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40' },
+  { id: 'pulloff', label: 'Pull-off', symbol: 'p', color: 'bg-amber-500/20 text-amber-400 border-amber-500/40' },
+  { id: 'bend', label: 'Bending', symbol: 'b', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' },
+  { id: 'slide', label: 'Slide', symbol: '/', color: 'bg-purple-500/20 text-purple-400 border-purple-500/40' },
+  { id: 'vibrato', label: 'Vibrato', symbol: '~', color: 'bg-rose-500/20 text-rose-400 border-rose-500/40' },
+  { id: 'natural_harmonic', label: 'Armónico Nat.', symbol: 'N.H.', color: 'bg-sky-500/20 text-sky-300 border-sky-500/40' },
+  { id: 'pinch_harmonic', label: 'Armónico Art.', symbol: 'A.H.', color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' },
+];
+
+export const BASS_TECHNIQUES: TechniqueOption[] = [
+  { id: 'normal', label: 'Normal', symbol: '', color: 'bg-slate-800 text-white' },
+  { id: 'slap', label: 'Slap', symbol: 'T', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40' },
+  { id: 'pop', label: 'Pop', symbol: 'P', color: 'bg-amber-500/20 text-amber-400 border-amber-500/40' },
+  { id: 'ghost', label: 'Ghost', symbol: 'X', color: 'bg-slate-700 text-slate-300' },
+  { id: 'hammer', label: 'Hammer-on', symbol: 'h', color: 'bg-sky-500/20 text-sky-400 border-sky-500/40' },
+  { id: 'pulloff', label: 'Pull-off', symbol: 'p', color: 'bg-orange-500/20 text-orange-400 border-orange-500/40' },
+  { id: 'slide', label: 'Slide', symbol: 's', color: 'bg-purple-500/20 text-purple-400 border-purple-500/40' },
+  { id: 'vibrato', label: 'Vibrato', symbol: 'v', color: 'bg-rose-500/20 text-rose-400 border-rose-500/40' },
+];
+
+export const getTechniqueBadge = (tech?: string, inst?: string): string | null => {
+  if (!tech || tech === 'normal') return null;
+  if (inst === 'guitar') {
+    switch (tech) {
+      case 'bend': return 'b';
+      case 'slide': return '/';
+      case 'vibrato': return '~';
+      case 'natural_harmonic': return 'N.H.';
+      case 'pinch_harmonic': return 'A.H.';
+      case 'hammer': return 'h';
+      case 'pull':
+      case 'pulloff': return 'p';
+      default: return tech[0].toUpperCase();
+    }
+  } else {
+    switch (tech) {
+      case 'slap': return 'T';
+      case 'pop': return 'P';
+      case 'ghost': return 'X';
+      case 'slide': return 's';
+      case 'vibrato': return 'v';
+      case 'hammer': return 'h';
+      case 'pull':
+      case 'pulloff': return 'p';
+      default: return tech[0].toUpperCase();
+    }
+  }
+};
+
 export const ExerciseBuilder: React.FC = () => {
   const searchParams = useSearchParams();
 
-  // Configuración Principal del Ejercicio
-  const [instrument, setInstrument] = useState<InstrumentCategory>('bass');
+  // Configuración Principal del Ejercicio (Persistencia Inmediata por URL y LocalStorage)
+  const [instrument, setInstrument] = useState<InstrumentCategory>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlInst = params.get('instrument');
+      if (urlInst && ['drums', 'bass', 'guitar', 'piano'].includes(urlInst)) {
+        return normalizeInstrumentKey(urlInst) as InstrumentCategory;
+      }
+      const saved = localStorage.getItem(ACTIVE_INSTRUMENT_KEY);
+      if (saved && ['drums', 'bass', 'guitar', 'piano'].includes(saved)) {
+        return normalizeInstrumentKey(saved) as InstrumentCategory;
+      }
+    }
+    return 'guitar';
+  });
+
   const [title, setTitle] = useState('Nuevo Ejercicio Multicompás');
   const [category, setCategory] = useState('Slap & Pop');
   const [difficulty, setDifficulty] = useState<'Básico' | 'Intermedio' | 'Avanzado'>('Intermedio');
@@ -119,6 +194,37 @@ export const ExerciseBuilder: React.FC = () => {
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [editorViewMode, setEditorViewMode] = useState<'pianoroll' | 'sheet'>('pianoroll');
 
+  // Cambiar instrumento actualizando estado, URL y LocalStorage
+  const handleSelectInstrument = (inst: InstrumentCategory) => {
+    setInstrument(inst);
+    handleStop();
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(ACTIVE_INSTRUMENT_KEY, inst);
+        const url = new URL(window.location.href);
+        url.searchParams.set('instrument', inst);
+        window.history.replaceState(null, '', url.toString());
+      } catch (err) {
+        console.warn('Error guardando instrumento activo:', err);
+      }
+    }
+    if (inst === 'piano') {
+      if (!notes.some((n) => n.midiNumber !== undefined)) {
+        const presetPianoNotes: EditorNote[] = [
+          { step: 0, midiNumber: 48, velocity: 90 }, // C3
+          { step: 0, midiNumber: 55, velocity: 85 }, // G3
+          { step: 0, midiNumber: 60, velocity: 95 }, // C4
+          { step: 0, midiNumber: 64, velocity: 90 }, // E4
+          { step: 4, midiNumber: 67, velocity: 90 }, // G4
+          { step: 8, midiNumber: 71, velocity: 95 }, // B4
+          { step: 12, midiNumber: 72, velocity: 100 }, // C5
+        ];
+        activeNotesRef.current = presetPianoNotes;
+        setNotes(presetPianoNotes);
+      }
+    }
+  };
+
   // Leer query params si viene derivado desde Ruta Técnica o en Modo Edición
   useEffect(() => {
     if (!searchParams) return;
@@ -133,6 +239,18 @@ export const ExerciseBuilder: React.FC = () => {
     if (queryInst) {
       const normalizedInitialInst = normalizeInstrumentKey(queryInst);
       setInstrument(normalizedInitialInst as InstrumentCategory);
+      try {
+        localStorage.setItem(ACTIVE_INSTRUMENT_KEY, normalizedInitialInst);
+      } catch {}
+    } else if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(ACTIVE_INSTRUMENT_KEY);
+      if (saved && ['drums', 'bass', 'guitar', 'piano'].includes(saved)) {
+        const normSaved = normalizeInstrumentKey(saved) as InstrumentCategory;
+        setInstrument(normSaved);
+        const url = new URL(window.location.href);
+        url.searchParams.set('instrument', normSaved);
+        window.history.replaceState(null, '', url.toString());
+      }
     }
     if (lvl) {
       setMasteryLevel(parseInt(lvl) || 11);
@@ -263,15 +381,37 @@ export const ExerciseBuilder: React.FC = () => {
   const [selectedSticking, setSelectedSticking] = useState<StickingType>('R');
   const [selectedAccent, setSelectedAccent] = useState<boolean>(false);
 
-  // Notas almacenadas del ejercicio
-  const [notes, setNotes] = useState<EditorNote[]>([
-    // Preset inicial de ejemplo en bajo
-    { step: 0, string: 4, fret: 0, technique: 'slap', finger: 'T' },
-    { step: 2, string: 2, fret: 2, technique: 'pop', finger: '1' },
-    { step: 4, string: 4, fret: 0, technique: 'slap', finger: 'T' },
-    { step: 6, string: 4, fret: 3, technique: 'slap', finger: '1' },
-    { step: 8, string: 2, fret: 5, technique: 'pop', finger: '3' },
-  ]);
+  // Notas almacenadas del ejercicio (adaptadas por defecto al instrumento seleccionado)
+  const [notes, setNotes] = useState<EditorNote[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedDraft = localStorage.getItem(`studio_builder_draft_${instrument}`);
+        if (savedDraft) {
+          const parsed = JSON.parse(savedDraft);
+          if (parsed.notes && Array.isArray(parsed.notes)) return parsed.notes;
+        }
+      } catch {}
+    }
+    if (instrument === 'bass') {
+      return [
+        { step: 0, string: 4, fret: 0, technique: 'slap', finger: 'T' },
+        { step: 2, string: 2, fret: 2, technique: 'pop', finger: '1' },
+        { step: 4, string: 4, fret: 0, technique: 'slap', finger: 'T' },
+        { step: 6, string: 4, fret: 3, technique: 'slap', finger: '1' },
+        { step: 8, string: 2, fret: 5, technique: 'pop', finger: '3' },
+      ];
+    }
+    if (instrument === 'guitar') {
+      return [
+        { step: 0, string: 6, fret: 0, technique: 'normal', finger: '1' },
+        { step: 2, string: 5, fret: 2, technique: 'hammer', finger: '2' },
+        { step: 4, string: 4, fret: 2, technique: 'normal', finger: '2' },
+        { step: 6, string: 3, fret: 0, technique: 'normal', finger: '1' },
+        { step: 8, string: 2, fret: 3, technique: 'bend', finger: '3' },
+      ];
+    }
+    return [];
+  });
 
   // Referencia viva para el motor de audio en tiempo de ejecución (Hot-Updating Sequencer)
   const activeNotesRef = useRef<EditorNote[]>(notes);
@@ -281,9 +421,10 @@ export const ExerciseBuilder: React.FC = () => {
     activeNotesRef.current = notes;
   }, [notes]);
 
-  // Inicializar y precargar el AudioContext de muestras de bajo para que el tiempo 1 suene nítido al dar Play
+  // Inicializar y precargar el AudioContext de muestras de bajo y guitarra para latencia cero
   useEffect(() => {
     bassPreviewSynth.initContext();
+    guitarPreviewSynth.init();
   }, []);
 
   // Estado de Celda Activa / Modal de Edición Rápida de Traste
@@ -563,7 +704,7 @@ export const ExerciseBuilder: React.FC = () => {
         const targetFret = existingNote.fret ?? selectedFret;
         let noteTech = selectedTechnique;
 
-        if (noteTech === 'hammer' || noteTech === 'pull') {
+        if (noteTech === 'hammer' || noteTech === 'pull' || (noteTech as any) === 'pulloff') {
           const currentNotes = activeNotesRef.current || notes;
           const validation = validateLegatoTechnique(
             currentNotes,
@@ -576,7 +717,7 @@ export const ExerciseBuilder: React.FC = () => {
             noteTech = existingNote.technique || 'normal';
           } else if (validation.suggestedTechnique) {
             toast.info(validation.message || 'Técnica ajustada a la dirección musical.');
-            noteTech = validation.suggestedTechnique === 'pulloff' ? 'pull' : 'hammer';
+            noteTech = validation.suggestedTechnique === 'pulloff' ? (instrument === 'guitar' ? 'pulloff' : 'pull') : 'hammer';
           }
         }
 
@@ -592,15 +733,25 @@ export const ExerciseBuilder: React.FC = () => {
         });
         setActiveCell({ step: globalStep, string: stringNum });
 
-        // Pre-escucha inmediata con la técnica activa
+        // Pre-escucha inmediata con la técnica activa y motor dedicado
         if (instrument === 'bass') {
           const calculatedMidi = getBassMidiFromString(stringNum!, targetFret);
+          const bassTech = (noteTech === 'pull' ? 'pulloff' : noteTech) as BassTechnique;
           bassPreviewSynth.playNote({
             midi: calculatedMidi,
-            technique: (noteTech as BassTechnique) || 'normal',
+            technique: bassTech || 'normal',
             stringIndex: Math.max(0, (stringNum || 4) - 1),
             duration: (60 / bpmRef.current) * 0.8,
             velocity: noteTech === 'pop' || noteTech === 'slap' ? 120 : 95,
+          });
+        } else if (instrument === 'guitar') {
+          const calculatedMidi = getGuitarMidiFromString(stringNum!, targetFret);
+          const guitarTech = (noteTech === 'pull' ? 'pulloff' : noteTech) as GuitarTechnique;
+          guitarPreviewSynth.playNote({
+            midi: calculatedMidi,
+            technique: guitarTech || 'normal',
+            duration: (60 / bpmRef.current) * 0.8,
+            velocity: noteTech === 'natural_harmonic' || noteTech === 'pinch_harmonic' ? 115 : 100,
           });
         } else {
           const engine = getStringsAudioEngine();
@@ -616,7 +767,7 @@ export const ExerciseBuilder: React.FC = () => {
         }
       } else {
         let noteTech = selectedTechnique;
-        if (noteTech === 'hammer' || noteTech === 'pull') {
+        if (noteTech === 'hammer' || noteTech === 'pull' || (noteTech as any) === 'pulloff') {
           const currentNotes = activeNotesRef.current || notes;
           const validation = validateLegatoTechnique(
             currentNotes,
@@ -629,7 +780,7 @@ export const ExerciseBuilder: React.FC = () => {
             noteTech = 'normal';
           } else if (validation.suggestedTechnique) {
             toast.info(validation.message || 'Técnica ajustada a la dirección musical.');
-            noteTech = validation.suggestedTechnique === 'pulloff' ? 'pull' : 'hammer';
+            noteTech = validation.suggestedTechnique === 'pulloff' ? (instrument === 'guitar' ? 'pulloff' : 'pull') : 'hammer';
           }
         }
 
@@ -651,12 +802,22 @@ export const ExerciseBuilder: React.FC = () => {
         // Sonido de prueba inmediato con motor articulado
         if (instrument === 'bass') {
           const calculatedMidi = getBassMidiFromString(stringNum!, selectedFret);
+          const bassTech = (noteTech === 'pull' ? 'pulloff' : noteTech) as BassTechnique;
           bassPreviewSynth.playNote({
             midi: calculatedMidi,
-            technique: (noteTech as BassTechnique) || 'normal',
+            technique: bassTech || 'normal',
             stringIndex: Math.max(0, (stringNum || 4) - 1),
             duration: (60 / bpmRef.current) * 0.8,
             velocity: noteTech === 'pop' || noteTech === 'slap' ? 120 : 95,
+          });
+        } else if (instrument === 'guitar') {
+          const calculatedMidi = getGuitarMidiFromString(stringNum!, selectedFret);
+          const guitarTech = (noteTech === 'pull' ? 'pulloff' : noteTech) as GuitarTechnique;
+          guitarPreviewSynth.playNote({
+            midi: calculatedMidi,
+            technique: guitarTech || 'normal',
+            duration: (60 / bpmRef.current) * 0.8,
+            velocity: noteTech === 'natural_harmonic' || noteTech === 'pinch_harmonic' ? 115 : 100,
           });
         } else {
           const engine = getStringsAudioEngine();
@@ -681,7 +842,7 @@ export const ExerciseBuilder: React.FC = () => {
       const existing = prev.find((n) => n.step === globalStep && n.string === stringNum);
       let noteTech = existing?.technique || selectedTechnique;
 
-      if (fret >= 0 && (noteTech === 'hammer' || noteTech === 'pull')) {
+      if (fret >= 0 && (noteTech === 'hammer' || noteTech === 'pull' || (noteTech as any) === 'pulloff')) {
         const validation = validateLegatoTechnique(
           filtered,
           { step: globalStep, string: stringNum, fret },
@@ -690,7 +851,7 @@ export const ExerciseBuilder: React.FC = () => {
         if (!validation.isValid) {
           noteTech = 'normal';
         } else if (validation.suggestedTechnique) {
-          noteTech = validation.suggestedTechnique === 'pulloff' ? 'pull' : 'hammer';
+          noteTech = validation.suggestedTechnique === 'pulloff' ? (instrument === 'guitar' ? 'pulloff' : 'pull') : 'hammer';
         }
       }
       finalTech = noteTech;
@@ -715,12 +876,22 @@ export const ExerciseBuilder: React.FC = () => {
     if (fret >= 0) {
       if (instrument === 'bass') {
         const calculatedMidi = getBassMidiFromString(stringNum, fret);
+        const bassTech = (finalTech === 'pull' ? 'pulloff' : finalTech) as BassTechnique;
         bassPreviewSynth.playNote({
           midi: calculatedMidi,
-          technique: (finalTech as BassTechnique) || 'normal',
+          technique: bassTech || 'normal',
           stringIndex: Math.max(0, stringNum - 1),
           duration: (60 / bpmRef.current) * 0.8,
           velocity: finalTech === 'pop' || finalTech === 'slap' ? 120 : 95,
+        });
+      } else if (instrument === 'guitar') {
+        const calculatedMidi = getGuitarMidiFromString(stringNum, fret);
+        const guitarTech = (finalTech === 'pull' ? 'pulloff' : finalTech) as GuitarTechnique;
+        guitarPreviewSynth.playNote({
+          midi: calculatedMidi,
+          technique: guitarTech || 'normal',
+          duration: (60 / bpmRef.current) * 0.8,
+          velocity: finalTech === 'natural_harmonic' || finalTech === 'pinch_harmonic' ? 115 : 100,
         });
       } else {
         const engine = getStringsAudioEngine();
@@ -746,7 +917,7 @@ export const ExerciseBuilder: React.FC = () => {
       );
 
       if (activeNote) {
-        if (newTech === 'hammer' || newTech === 'pull') {
+        if (newTech === 'hammer' || newTech === 'pull' || (newTech as any) === 'pulloff') {
           const currentNotes = activeNotesRef.current || notes;
           const validation = validateLegatoTechnique(
             currentNotes,
@@ -761,7 +932,7 @@ export const ExerciseBuilder: React.FC = () => {
 
           if (validation.suggestedTechnique) {
             toast.info(validation.message || 'Técnica ajustada a la dirección musical.');
-            finalTech = validation.suggestedTechnique === 'pulloff' ? 'pull' : 'hammer';
+            finalTech = validation.suggestedTechnique === 'pulloff' ? (instrument === 'guitar' ? 'pulloff' : 'pull') : 'hammer';
           }
         }
 
@@ -780,12 +951,22 @@ export const ExerciseBuilder: React.FC = () => {
 
         if (instrument === 'bass') {
           const calculatedMidi = getBassMidiFromString(activeCell.string, previewFret);
+          const bassTech = (finalTech === 'pull' ? 'pulloff' : finalTech) as BassTechnique;
           bassPreviewSynth.playNote({
             midi: calculatedMidi,
-            technique: finalTech as BassTechnique,
+            technique: bassTech || 'normal',
             stringIndex: Math.max(0, activeCell.string - 1),
             duration: (60 / bpmRef.current) * 0.8,
             velocity: finalTech === 'pop' || finalTech === 'slap' ? 120 : 95,
+          });
+        } else if (instrument === 'guitar') {
+          const calculatedMidi = getGuitarMidiFromString(activeCell.string, previewFret);
+          const guitarTech = (finalTech === 'pull' ? 'pulloff' : finalTech) as GuitarTechnique;
+          guitarPreviewSynth.playNote({
+            midi: calculatedMidi,
+            technique: guitarTech,
+            duration: (60 / bpmRef.current) * 0.8,
+            velocity: finalTech === 'natural_harmonic' || finalTech === 'pinch_harmonic' ? 115 : 100,
           });
         }
         return;
@@ -1078,6 +1259,32 @@ export const ExerciseBuilder: React.FC = () => {
     });
   }, [getStepDuration]);
 
+  const playGuitarStep = useCallback((stepIndex: number) => {
+    const currentStepNotes =
+      activeNotesRef.current?.filter(
+        (n: any) =>
+          (n.step === stepIndex || n.stepIndex === stepIndex) &&
+          (n.string !== undefined || n.stringIndex !== undefined) &&
+          n.fret !== undefined
+      ) || [];
+
+    currentStepNotes.forEach((note: any) => {
+      const isZeroIndexed = note.string === undefined && note.stringIndex !== undefined;
+      const strVal = isZeroIndexed ? note.stringIndex : note.string;
+      const calculatedMidi = getGuitarMidiFromString(strVal, note.fret || 0, isZeroIndexed);
+      const rawTech = (note.technique || 'normal').toLowerCase();
+      const tech = (rawTech === 'pull' ? 'pulloff' : rawTech) as GuitarTechnique;
+      const stepDuration = getStepDuration();
+
+      guitarPreviewSynth.playNote({
+        midi: calculatedMidi,
+        technique: tech,
+        duration: stepDuration * 3.5,
+        velocity: tech === 'natural_harmonic' || tech === 'pinch_harmonic' ? 115 : 100,
+      });
+    });
+  }, [getStepDuration]);
+
   const scheduleStep = useCallback(
     (stepNumber: number, time: number) => {
       const liveInstrument = instrumentRef.current;
@@ -1129,6 +1336,24 @@ export const ExerciseBuilder: React.FC = () => {
         if (isBeatStep(stepNumber)) {
           engine.playMetronome(time, stepNumber % liveStepsPerMeasure === 0);
         }
+      } else if (liveInstrument === 'guitar') {
+        const engine = getStringsAudioEngine();
+        const ctx = engine.getAudioContext();
+        const delayMs = ctx ? Math.max(0, (time - ctx.currentTime) * 1000) : 0;
+
+        if (delayMs <= 15) {
+          playGuitarStep(stepNumber);
+        } else {
+          window.setTimeout(() => {
+            if (isPlayingRef.current) {
+              playGuitarStep(stepNumber);
+            }
+          }, delayMs);
+        }
+
+        if (isBeatStep(stepNumber)) {
+          engine.playMetronome(time, stepNumber % liveStepsPerMeasure === 0);
+        }
       } else {
         const engine = getStringsAudioEngine();
         const stringNotes = notesNow.filter(
@@ -1149,7 +1374,7 @@ export const ExerciseBuilder: React.FC = () => {
         }
       }
     },
-    [isBeatStep, playBassStep, playStepAudio]
+    [isBeatStep, playBassStep, playGuitarStep, playStepAudio]
   );
 
   const schedulerLoop = useCallback(() => {
@@ -1473,10 +1698,7 @@ export const ExerciseBuilder: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
           <div className="flex items-center p-1 rounded-xl bg-slate-200/80 dark:bg-zinc-900/80 border border-slate-300/80 dark:border-white/5">
             <button
-              onClick={() => {
-                setInstrument('drums');
-                handleStop();
-              }}
+              onClick={() => handleSelectInstrument('drums')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 instrument === 'drums'
                   ? 'bg-[#0891b2] text-white shadow-sm dark:bg-cyan-500 dark:text-zinc-950 dark:shadow-[0_0_15px_rgba(34,211,238,0.35)]'
@@ -1488,10 +1710,7 @@ export const ExerciseBuilder: React.FC = () => {
             </button>
 
             <button
-              onClick={() => {
-                setInstrument('bass');
-                handleStop();
-              }}
+              onClick={() => handleSelectInstrument('bass')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 instrument === 'bass'
                   ? 'bg-[#0891b2] text-white shadow-sm dark:bg-cyan-500 dark:text-zinc-950 dark:shadow-[0_0_15px_rgba(34,211,238,0.35)]'
@@ -1503,10 +1722,7 @@ export const ExerciseBuilder: React.FC = () => {
             </button>
 
             <button
-              onClick={() => {
-                setInstrument('guitar');
-                handleStop();
-              }}
+              onClick={() => handleSelectInstrument('guitar')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 instrument === 'guitar'
                   ? 'bg-[#0891b2] text-white shadow-sm dark:bg-cyan-500 dark:text-zinc-950 dark:shadow-[0_0_15px_rgba(34,211,238,0.35)]'
@@ -1518,23 +1734,7 @@ export const ExerciseBuilder: React.FC = () => {
             </button>
 
             <button
-              onClick={() => {
-                setInstrument('piano');
-                handleStop();
-                if (!notes.some((n) => n.midiNumber !== undefined)) {
-                  const presetPianoNotes: EditorNote[] = [
-                    { step: 0, midiNumber: 48, velocity: 90 }, // C3
-                    { step: 0, midiNumber: 55, velocity: 85 }, // G3
-                    { step: 0, midiNumber: 60, velocity: 95 }, // C4
-                    { step: 0, midiNumber: 64, velocity: 90 }, // E4
-                    { step: 4, midiNumber: 67, velocity: 90 }, // G4
-                    { step: 8, midiNumber: 71, velocity: 95 }, // B4
-                    { step: 12, midiNumber: 72, velocity: 100 }, // C5
-                  ];
-                  activeNotesRef.current = presetPianoNotes;
-                  setNotes(presetPianoNotes);
-                }
-              }}
+              onClick={() => handleSelectInstrument('piano')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 instrument === 'piano'
                   ? 'bg-[#0891b2] text-white shadow-sm dark:bg-cyan-500 dark:text-zinc-950 dark:shadow-[0_0_15px_rgba(34,211,238,0.35)]'
@@ -1931,30 +2131,30 @@ export const ExerciseBuilder: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider mr-1">Técnica Activa:</span>
 
-            {[
-              { id: 'normal', label: 'Normal', badge: '•' },
-              { id: 'slap', label: 'Slap', badge: 'S' },
-              { id: 'pop', label: 'Pop', badge: 'P' },
-              { id: 'ghost', label: 'Ghost', badge: 'X' },
-              { id: 'hammer', label: 'Hammer', badge: 'H' },
-              { id: 'pull', label: 'Pull-off', badge: 'P' },
-              { id: 'slide', label: 'Slide', badge: '/' },
-              { id: 'vibrato', label: 'Vibrato', badge: '~' },
-            ].map((tech) => {
-              const isSelected = selectedTechnique === tech.id;
+            {(instrument === 'guitar' ? GUITAR_TECHNIQUES : BASS_TECHNIQUES).map((tech) => {
+              const isSelected =
+                selectedTechnique === tech.id ||
+                (selectedTechnique === 'pull' && tech.id === 'pulloff') ||
+                (selectedTechnique === 'pulloff' && tech.id === 'pull');
               return (
                 <button
                   key={tech.id}
                   onClick={() => {
                     handleSetTechnique(tech.id as StringTechnique);
                   }}
-                  className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 border transition-all ${
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-all ${
                     isSelected
                       ? 'bg-cyan-500 text-zinc-950 font-bold border-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.3)]'
                       : 'bg-white/5 border-white/5 text-zinc-400 hover:text-white hover:bg-white/10'
                   }`}
                 >
-                  <span className="text-[10px] font-mono font-bold opacity-80">{tech.badge}</span>
+                  {tech.symbol ? (
+                    <span className="text-[10px] font-mono font-black opacity-85 px-1 py-0.5 rounded bg-black/30">
+                      {tech.symbol}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-mono font-bold opacity-70">•</span>
+                  )}
                   <span>{tech.label}</span>
                 </button>
               );
@@ -2249,8 +2449,8 @@ export const ExerciseBuilder: React.FC = () => {
                               note.technique !== 'hammer' &&
                               note.technique !== 'pull' &&
                               (note.technique as any) !== 'pulloff' && (
-                                <span className="absolute -top-3.5 text-[9px] font-mono font-black text-amber-300 bg-amber-500/30 px-1 rounded border border-amber-400/40 shadow-sm">
-                                  {note.technique[0].toUpperCase()}
+                                <span className="absolute -top-3.5 text-[9px] font-mono font-black text-amber-300 bg-amber-500/30 px-1 rounded border border-amber-400/40 shadow-sm whitespace-nowrap">
+                                  {getTechniqueBadge(note.technique, instrument)}
                                 </span>
                               )}
 
