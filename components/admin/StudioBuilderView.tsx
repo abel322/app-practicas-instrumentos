@@ -62,5 +62,8 @@ export function validateLegatoTechnique(
 
 import { ExerciseBuilder } from './ExerciseBuilder';
 
+export { useWebMidi } from '@/lib/midi/useWebMidi';
+export type { MidiDeviceState } from '@/lib/midi/useWebMidi';
+
 export const StudioBuilderView = ExerciseBuilder;
 export default ExerciseBuilder;

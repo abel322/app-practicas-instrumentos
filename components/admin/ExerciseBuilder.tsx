@@ -1141,6 +1141,46 @@ export const ExerciseBuilder: React.FC = () => {
     []
   );
 
+  const handleAddPianoNote = useCallback(
+    (
+      stepInMeasure: number,
+      midiNumber: number,
+      velocity: number = 100,
+      duration: NoteDuration = 'quarter'
+    ) => {
+      const globalStep = currentMeasureRef.current * stepsPerMeasureRef.current + stepInMeasure;
+      const durationStepsMap: Record<NoteDuration, number> = {
+        whole: 16,
+        half: 8,
+        quarter: 4,
+        eighth: 2,
+        sixteenth: 1,
+      };
+      setNotes((prev) => {
+        const withoutRest = prev.filter((n) => !(n.step === globalStep && n.isRest));
+        const alreadyExists = withoutRest.some(
+          (n) => n.step === globalStep && n.midiNumber === midiNumber
+        );
+        if (alreadyExists) return prev;
+
+        const next = [
+          ...withoutRest,
+          {
+            step: globalStep,
+            midiNumber,
+            velocity,
+            duration,
+            durationSteps: durationStepsMap[duration] || 1,
+            isRest: false,
+          },
+        ];
+        activeNotesRef.current = next;
+        return next;
+      });
+    },
+    []
+  );
+
   const handleTogglePianoRest = useCallback(
     (stepInMeasure: number, duration: NoteDuration = 'quarter') => {
       const globalStep = currentMeasureRef.current * stepsPerMeasureRef.current + stepInMeasure;
@@ -2361,6 +2401,7 @@ export const ExerciseBuilder: React.FC = () => {
           notes={notes}
           onToggleNote={handleTogglePianoNote}
           onToggleSingleNote={handleTogglePianoNote}
+          onAddNote={handleAddPianoNote}
           onToggleRest={handleTogglePianoRest}
           onAddChordToStep={handleAddChordToPianoStep}
           isPlaying={isPlaying}
@@ -2369,6 +2410,14 @@ export const ExerciseBuilder: React.FC = () => {
           timeSignature={timeSignature}
           editorViewMode={editorViewMode}
           onViewModeChange={setEditorViewMode}
+          tempo={bpm}
+          onTogglePlay={handleTogglePlay}
+          onStartPlayback={() => {
+            if (!isPlayingRef.current) handleTogglePlay();
+          }}
+          onStopPlayback={() => {
+            if (isPlayingRef.current) handleTogglePlay();
+          }}
         />
       ) : (
       <div 
