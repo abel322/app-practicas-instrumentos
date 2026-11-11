@@ -68,6 +68,8 @@ export { QUANTIZE_OPTIONS, getQuantizedStep } from './PianoRollBuilder';
 export type { QuantizeValue, QuantizeOption } from './PianoRollBuilder';
 export { ExtendedScoreView } from '@/components/studio/ExtendedScoreView';
 export type { ScoreMeasure, ScoreNote, ExtendedScoreViewProps } from '@/components/studio/ExtendedScoreView';
+export { PrintableScoreModal } from '@/components/studio/PrintableScoreModal';
+export type { PrintableScoreModalProps } from '@/components/studio/PrintableScoreModal';
 
 export const StudioBuilderView = ExerciseBuilder;
 export default ExerciseBuilder;

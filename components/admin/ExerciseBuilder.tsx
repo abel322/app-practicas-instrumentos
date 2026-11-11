@@ -54,6 +54,8 @@ import { NoteDuration } from './PianoGrandStaffView';
 import { normalizeSubdivisionKey, getStepsForSubdivision } from '@/lib/music-theory/rhythmSubdivisions';
 import { normalizeInstrumentKey } from '@/lib/music-theory/instrumentUtils';
 import { validateLegatoTechnique } from './StudioBuilderView';
+import { PrintableScoreModal } from '@/components/studio/PrintableScoreModal';
+import type { ScoreMeasure } from '@/components/studio/ExtendedScoreView';
 
 export {
   getStepRhythmLabel,
@@ -491,6 +493,36 @@ export const ExerciseBuilder: React.FC = () => {
       };
     });
   }, [totalMeasures, stepsPerMeasure, notes]);
+
+  // Modal de Exportación a PDF Editorial
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
+
+  // Mapeo de compases para exportación a partitura imprimible vectorial
+  const printableMeasures: ScoreMeasure[] = useMemo(() => {
+    return measures.map((m) => {
+      const measureNotes = (m.notes || []).map((n) => {
+        let midi = n.midiNumber;
+        if (midi === undefined) {
+          if (instrument === 'bass' && n.string !== undefined && n.fret !== undefined) {
+            midi = getBassMidiFromString(n.string, n.fret);
+          } else if (instrument === 'guitar' && n.string !== undefined && n.fret !== undefined) {
+            midi = getGuitarMidiFromString(n.string, n.fret);
+          }
+        }
+        return {
+          stepIndex: n.step - m.measureIndex * stepsPerMeasure,
+          midiNumber: midi ?? 60,
+          duration: n.duration,
+          velocity: n.velocity,
+          isRest: !!n.isRest,
+        };
+      });
+      return {
+        measureIndex: m.measureIndex,
+        notes: measureNotes,
+      };
+    });
+  }, [measures, stepsPerMeasure, instrument]);
 
   // ============================================================================
   // AUTO-GUARDADO Y RESTAURACIÓN DE BORRADOR (LOCALSTORAGE)
@@ -1927,6 +1959,16 @@ export const ExerciseBuilder: React.FC = () => {
             <span className="hidden sm:inline">Nuevo / Limpiar</span>
           </button>
 
+          {/* Botón Exportar PDF */}
+          <button
+            type="button"
+            onClick={() => setIsPrintModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 hover:border-slate-500 transition-all shadow-sm"
+            title="Abrir vista previa y exportar a PDF para impresión"
+          >
+            <span>📄 Exportar PDF</span>
+          </button>
+
           {/* Botón Guardar / Publicar Ejercicio */}
           <button
             onClick={handlePublish}
@@ -2928,6 +2970,17 @@ export const ExerciseBuilder: React.FC = () => {
           Total de notas en el ejercicio: <span className="text-cyan-400 font-bold">{notes.length}</span>
         </div>
       </div>
+
+      {/* Modal de Exportación a PDF Editorial */}
+      <PrintableScoreModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        title={title || 'Ejercicio de Estudio'}
+        instrument={instrument}
+        tempo={bpm}
+        subdivision={subdivision}
+        measures={printableMeasures}
+      />
     </div>
   );
 };
