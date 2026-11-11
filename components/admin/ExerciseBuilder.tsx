@@ -37,6 +37,7 @@ import {
   CheckCircle2,
   AlertCircle,
   HelpCircle,
+  RotateCcw,
   Target
 } from 'lucide-react';
 import { getStepRhythmLabel } from './TablatureRuler';
@@ -303,6 +304,153 @@ export const ExerciseBuilder: React.FC = () => {
   }, [timeSignature, subdivision]);
 
   const totalSteps = totalMeasures * stepsPerMeasure;
+
+  // Agrupación de notas por compás
+  const measures = useMemo(() => {
+    return Array.from({ length: totalMeasures }).map((_, mIdx) => {
+      const mStart = mIdx * stepsPerMeasure;
+      const mEnd = mStart + stepsPerMeasure;
+      return {
+        measureIndex: mIdx,
+        notes: notes.filter((n) => n.step >= mStart && n.step < mEnd),
+      };
+    });
+  }, [totalMeasures, stepsPerMeasure, notes]);
+
+  // ============================================================================
+  // AUTO-GUARDADO Y RESTAURACIÓN DE BORRADOR (LOCALSTORAGE)
+  // ============================================================================
+  const DRAFT_STORAGE_KEY = `studio_builder_draft_${instrument}`;
+  const isDraftLoadedRef = useRef<boolean>(false);
+  const [isDraftReady, setIsDraftReady] = useState<boolean>(false);
+
+  // 1. Restauración automática al montar o cambiar de instrumento
+  useEffect(() => {
+    // Si estamos editando un ejercicio existente por ID/slug de la base de datos, no cargamos borrador nuevo
+    if (editingSlug) {
+      isDraftLoadedRef.current = true;
+      setIsDraftReady(true);
+      return;
+    }
+
+    try {
+      if (typeof window !== 'undefined') {
+        const savedDraft = localStorage.getItem(DRAFT_STORAGE_KEY);
+        if (savedDraft) {
+          const parsed = JSON.parse(savedDraft);
+          let loadedNotes: EditorNote[] = [];
+
+          if (parsed.notes && Array.isArray(parsed.notes)) {
+            loadedNotes = parsed.notes;
+          } else if (parsed.measures && Array.isArray(parsed.measures) && parsed.measures.length > 0) {
+            loadedNotes = parsed.measures.flatMap((m: any, mIdx: number) => {
+              const mStart = (m.measureIndex ?? mIdx) * stepsPerMeasure;
+              return (m.notes || []).map((n: any) => ({
+                ...n,
+                step: n.step !== undefined ? n.step : mStart + (n.stepIndex ?? 0),
+              }));
+            });
+          }
+
+          if (loadedNotes.length > 0 || (parsed.title && parsed.title.trim() !== '')) {
+            setNotes(loadedNotes);
+            activeNotesRef.current = loadedNotes;
+            if (parsed.totalMeasures) {
+              setTotalMeasures(Math.min(8, Math.max(1, parsed.totalMeasures)));
+            } else if (parsed.measures && Array.isArray(parsed.measures)) {
+              setTotalMeasures(Math.min(8, Math.max(1, parsed.measures.length)));
+            }
+            if (parsed.title !== undefined) setTitle(parsed.title);
+            if (parsed.tempo || parsed.bpm) setBpm(Number(parsed.tempo || parsed.bpm));
+            if (parsed.subdivision) setSubdivision(parsed.subdivision as SubdivisionType);
+            if (parsed.category) setCategory(parsed.category);
+            if (parsed.difficulty) setDifficulty(parsed.difficulty);
+            if (parsed.timeSignature) setTimeSignature(parsed.timeSignature);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error restaurando borrador de localStorage:', err);
+    } finally {
+      isDraftLoadedRef.current = true;
+      setIsDraftReady(true);
+    }
+  }, [instrument, editingSlug]);
+
+  // 2. Auto-guardado continuo en tiempo real
+  useEffect(() => {
+    // Evitar sobreescribir con estado inicial antes de restaurar o si estamos en modo edición
+    if (!isDraftReady || !isDraftLoadedRef.current || editingSlug || isSaving) return;
+
+    try {
+      if (typeof window === 'undefined') return;
+      const hasNotes = notes.length > 0;
+      if (hasNotes || title.trim() !== '') {
+        const draftPayload = {
+          title,
+          tempo: bpm,
+          bpm,
+          subdivision,
+          category,
+          difficulty,
+          timeSignature,
+          totalMeasures,
+          measures,
+          notes,
+          updatedAt: new Date().toISOString(),
+        };
+        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftPayload));
+      }
+    } catch (err) {
+      console.error('Error auto-guardando borrador:', err);
+    }
+  }, [
+    notes,
+    measures,
+    title,
+    bpm,
+    subdivision,
+    category,
+    difficulty,
+    timeSignature,
+    totalMeasures,
+    instrument,
+    isDraftReady,
+    editingSlug,
+    isSaving,
+    DRAFT_STORAGE_KEY,
+  ]);
+
+  // 3. Alerta de confirmación al recargar o salir (beforeunload)
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const hasNotes = notes.length > 0;
+      if (hasNotes) {
+        e.preventDefault();
+        e.returnValue = ''; // Requerido por navegadores modernos para disparar el diálogo
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [notes]);
+
+  // Acción para vaciar el borrador y comenzar un ejercicio limpio
+  const handleClearDraft = () => {
+    if (confirm('¿Deseas descartar este borrador y empezar un ejercicio nuevo en blanco?')) {
+      try {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+      } catch (err) {
+        console.error('Error limpiando borrador:', err);
+      }
+      setNotes([]);
+      activeNotesRef.current = [];
+      setTotalMeasures(1);
+      setCurrentMeasure(0);
+      setTitle('');
+      toast.info('Borrador descartado. Ejercicio nuevo en blanco.');
+    }
+  };
 
   // Cambiar categorías automáticamente al alternar instrumento
   useEffect(() => {
@@ -1200,6 +1348,12 @@ export const ExerciseBuilder: React.FC = () => {
           data: formattedData,
         }).catch(() => {});
  
+        try {
+          localStorage.removeItem(DRAFT_STORAGE_KEY);
+        } catch (err) {
+          console.error('Error eliminando borrador tras guardar en mastery:', err);
+        }
+
         setSaveResult({
           success: true,
           url: '/mastery',
@@ -1223,6 +1377,12 @@ export const ExerciseBuilder: React.FC = () => {
       });
 
       if (res.success) {
+        try {
+          localStorage.removeItem(DRAFT_STORAGE_KEY);
+        } catch (err) {
+          console.error('Error eliminando borrador tras publicar:', err);
+        }
+
         saveLocalExercise({
           slug: res.slug,
           instrumentType: instrument,
@@ -1385,6 +1545,17 @@ export const ExerciseBuilder: React.FC = () => {
               <span>Piano</span>
             </button>
           </div>
+
+          {/* Botón Limpiar / Nuevo Ejercicio */}
+          <button
+            onClick={handleClearDraft}
+            type="button"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200 dark:bg-white/5 dark:hover:bg-rose-500/15 dark:text-zinc-400 dark:hover:text-rose-300 dark:border-white/10 dark:hover:border-rose-500/30 font-semibold text-xs transition-colors"
+            title="Descartar borrador y empezar un ejercicio nuevo en blanco"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Nuevo / Limpiar</span>
+          </button>
 
           {/* Botón Guardar / Publicar Ejercicio */}
           <button
