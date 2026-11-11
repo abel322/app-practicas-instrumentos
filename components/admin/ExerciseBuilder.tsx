@@ -805,17 +805,18 @@ export const ExerciseBuilder: React.FC = () => {
         ? getBassMidiFromString(note.stringIndex, 0, true)
         : baseMidiByString[note.string] ?? 28;
       const calculatedMidi = stringBase + (note.fret || 0);
-      const tech: BassTechnique = (note.technique as BassTechnique) || 'normal';
+      const tech = ((note.technique || 'normal').toLowerCase()) as BassTechnique;
+      const stepDuration = getStepDuration();
 
       bassPreviewSynth.playNote({
         midi: calculatedMidi,
         technique: tech,
         stringIndex: resolvedStringIndex,
-        duration: (60 / bpmRef.current) * 0.85,
-        velocity: tech === 'pop' || tech === 'slap' ? 120 : 95,
+        duration: stepDuration * 3.8, // Permitir que las notas con espacio resuenen
+        velocity: tech === 'pop' || tech === 'slap' ? 120 : 105,
       });
     });
-  }, []);
+  }, [getStepDuration]);
 
   const scheduleStep = useCallback(
     (stepNumber: number, time: number) => {

@@ -124,12 +124,12 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
           const delayMs = ctx ? Math.max(0, (time - ctx.currentTime) * 1000) : 0;
           const calculatedMidi = getBassMidiFromString(note.string, note.fret || 0);
           const resolvedStringIndex = Math.max(0, (note.string || 4) - 1); // 0 = G, 1 = D, 2 = A, 3 = E
-          const tech: BassTechnique = (note.technique as BassTechnique) || 'normal';
+          const tech = ((note.technique || 'normal').toLowerCase()) as BassTechnique;
           const vel =
             tech === 'pop' || tech === 'slap'
               ? 120
-              : Math.round((note.velocity ?? 0.8) * 115);
-          const dur = (60 / bpmRef.current) * 0.85;
+              : Math.round((note.velocity ?? 0.85) * 120);
+          const dur = getSecondsPerStep(bpmRef.current) * 3.8;
 
           if (delayMs <= 15) {
             bassPreviewSynth.playNote({
@@ -170,7 +170,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
         engine.playMetronome(time, isDownbeat);
       }
     },
-    [exercise.instrument, stepsPerBeat, stepsPerMeasure]
+    [exercise.instrument, getSecondsPerStep, stepsPerBeat, stepsPerMeasure]
   );
 
   // Lookahead loop

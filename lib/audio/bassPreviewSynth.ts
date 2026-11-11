@@ -224,12 +224,13 @@ class SampledBassEngine {
       targetMidi,
     } = event;
 
+    const normalizedTech = (technique || 'normal').toLowerCase() as BassTechnique;
     const velNorm = Math.min(1.3, Math.max(0.2, velocity / 100));
 
     // =========================================================================
     // 1. GHOST NOTE (HOMOGÉNEA Y CON PRESENCIA)
     // =========================================================================
-    if (technique === 'ghost') {
+    if (normalizedTech === 'ghost') {
       this.triggerUnifiedGhost(now, midi, stringIndex, velNorm);
       return;
     }
@@ -240,7 +241,7 @@ class SampledBassEngine {
     let sampleKey = 'fingerLow';
     let baseMidi = this.baseMidis.fingerLow;
 
-    if (technique === 'slap') {
+    if (normalizedTech === 'slap') {
       // Si la nota es grave (4ª o 3ª cuerda: MIDI < 38), usar slapLow (E1 real)
       if (midi < 38) {
         sampleKey = 'slapLow';
@@ -249,11 +250,11 @@ class SampledBassEngine {
         sampleKey = 'slapMid';
         baseMidi = this.baseMidis.slapMid;
       }
-    } else if (technique === 'pop') {
+    } else if (normalizedTech === 'pop') {
       sampleKey = 'pop';
       baseMidi = this.baseMidis.pop;
     } else {
-      // Normal / Legato
+      // Normal / Legato / Vibrato
       if (midi >= 36) {
         sampleKey = 'fingerMid';
         baseMidi = this.baseMidis.fingerMid;
@@ -281,7 +282,7 @@ class SampledBassEngine {
     source.playbackRate.setValueAtTime(initialPlaybackRate, now);
 
     // Slide continuo
-    if (technique === 'slide') {
+    if (normalizedTech === 'slide') {
       const destMidi = targetMidi || midi + 2;
       const destDistance = destMidi - baseMidi;
       const targetRate = Math.pow(2, destDistance / 12);
@@ -289,31 +290,39 @@ class SampledBassEngine {
     }
 
     // =========================================================================
-    // 3. ARTICULACIÓN DE VIBRATO ORGÁNICO MEDIANTE LFO SOBRE SOURCE.DETUNE
+    // 3. ARTICULACIÓN DE VIBRATO MARCADO Y AUDIBLE
     // =========================================================================
     let decayLength = duration;
 
-    if (technique === 'vibrato') {
-      // Extender el sustain para que el vibrato cante en la cuerda
-      decayLength = Math.max(duration * 1.25, 0.95);
+    if (normalizedTech === 'vibrato') {
+      // Extender la duración para que la nota resuene completa en el compás
+      decayLength = Math.max(duration * 1.35, 0.85);
 
       const lfo = this.ctx.createOscillator();
       const lfoGain = this.ctx.createGain();
+      const lfoRateGain = this.ctx.createGain();
 
       lfo.type = 'sine';
-      lfo.frequency.setValueAtTime(5.2, now); // 5.2 Hz: cadencia de vibrato manual natural
+      lfo.frequency.setValueAtTime(5.8, now); // 5.8 Hz: velocidad de vibrato de bajo
 
-      // Retardo acústico: la nota arranca afinada y firme en 0 cents
+      // Entrada rápida: 40ms de ataque inicial firme, y rampa rápida a 95 cents
       lfoGain.gain.setValueAtTime(0, now);
-      lfoGain.gain.setValueAtTime(0, now + 0.14); // 140ms de ataque plano
-      // Entrada progresiva del vaivén hasta 38 cents de amplitud
-      lfoGain.gain.linearRampToValueAtTime(38 * velNorm, now + 0.36);
+      lfoGain.gain.setValueAtTime(0, now + 0.04);
+      lfoGain.gain.linearRampToValueAtTime(95 * velNorm, now + 0.14); // 95 Cents de profundidad clara
+
+      // Modulación simultánea de playbackRate para garantizar audibilidad total en todos los navegadores
+      lfoRateGain.gain.setValueAtTime(0, now);
+      lfoRateGain.gain.setValueAtTime(0, now + 0.04);
+      lfoRateGain.gain.linearRampToValueAtTime(initialPlaybackRate * 0.028 * velNorm, now + 0.14);
 
       lfo.connect(lfoGain);
       lfoGain.connect(source.detune);
 
+      lfo.connect(lfoRateGain);
+      lfoRateGain.connect(source.playbackRate);
+
       lfo.start(now);
-      lfo.stop(now + decayLength + 0.1);
+      lfo.stop(now + decayLength + 0.05);
     }
 
     const filter = this.ctx.createBiquadFilter();
@@ -326,36 +335,45 @@ class SampledBassEngine {
     let sampleOffset = 0;
     let attackTime = 0.003;
 
-    if (technique === 'pulloff' || technique === 'pull' || technique === 'hammer') {
+    if (normalizedTech === 'pulloff' || normalizedTech === 'pull' || normalizedTech === 'hammer') {
       // Descartar el ataque de dedo para legato auténtico
       sampleOffset = 0.032;
       cutoff = 2800;
       peakVol = 0.85 * velNorm;
       attackTime = 0.016;
       decayLength = duration * 0.85;
-    } else if (technique === 'slap') {
+    } else if (normalizedTech === 'slap') {
       cutoff = 9000;
       peakVol = 1.3 * velNorm;
       decayLength = Math.min(duration, 0.55);
-    } else if (technique === 'pop') {
+    } else if (normalizedTech === 'pop') {
       cutoff = 11000;
       peakVol = 1.35 * velNorm;
       decayLength = Math.min(duration, 0.42);
-    } else if (technique === 'vibrato') {
-      cutoff = 7500; // Abre los armónicos para que la modulación destaque con calidez
-      peakVol = 1.1 * velNorm;
+    } else if (normalizedTech === 'vibrato') {
+      cutoff = 8000; // Preservar armónicos para resaltar la oscilación
+      peakVol = 1.15 * velNorm;
     }
 
     filter.frequency.setValueAtTime(cutoff, now);
     filter.frequency.exponentialRampToValueAtTime(
-      Math.max(280, cutoff * 0.2),
-      now + decayLength * 0.8
+      Math.max(280, cutoff * 0.25),
+      now + decayLength * 0.85
     );
 
+    // Envolvente de volumen: en vibrato se sostiene la cuerda alta en lugar de decaer
     noteGain.gain.setValueAtTime(0.001, now);
     noteGain.gain.linearRampToValueAtTime(peakVol, now + attackTime);
-    noteGain.gain.exponentialRampToValueAtTime(peakVol * 0.65, now + 0.15);
-    noteGain.gain.exponentialRampToValueAtTime(0.0001, now + decayLength);
+
+    if (normalizedTech === 'vibrato') {
+      // Meseta de sustain alta para que el vibrato se escuche en toda la nota
+      noteGain.gain.linearRampToValueAtTime(peakVol * 0.8, now + 0.12);
+      noteGain.gain.exponentialRampToValueAtTime(peakVol * 0.65, now + decayLength * 0.75);
+      noteGain.gain.exponentialRampToValueAtTime(0.0001, now + decayLength);
+    } else {
+      noteGain.gain.exponentialRampToValueAtTime(peakVol * 0.55, now + 0.12);
+      noteGain.gain.exponentialRampToValueAtTime(0.0001, now + decayLength);
+    }
 
     source.connect(filter);
     filter.connect(noteGain);
