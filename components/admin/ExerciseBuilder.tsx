@@ -222,7 +222,7 @@ export const ExerciseBuilder: React.FC = () => {
 
   // Modo Edición de Ejercicio Existente
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
-  const [editorViewMode, setEditorViewMode] = useState<'pianoroll' | 'sheet'>('pianoroll');
+  const [editorViewMode, setEditorViewMode] = useState<'pianoroll' | 'sheet' | 'extended'>('extended');
 
   // Cambiar instrumento actualizando estado, URL y LocalStorage
   const handleSelectInstrument = (inst: InstrumentCategory) => {

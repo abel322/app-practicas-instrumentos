@@ -66,6 +66,8 @@ export { useWebMidi } from '@/lib/midi/useWebMidi';
 export type { MidiDeviceState } from '@/lib/midi/useWebMidi';
 export { QUANTIZE_OPTIONS, getQuantizedStep } from './PianoRollBuilder';
 export type { QuantizeValue, QuantizeOption } from './PianoRollBuilder';
+export { ExtendedScoreView } from '@/components/studio/ExtendedScoreView';
+export type { ScoreMeasure, ScoreNote, ExtendedScoreViewProps } from '@/components/studio/ExtendedScoreView';
 
 export const StudioBuilderView = ExerciseBuilder;
 export default ExerciseBuilder;

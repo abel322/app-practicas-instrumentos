@@ -5,6 +5,7 @@ import { useWebMidi } from '@/lib/midi/useWebMidi';
 import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
 import { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
 import { PianoGrandStaffView, NoteDuration } from './PianoGrandStaffView';
+import { ExtendedScoreView, ScoreMeasure } from '@/components/studio/ExtendedScoreView';
 import { Radio, Music2, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
 
 export type QuantizeValue = '1/1' | '1/2' | '1/4' | '1/8' | '1/16' | '1/32';
@@ -232,8 +233,8 @@ export interface PianoRollBuilderProps {
   playbackActiveStep?: number;
   measureStartStep?: number;
   timeSignature?: string;
-  editorViewMode?: 'pianoroll' | 'sheet';
-  onViewModeChange?: (mode: 'pianoroll' | 'sheet') => void;
+  editorViewMode?: 'pianoroll' | 'sheet' | 'extended';
+  onViewModeChange?: (mode: 'pianoroll' | 'sheet' | 'extended') => void;
   tempo?: number;
   onTogglePlay?: () => void;
   onStartPlayback?: () => void;
@@ -279,9 +280,9 @@ export function PianoRollBuilder({
   onSelectMeasure,
   onAddMeasure,
 }: PianoRollBuilderProps) {
-  const [internalViewMode, setInternalViewMode] = useState<'pianoroll' | 'sheet'>('pianoroll');
+  const [internalViewMode, setInternalViewMode] = useState<'pianoroll' | 'sheet' | 'extended'>('extended');
   const editorViewMode = controlledViewMode ?? internalViewMode;
-  const setEditorViewMode = (mode: 'pianoroll' | 'sheet') => {
+  const setEditorViewMode = (mode: 'pianoroll' | 'sheet' | 'extended') => {
     setInternalViewMode(mode);
     if (onViewModeChange) onViewModeChange(mode);
   };
@@ -628,6 +629,45 @@ export function PianoRollBuilder({
 
   const playbackStepInMeasure = isPlaying ? playbackActiveStep - measureStartStep : -1;
 
+  // Preparar todas las medidas para la vista de Partitura Extendida Multi-Compás
+  const scoreMeasures: ScoreMeasure[] = useMemo(() => {
+    return Array.from({ length: Math.max(1, totalMeasures) }).map((_, mIdx) => {
+      const mStart = mIdx * totalSteps;
+      const mEnd = mStart + totalSteps;
+      const measureNotes = (notes || [])
+        .filter((n: any) => {
+          const stepNum = n.step !== undefined ? n.step : n.stepIndex ?? 0;
+          return stepNum >= mStart && stepNum < mEnd && n.midiNumber !== undefined;
+        })
+        .map((n: any) => {
+          const stepNum = n.step !== undefined ? n.step : n.stepIndex ?? 0;
+          return {
+            id: n.id,
+            stepIndex: stepNum - mStart,
+            midiNumber: n.midiNumber,
+            duration: n.duration,
+            velocity: n.velocity,
+            isRest: !!n.isRest,
+          };
+        });
+
+      return {
+        measureIndex: mIdx,
+        notes: measureNotes,
+      };
+    });
+  }, [totalMeasures, totalSteps, notes]);
+
+  const currentPlayingMeasure =
+    isPlaying && playbackActiveStep >= 0
+      ? Math.floor(playbackActiveStep / totalSteps)
+      : currentMeasure;
+
+  const currentPlayingStepInMeasure =
+    isPlaying && playbackActiveStep >= 0
+      ? playbackActiveStep % totalSteps
+      : activeStepInput;
+
   // Total de notas en el compás actual
   const currentMeasureNotesCount = useMemo(() => {
     return notes.filter((n: any) => {
@@ -664,8 +704,8 @@ export function PianoRollBuilder({
       {/* 1. Barra Superior de Vista, Estado MIDI y Navegación de Pasos */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-3 sm:px-4 py-2.5 bg-slate-900 border-b border-slate-800 text-xs">
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Conmutador de Modo de Visualización: Piano Roll vs Gran Pentagrama (Sol / Fa) */}
-          <div className="flex items-center gap-1.5 bg-slate-950/90 p-1 rounded-xl border border-slate-800">
+          {/* Conmutador de Modo de Visualización: Piano Roll vs Compás Único vs Partitura Extendida */}
+          <div className="flex items-center gap-1 bg-slate-950/90 p-1 rounded-xl border border-slate-800">
             <button
               type="button"
               onClick={() => setEditorViewMode('pianoroll')}
@@ -683,11 +723,23 @@ export function PianoRollBuilder({
               onClick={() => setEditorViewMode('sheet')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 editorViewMode === 'sheet'
-                  ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                  ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              <span>🎼 Gran Pentagrama (Sol / Fa)</span>
+              <span>🎼 Compás Único</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setEditorViewMode('extended')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                editorViewMode === 'extended'
+                  ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>🎼 Partitura Extendida (Todos)</span>
             </button>
           </div>
 
@@ -882,8 +934,24 @@ export function PianoRollBuilder({
         </div>
       </div>
 
-      {/* 3. Renderizado Condicional: Piano Roll vs Gran Pentagrama (Clave de Sol y Fa) */}
-      {editorViewMode === 'sheet' ? (
+      {/* 3. Renderizado Condicional del Visor: Partitura Extendida vs Compás Único vs Piano Roll */}
+      {editorViewMode === 'extended' ? (
+        <div className="flex-1 h-full min-h-0 flex flex-col p-2 sm:p-4 bg-[#0a0c12]">
+          <ExtendedScoreView
+            measures={scoreMeasures}
+            activeMeasureIndex={currentPlayingMeasure}
+            currentStep={currentPlayingStepInMeasure}
+            isPlaying={isPlaying}
+            onSelectMeasureAndStep={(mIdx, sIdx) => {
+              if (onSelectMeasure) onSelectMeasure(mIdx);
+              setActiveStepInput(sIdx);
+            }}
+            onNoteClick={(_mIdx, midi) => {
+              pianoPreviewSynth.playNote(midi, 0.8, 95);
+            }}
+          />
+        </div>
+      ) : editorViewMode === 'sheet' ? (
         <div className="flex-1 h-full min-h-0 flex flex-col p-2 sm:p-4 bg-[#0a0c12]">
           <PianoGrandStaffView
             totalSteps={totalSteps}
