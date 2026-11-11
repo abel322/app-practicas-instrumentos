@@ -10,7 +10,8 @@ export interface MidiDeviceState {
 
 export function useWebMidi(
   onNoteOn?: (midiNumber: number, velocity: number) => void,
-  onNoteOff?: (midiNumber: number) => void
+  onNoteOff?: (midiNumber: number) => void,
+  onControlChange?: (controller: number, value: number) => void
 ) {
   const [midiState, setMidiState] = useState<MidiDeviceState>({
     isSupported: true,
@@ -23,6 +24,7 @@ export function useWebMidi(
 
   const onNoteOnRef = useRef(onNoteOn);
   const onNoteOffRef = useRef(onNoteOff);
+  const onControlChangeRef = useRef(onControlChange);
 
   useEffect(() => {
     onNoteOnRef.current = onNoteOn;
@@ -31,6 +33,10 @@ export function useWebMidi(
   useEffect(() => {
     onNoteOffRef.current = onNoteOff;
   }, [onNoteOff]);
+
+  useEffect(() => {
+    onControlChangeRef.current = onControlChange;
+  }, [onControlChange]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const midiAccessRef = useRef<any>(null);
@@ -63,8 +69,10 @@ export function useWebMidi(
       }
     } else if (command === 11) {
       // Control Change (CC)
-      if (noteNumber === 64) {
-        // CC 64 = Sustain / Damper Pedal
+      if (onControlChangeRef.current) {
+        onControlChangeRef.current(noteNumber, velocity);
+      } else if (noteNumber === 64) {
+        // Fallback predeterminado para CC 64 (Sustain / Damper)
         pianoPreviewSynth.setSustain(velocity >= 64);
       }
     }

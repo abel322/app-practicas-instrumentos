@@ -296,6 +296,12 @@ export function PianoRollBuilder({
   const [stepInputEnabled, setStepInputEnabled] = useState<boolean>(false);
   const [selectedQuantize, setSelectedQuantize] = useState<QuantizeValue>('1/16');
 
+  // Control Dinámico de Pedal de Sustain y Polaridad
+  const [invertPedalPolarity, setInvertPedalPolarity] = useState<boolean>(false);
+  const [isVirtualSustain, setIsVirtualSustain] = useState<boolean>(false);
+  const invertPedalPolarityRef = useRef(invertPedalPolarity);
+  invertPedalPolarityRef.current = invertPedalPolarity;
+
   const recordStartTimeRef = useRef<number>(0);
   const countIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -516,10 +522,19 @@ export function PianoRollBuilder({
     pianoPreviewSynth.noteOff(midi);
   }, []);
 
+  const handleIncomingMidiControlChange = useCallback((controller: number, value: number) => {
+    if (controller === 64) {
+      const isPedalDown = invertPedalPolarityRef.current ? value < 64 : value >= 64;
+      setIsVirtualSustain(isPedalDown);
+      pianoPreviewSynth.setSustain(isPedalDown);
+    }
+  }, []);
+
   // Hook Web MIDI API con Auto-Detección y Reconexión reactiva
   const { midiState, requestMidiAgain, activeNotes: pressedMidiKeys } = useWebMidi(
     handleIncomingMidiNote,
-    handleIncomingMidiNoteOff
+    handleIncomingMidiNoteOff,
+    handleIncomingMidiControlChange
   );
 
   // Función para reajustar automáticamente todas las notas existentes del compás activo
@@ -714,11 +729,10 @@ export function PianoRollBuilder({
             <button
               type="button"
               onClick={() => setEditorViewMode('pianoroll')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                editorViewMode === 'pianoroll'
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${editorViewMode === 'pianoroll'
                   ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
                   : 'text-slate-400 hover:text-white'
-              }`}
+                }`}
             >
               <span>🎹 Piano Roll</span>
             </button>
@@ -726,11 +740,10 @@ export function PianoRollBuilder({
             <button
               type="button"
               onClick={() => setEditorViewMode('sheet')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                editorViewMode === 'sheet'
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${editorViewMode === 'sheet'
                   ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
                   : 'text-slate-400 hover:text-white'
-              }`}
+                }`}
             >
               <span>🎼 Compás Único</span>
             </button>
@@ -738,11 +751,10 @@ export function PianoRollBuilder({
             <button
               type="button"
               onClick={() => setEditorViewMode('extended')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                editorViewMode === 'extended'
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${editorViewMode === 'extended'
                   ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
                   : 'text-slate-400 hover:text-white'
-              }`}
+                }`}
             >
               <span>🎼 Partitura Extendida (Todos)</span>
             </button>
@@ -770,6 +782,45 @@ export function PianoRollBuilder({
                 </span>
               </button>
             )}
+
+            {/* Controles de Pedal Damper / Sustain */}
+            <div className="flex items-center gap-1.5">
+              {/* Botón de Pedal de Sustain con Indicador de Estado */}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !isVirtualSustain;
+                  setIsVirtualSustain(next);
+                  pianoPreviewSynth.setSustain(next);
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                  isVirtualSustain
+                    ? 'bg-amber-400 text-slate-950 border-amber-300 font-black shadow-lg shadow-amber-950/60 ring-2 ring-amber-300'
+                    : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                }`}
+                title="Activar o desactivar pedal de resonancia (Damper Pedal)"
+              >
+                <span>🦶 Sustain {isVirtualSustain ? 'ACTIVO' : 'OFF'}</span>
+              </button>
+
+              {/* Conmutador de Polaridad por si el pedal físico funciona al revés */}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !invertPedalPolarity;
+                  setInvertPedalPolarity(next);
+                  invertPedalPolarityRef.current = next;
+                }}
+                className={`px-2 py-1.5 rounded-xl text-[10px] font-bold border transition-all cursor-pointer ${
+                  invertPedalPolarity
+                    ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm'
+                    : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-300'
+                }`}
+                title="Invierte la polaridad si el pedal suena cortado al pisar y sostenido al soltar"
+              >
+                Polaridad {invertPedalPolarity ? 'INV' : 'STD'}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -838,11 +889,10 @@ export function PianoRollBuilder({
                 key={opt.id}
                 type="button"
                 onClick={() => setSelectedQuantize(opt.id)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  selectedQuantize === opt.id
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${selectedQuantize === opt.id
                     ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
                     : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                }`}
+                  }`}
                 title={`Cuantizar a ${opt.label}`}
               >
                 {opt.id}
@@ -877,11 +927,10 @@ export function PianoRollBuilder({
           <button
             type="button"
             onClick={handleToggleStepInput}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
-              stepInputEnabled
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${stepInputEnabled
                 ? 'bg-amber-400 text-slate-950 border-amber-300 font-black shadow-md'
                 : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-            }`}
+              }`}
             title={
               stepInputEnabled
                 ? 'Escribiendo notas en cada toque de tecla'
@@ -896,17 +945,15 @@ export function PianoRollBuilder({
             <button
               type="button"
               onClick={() => setAutoAdvance(!autoAdvance)}
-              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1 cursor-pointer ${
-                autoAdvance
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1 cursor-pointer ${autoAdvance
                   ? 'bg-sky-400 text-slate-950 border-sky-300 font-black'
                   : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-              }`}
+                }`}
               title="Al estar activo (ON), tocar un acorde o nota avanza automáticamente al siguiente paso"
             >
               <Zap
-                className={`w-3 h-3 ${
-                  autoAdvance ? 'fill-slate-950 text-slate-950' : 'text-slate-400'
-                }`}
+                className={`w-3 h-3 ${autoAdvance ? 'fill-slate-950 text-slate-950' : 'text-slate-400'
+                  }`}
               />
               <span>Auto-Avance {autoAdvance ? 'ON' : 'OFF'}</span>
             </button>
@@ -916,17 +963,15 @@ export function PianoRollBuilder({
           <button
             type="button"
             onClick={handleStartRealtimeRecord}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 cursor-pointer ${
-              isRecording
+            className={`px-4 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 cursor-pointer ${isRecording
                 ? 'bg-rose-600 text-white border-rose-400 animate-pulse font-black shadow-lg shadow-rose-950 ring-2 ring-rose-400'
                 : 'bg-slate-900 hover:bg-rose-950/40 text-rose-300 border-rose-900/60'
-            }`}
+              }`}
             title="Iniciar o detener grabación en tiempo real con cuenta regresiva"
           >
             <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                isRecording ? 'bg-white animate-ping' : 'bg-rose-500'
-              }`}
+              className={`w-2.5 h-2.5 rounded-full ${isRecording ? 'bg-white animate-ping' : 'bg-rose-500'
+                }`}
             />
             <span>
               {isRecording
@@ -1003,17 +1048,15 @@ export function PianoRollBuilder({
                   <div
                     key={stepIdx}
                     onClick={() => setActiveStepInput(stepIdx)}
-                    className={`w-8 sm:w-9 text-center py-1.5 text-[10px] font-mono cursor-pointer transition-all select-none relative ${
-                      isBeatEnd ? 'border-r-2 border-r-slate-600/90' : 'border-r border-slate-800/80'
-                    } ${
-                      isCurrentlyPlaying
+                    className={`w-8 sm:w-9 text-center py-1.5 text-[10px] font-mono cursor-pointer transition-all select-none relative ${isBeatEnd ? 'border-r-2 border-r-slate-600/90' : 'border-r border-slate-800/80'
+                      } ${isCurrentlyPlaying
                         ? 'bg-cyan-500 text-slate-950 font-black shadow-[0_0_10px_rgba(34,211,238,0.8)] scale-105 z-20'
                         : isSelectedForRecording
-                        ? 'bg-cyan-950 text-cyan-300 ring-2 ring-cyan-400 font-black z-10'
-                        : isMainBeat
-                        ? 'font-bold text-amber-400 bg-amber-400/10 hover:bg-amber-400/20'
-                        : 'text-slate-400 hover:bg-slate-800/60'
-                    }`}
+                          ? 'bg-cyan-950 text-cyan-300 ring-2 ring-cyan-400 font-black z-10'
+                          : isMainBeat
+                            ? 'font-bold text-amber-400 bg-amber-400/10 hover:bg-amber-400/20'
+                            : 'text-slate-400 hover:bg-slate-800/60'
+                      }`}
                     title={`Paso ${stepIdx + 1} (${stepLabel}) - Clic para seleccionar como destino de grabación`}
                   >
                     <span className="block leading-tight">{stepLabel}</span>
@@ -1039,9 +1082,8 @@ export function PianoRollBuilder({
               return (
                 <div
                   key={midi}
-                  className={`flex h-5 border-b border-slate-900/60 items-center ${
-                    isCKey ? 'border-b-cyan-900/40' : ''
-                  }`}
+                  className={`flex h-5 border-b border-slate-900/60 items-center ${isCKey ? 'border-b-cyan-900/40' : ''
+                    }`}
                 >
                   {/* Tecla del Teclado Vertical Izquierdo */}
                   <div
@@ -1054,13 +1096,12 @@ export function PianoRollBuilder({
                         }
                       }
                     }}
-                    className={`w-20 sm:w-24 shrink-0 px-2 h-full flex items-center justify-between text-[10px] font-mono border-r border-slate-800 cursor-pointer transition-all select-none ${
-                      isPressed
+                    className={`w-20 sm:w-24 shrink-0 px-2 h-full flex items-center justify-between text-[10px] font-mono border-r border-slate-800 cursor-pointer transition-all select-none ${isPressed
                         ? 'bg-cyan-400 text-slate-950 font-black shadow-[0_0_12px_rgba(34,211,238,0.8)] z-10'
                         : black
-                        ? 'bg-[#18181b] text-slate-400 hover:bg-slate-800 hover:text-white'
-                        : 'bg-[#27272a] text-slate-200 hover:bg-zinc-700 hover:text-white'
-                    }`}
+                          ? 'bg-[#18181b] text-slate-400 hover:bg-slate-800 hover:text-white'
+                          : 'bg-[#27272a] text-slate-200 hover:bg-zinc-700 hover:text-white'
+                      }`}
                     title={`Tocar ${keyLabel} (MIDI ${midi})`}
                   >
                     <span className={`font-bold ${isCKey ? 'text-cyan-400 font-black' : ''}`}>
@@ -1093,21 +1134,19 @@ export function PianoRollBuilder({
                             pianoPreviewSynth.playNote(midi, 0.35, 95);
                             if (toggleHandler) toggleHandler(stepIdx, midi, 100);
                           }}
-                          className={`w-8 sm:w-9 h-full cursor-pointer transition-all relative flex items-center justify-center ${
-                            isBeatEnd ? 'border-r-2 border-r-slate-600/90' : 'border-r border-slate-900/40'
-                          } ${
-                            hasNote
+                          className={`w-8 sm:w-9 h-full cursor-pointer transition-all relative flex items-center justify-center ${isBeatEnd ? 'border-r-2 border-r-slate-600/90' : 'border-r border-slate-900/40'
+                            } ${hasNote
                               ? 'bg-amber-400 border-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.5)] z-10'
                               : isPlayingStep
-                              ? 'bg-cyan-500/25 ring-1 ring-cyan-400/40'
-                              : isSelectedStep
-                              ? 'bg-cyan-950/30 hover:bg-cyan-900/40'
-                              : isMainBeat
-                              ? 'bg-slate-900/45 hover:bg-slate-800/60'
-                              : black
-                              ? 'bg-[#121319]/90 hover:bg-slate-800/40'
-                              : 'bg-slate-900/20 hover:bg-slate-800/40'
-                          }`}
+                                ? 'bg-cyan-500/25 ring-1 ring-cyan-400/40'
+                                : isSelectedStep
+                                  ? 'bg-cyan-950/30 hover:bg-cyan-900/40'
+                                  : isMainBeat
+                                    ? 'bg-slate-900/45 hover:bg-slate-800/60'
+                                    : black
+                                      ? 'bg-[#121319]/90 hover:bg-slate-800/40'
+                                      : 'bg-slate-900/20 hover:bg-slate-800/40'
+                            }`}
                         >
                           {hasNote && (
                             <div className="w-full h-full bg-amber-400 rounded-sm border border-amber-200/80 shadow-sm flex items-center justify-center">

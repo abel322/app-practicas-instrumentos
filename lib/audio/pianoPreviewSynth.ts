@@ -1,7 +1,7 @@
 // lib/audio/pianoPreviewSynth.ts
-// Motor de Piano Acústico de Cola basado en Muestras Reales (Soundfonts FluidR3 / Steinway)
+// Motor Acústico de Piano con Muestras Reales y Gestión Dinámica de Apagadores (Damper Pedal Real)
 
-interface PianoVoice {
+interface ActivePianoVoice {
   midi: number;
   source: AudioBufferSourceNode;
   gainNode: GainNode;
@@ -15,14 +15,12 @@ class SampledPianoSynth {
   private isLoaded: boolean = false;
   private masterGain: GainNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
-  private activeVoices: Map<number, PianoVoice[]> = new Map();
+  private activeVoices: Map<number, ActivePianoVoice[]> = new Map();
   private isSustainActive: boolean = false;
 
-  // Anclas de afinación cromática real para cubrir todo el teclado con máxima fidelidad
   private sampleBaseUrl =
     'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/acoustic_grand_piano-mp3';
 
-  // Nodos de muestra estratégicos para cada octava y terceras (cero desfase ni estiramiento artificial)
   private anchorNotes: { name: string; midi: number }[] = [
     { name: 'C1', midi: 24 },
     { name: 'G1', midi: 31 },
@@ -32,7 +30,7 @@ class SampledPianoSynth {
     { name: 'C3', midi: 48 },
     { name: 'E3', midi: 52 },
     { name: 'G3', midi: 55 },
-    { name: 'C4', midi: 60 }, // Do Central
+    { name: 'C4', midi: 60 },
     { name: 'E4', midi: 64 },
     { name: 'G4', midi: 67 },
     { name: 'C5', midi: 72 },
@@ -50,16 +48,15 @@ class SampledPianoSynth {
       if (!AudioCtx) return;
       this.ctx = new AudioCtx();
 
-      // Compresor de master cálido para empastar acordes y resonancias
       this.compressor = this.ctx.createDynamicsCompressor();
-      this.compressor.threshold.setValueAtTime(-14, this.ctx.currentTime);
-      this.compressor.knee.setValueAtTime(12, this.ctx.currentTime);
-      this.compressor.ratio.setValueAtTime(3.5, this.ctx.currentTime);
+      this.compressor.threshold.setValueAtTime(-12, this.ctx.currentTime);
+      this.compressor.knee.setValueAtTime(14, this.ctx.currentTime);
+      this.compressor.ratio.setValueAtTime(3.2, this.ctx.currentTime);
       this.compressor.attack.setValueAtTime(0.003, this.ctx.currentTime);
-      this.compressor.release.setValueAtTime(0.2, this.ctx.currentTime);
+      this.compressor.release.setValueAtTime(0.25, this.ctx.currentTime);
 
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.setValueAtTime(1.15, this.ctx.currentTime);
+      this.masterGain.gain.setValueAtTime(1.1, this.ctx.currentTime);
 
       this.masterGain.connect(this.compressor);
       this.compressor.connect(this.ctx.destination);
@@ -93,17 +90,16 @@ class SampledPianoSynth {
             const audioBuffer = await this.ctx!.decodeAudioData(arrayBuffer);
             this.sampleCache.set(anchor.name, audioBuffer);
           } catch (e) {
-            console.warn(`Error precargando muestra de piano: ${anchor.name}`, e);
+            console.warn(`Error precargando muestra: ${anchor.name}`, e);
           }
         })
       );
       this.isLoaded = true;
     } catch (err) {
-      console.error('Error inicializando banco de piano acústico:', err);
+      console.error('Error banco piano:', err);
     }
   }
 
-  // Encuentra la muestra más cercana para mantener el timbre acústico intacto
   private findClosestAnchor(midi: number): { name: string; midi: number } {
     let closest = this.anchorNotes[0];
     let minDiff = Math.abs(midi - closest.midi);
@@ -118,42 +114,63 @@ class SampledPianoSynth {
     return closest;
   }
 
+  /**
+   * Control Dinámico del Pedal de Sustain (Damper Pedal CC 64)
+   * Admite pedaleo sincopado continuo
+   */
   public setSustain(active: boolean) {
     this.isSustainActive = active;
 
-    // Si se levanta el pedal de sustain, apagar todas las cuerdas cuyas teclas ya no estén presionadas
-    if (!active && this.ctx) {
-      const now = this.ctx.currentTime;
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    // Al liberar el pedal, apagar únicamente las notas cuyas teclas ya no están pulsadas con los dedos
+    if (!active) {
       this.activeVoices.forEach((voices) => {
         voices.forEach((voice) => {
           if (!voice.isKeyHeld) {
-            this.silenceVoice(voice, now);
+            this.dampVoice(voice, now);
           }
         });
       });
+
+      // Limpiar voces que fueron apagadas
       this.activeVoices.forEach((voices, midi) => {
-        this.activeVoices.set(
-          midi,
-          voices.filter((v) => v.isKeyHeld)
-        );
+        const remaining = voices.filter((v) => v.isKeyHeld);
+        if (remaining.length > 0) {
+          this.activeVoices.set(midi, remaining);
+        } else {
+          this.activeVoices.delete(midi);
+        }
       });
     }
   }
 
-  private silenceVoice(voice: PianoVoice, time: number) {
+  public getSustain(): boolean {
+    return this.isSustainActive;
+  }
+
+  /**
+   * Caída suave del apagador de fieltro (felt damper decay)
+   */
+  private dampVoice(voice: ActivePianoVoice, time: number) {
     try {
-      // Atenuación natural de los apagadores de fieltro del piano (120ms)
       voice.gainNode.gain.cancelScheduledValues(time);
       voice.gainNode.gain.setValueAtTime(voice.gainNode.gain.value, time);
-      voice.gainNode.gain.exponentialRampToValueAtTime(0.0001, time + 0.12);
+      // Apagado natural de cuerda de piano: 220 ms
+      voice.gainNode.gain.exponentialRampToValueAtTime(0.0001, time + 0.22);
+
       setTimeout(() => {
         try {
           voice.source.stop();
         } catch (e) {}
-      }, 140);
+      }, 250);
     } catch (e) {}
   }
 
+  /**
+   * Liberación de tecla física (Note-Off)
+   */
   public noteOff(midi: number) {
     if (!this.ctx) return;
     const voices = this.activeVoices.get(midi);
@@ -163,10 +180,12 @@ class SampledPianoSynth {
 
     voices.forEach((voice) => {
       voice.isKeyHeld = false;
-      // Si el pedal de sustain no está pisado, apagar la cuerda
+
+      // Si el pedal de sustain NO está activo, la cuerda se apaga de inmediato
       if (!this.isSustainActive) {
-        this.silenceVoice(voice, now);
+        this.dampVoice(voice, now);
       }
+      // Si el sustain SÍ está activo, la nota no se toca y sigue resonando libremente
     });
 
     if (!this.isSustainActive) {
@@ -174,9 +193,13 @@ class SampledPianoSynth {
     }
   }
 
+  /**
+   * Disparo de Nota Acústica Real (Note-On)
+   * Sin corte programado: resuena con la física natural de la muestra
+   */
   public playNote(
     midi: number,
-    duration: number = 1.6,
+    _unusedDuration: number = 2.0,
     velocity: number = 95,
     scheduleTime?: number
   ) {
@@ -191,7 +214,6 @@ class SampledPianoSynth {
     let buffer = this.sampleCache.get(anchor.name);
 
     if (!buffer) {
-      // Respaldo de emergencia si aún se están descargando las anclas
       buffer = this.sampleCache.get('C4');
       if (!buffer) {
         this.preloadSamples();
@@ -202,33 +224,32 @@ class SampledPianoSynth {
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
 
-    // Cálculo milimétrico de velocidad de reproducción según semitonos de distancia
+    // Afinación precisa basada en la distancia de semitonos
     const semitoneDistance = midi - anchor.midi;
     const playbackRate = Math.pow(2, semitoneDistance / 12);
     source.playbackRate.setValueAtTime(playbackRate, now);
 
     const gainNode = this.ctx.createGain();
-    const velNormalized = Math.min(1.25, Math.max(0.15, velocity / 100));
+    const velNorm = Math.min(1.3, Math.max(0.2, velocity / 100));
 
-    // Curva acústica de volumen: impacto inmediato de martillo y caída armónica larga
-    const initialPeak = 1.1 * velNormalized;
+    // Curva acústica: ataque en 3 ms, cuerpo en resonancia prolongada
+    const peakGain = 1.05 * velNorm;
     gainNode.gain.setValueAtTime(0.0001, now);
-    gainNode.gain.linearRampToValueAtTime(initialPeak, now + 0.003); // Ataque percusivo en 3ms
+    gainNode.gain.linearRampToValueAtTime(peakGain, now + 0.003);
 
-    // Resonancia natural de piano de cola:
-    // La cuerda vibra libremente; si el sustain está encendido se expande la resonancia
-    const decayDuration = this.isSustainActive ? Math.max(duration * 2.2, 3.5) : duration;
-    gainNode.gain.exponentialRampToValueAtTime(initialPeak * 0.72, now + 0.18);
-    gainNode.gain.exponentialRampToValueAtTime(initialPeak * 0.45, now + 0.7);
-    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + decayDuration);
+    // Decaimiento natural y prolongado de la madera (12 segundos)
+    gainNode.gain.exponentialRampToValueAtTime(peakGain * 0.75, now + 0.3);
+    gainNode.gain.exponentialRampToValueAtTime(peakGain * 0.45, now + 2.5);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 12.0);
 
     source.connect(gainNode);
     gainNode.connect(this.masterGain);
 
+    // NO programar source.stop() prematuro. La muestra resuena libremente
     source.start(now);
-    source.stop(now + decayDuration + 0.08);
+    source.stop(now + 12.5);
 
-    const voice: PianoVoice = {
+    const voice: ActivePianoVoice = {
       midi,
       source,
       gainNode,
@@ -236,21 +257,18 @@ class SampledPianoSynth {
       startTime: now,
     };
 
-    const currentList = this.activeVoices.get(midi) || [];
-    this.activeVoices.set(midi, [...currentList, voice]);
+    const currentVoices = this.activeVoices.get(midi) || [];
+    this.activeVoices.set(midi, [...currentVoices, voice]);
   }
 
-  // Reproducción polifónica de acordes sin cancelación de fases
   public playChord(
     midis: number[],
-    duration: number = 1.6,
+    duration: number = 2.0,
     velocity: number = 95,
     scheduleTime?: number
   ) {
     if (!midis || midis.length === 0) return;
-    midis.forEach((midi) => {
-      this.playNote(midi, duration, velocity, scheduleTime);
-    });
+    midis.forEach((m) => this.playNote(m, duration, velocity, scheduleTime));
   }
 }
 
