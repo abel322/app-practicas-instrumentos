@@ -641,12 +641,20 @@ export const ExerciseBuilder: React.FC = () => {
   // ============================================================================
   // GESTIÓN DE COMPASES
   // ============================================================================
-  const handleAddMeasure = () => {
-    if (totalMeasures < 8) {
+  const handleSelectMeasure = useCallback((mIdx: number) => {
+    currentMeasureRef.current = mIdx;
+    setCurrentMeasure(mIdx);
+  }, []);
+
+  const handleAddMeasure = useCallback(() => {
+    if (totalMeasuresRef.current < 8) {
+      const nextIdx = totalMeasuresRef.current;
+      totalMeasuresRef.current = nextIdx + 1;
+      currentMeasureRef.current = nextIdx;
       setTotalMeasures((prev) => prev + 1);
-      setCurrentMeasure(totalMeasures); // Ir al nuevo compás
+      setCurrentMeasure(nextIdx); // Ir al nuevo compás
     }
-  };
+  }, []);
 
   const handleDuplicateMeasure = () => {
     if (totalMeasures >= 8) return;
@@ -2462,6 +2470,7 @@ export const ExerciseBuilder: React.FC = () => {
       {instrument === 'piano' ? (
         <PianoRollBuilder
           currentMeasure={currentMeasure}
+          totalMeasures={totalMeasures}
           totalSteps={stepsPerMeasure}
           activeSubdivision={subdivision}
           notes={notes}
@@ -2485,6 +2494,8 @@ export const ExerciseBuilder: React.FC = () => {
             if (isPlayingRef.current) handleTogglePlay();
           }}
           onQuantizeMeasure={handleQuantizePianoMeasure}
+          onSelectMeasure={handleSelectMeasure}
+          onAddMeasure={handleAddMeasure}
         />
       ) : (
       <div 

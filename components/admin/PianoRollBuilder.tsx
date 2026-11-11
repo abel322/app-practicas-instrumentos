@@ -199,6 +199,7 @@ export function isStepBeatEnd(
 
 export interface PianoRollBuilderProps {
   currentMeasure?: number;
+  totalMeasures?: number;
   totalSteps: number; // Pasos en este compás (ej: 4, 8, 12, 16, 20, 24, 28, 32)
   activeSubdivision?: string;
   notes: PianoNoteStep[];
@@ -238,6 +239,8 @@ export interface PianoRollBuilderProps {
   onStartPlayback?: () => void;
   onStopPlayback?: () => void;
   onQuantizeMeasure?: (quantizeVal: QuantizeValue) => void;
+  onSelectMeasure?: (measureIndex: number) => void;
+  onAddMeasure?: () => void;
 }
 
 // Rango de concierto completo: C1 (24) a C8 (108) -> 85 teclas ordenadas de agudo a grave
@@ -253,6 +256,7 @@ interface BufferedMidiNote {
 
 export function PianoRollBuilder({
   currentMeasure = 0,
+  totalMeasures = 1,
   totalSteps,
   activeSubdivision = '1/16',
   notes,
@@ -272,6 +276,8 @@ export function PianoRollBuilder({
   onStartPlayback,
   onStopPlayback,
   onQuantizeMeasure,
+  onSelectMeasure,
+  onAddMeasure,
 }: PianoRollBuilderProps) {
   const [internalViewMode, setInternalViewMode] = useState<'pianoroll' | 'sheet'>('pianoroll');
   const editorViewMode = controlledViewMode ?? internalViewMode;
@@ -309,6 +315,12 @@ export function PianoRollBuilder({
 
   const autoAdvanceRef = useRef(autoAdvance);
   autoAdvanceRef.current = autoAdvance;
+
+  const currentMeasureRef = useRef(currentMeasure);
+  currentMeasureRef.current = currentMeasure;
+
+  const totalMeasuresRef = useRef(totalMeasures);
+  totalMeasuresRef.current = totalMeasures;
 
   const totalStepsRef = useRef(totalSteps);
   totalStepsRef.current = totalSteps;
@@ -409,6 +421,44 @@ export function PianoRollBuilder({
     [addNoteToMeasure]
   );
 
+  // Avance inteligente multi-compás al completar el compás
+  const advanceStepRecording = useCallback(() => {
+    if (activeStepInputRef.current + 1 < totalStepsRef.current) {
+      // Aún hay espacio dentro del compás actual
+      setActiveStepInput((prev) => prev + 1);
+    } else {
+      // Se completó el compás: avanzar al compás siguiente o crearlo automáticamente
+      const nextMeasureIdx = currentMeasureRef.current + 1;
+
+      if (nextMeasureIdx < totalMeasuresRef.current) {
+        if (onSelectMeasure) {
+          onSelectMeasure(nextMeasureIdx);
+        }
+      } else {
+        if (onAddMeasure) {
+          onAddMeasure();
+        }
+      }
+
+      // Mover el foco del editor al nuevo compás en el paso 0
+      setActiveStepInput(0);
+    }
+  }, [onSelectMeasure, onAddMeasure]);
+
+  // Al activar el modo paso a paso, sugerir o forzar el inicio al tiempo 1
+  const handleToggleStepInput = useCallback(() => {
+    const nextState = !stepInputEnabled;
+    setStepInputEnabled(nextState);
+    if (nextState) {
+      // Si se activa paso a paso, resetear automáticamente al paso 0 (Tiempo 1)
+      setActiveStepInput(0);
+    }
+  }, [stepInputEnabled]);
+
+  const handleRewindToStart = useCallback(() => {
+    setActiveStepInput(0);
+  }, []);
+
   // Manejador centralizado de pulsaciones de notas MIDI con Modo Monitoreo Libre y Cuantizador
   const handleIncomingMidiNote = useCallback(
     (midi: number, velocity: number) => {
@@ -453,12 +503,12 @@ export function PianoRollBuilder({
         if (stepInputEnabledRef.current) {
           commitNotesToStep(activeStepInputRef.current, chordNotes, 'quarter');
           if (autoAdvanceRef.current) {
-            setActiveStepInput((prev) => (prev + 1) % totalStepsRef.current);
+            advanceStepRecording(); // ¡Avanza de compás si llega al final!
           }
         }
       }, 48);
     },
-    [commitNotesToStep]
+    [commitNotesToStep, advanceStepRecording]
   );
 
   // Hook Web MIDI API con Auto-Detección y Reconexión reactiva
@@ -667,7 +717,16 @@ export function PianoRollBuilder({
         </div>
 
         {/* Navegación manual de Pasos */}
-        <div className="flex items-center gap-2 font-mono">
+        <div className="flex items-center gap-1.5 sm:gap-2 font-mono">
+          <button
+            type="button"
+            onClick={handleRewindToStart}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs transition-colors border border-slate-700 cursor-pointer"
+            title="Ir al inicio del compás (Tiempo 1)"
+          >
+            <span>⏮ T.1</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setActiveStepInput((prev) => Math.max(0, prev - 1))}
@@ -747,10 +806,20 @@ export function PianoRollBuilder({
 
         {/* Conmutadores de Entrada: Modo Libre vs Paso a Paso vs Grabación */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Botón Rebobinar al Tiempo 1 */}
+          <button
+            type="button"
+            onClick={handleRewindToStart}
+            className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 hover:text-white transition-all flex items-center gap-1 cursor-pointer active:scale-95 shadow-sm"
+            title="Ir al inicio del compás (Tiempo 1)"
+          >
+            <span>⏮ Tiempo 1</span>
+          </button>
+
           {/* Conmutador Modo Libre vs Paso a Paso */}
           <button
             type="button"
-            onClick={() => setStepInputEnabled(!stepInputEnabled)}
+            onClick={handleToggleStepInput}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
               stepInputEnabled
                 ? 'bg-amber-400 text-slate-950 border-amber-300 font-black shadow-md'
@@ -907,6 +976,9 @@ export function PianoRollBuilder({
                       pianoPreviewSynth.playNote(midi, 0.35, 95);
                       if (stepInputEnabled && toggleHandler) {
                         toggleHandler(activeStepInput, midi, 100);
+                        if (autoAdvance) {
+                          advanceStepRecording();
+                        }
                       }
                     }}
                     className={`w-20 sm:w-24 shrink-0 px-2 h-full flex items-center justify-between text-[10px] font-mono border-r border-slate-800 cursor-pointer transition-all select-none ${
