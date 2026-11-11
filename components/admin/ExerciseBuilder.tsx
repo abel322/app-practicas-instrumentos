@@ -43,13 +43,27 @@ import {
 } from 'lucide-react';
 import { getStepRhythmLabel } from './TablatureRuler';
 import { AVAILABLE_FRETS } from './NoteSelectorModal';
-import { PianoRollBuilder, getStepLabel } from './PianoRollBuilder';
+import {
+  PianoRollBuilder,
+  getStepLabel,
+  QUANTIZE_OPTIONS,
+  QuantizeValue,
+  getQuantizedStep,
+} from './PianoRollBuilder';
 import { NoteDuration } from './PianoGrandStaffView';
 import { normalizeSubdivisionKey, getStepsForSubdivision } from '@/lib/music-theory/rhythmSubdivisions';
 import { normalizeInstrumentKey } from '@/lib/music-theory/instrumentUtils';
 import { validateLegatoTechnique } from './StudioBuilderView';
 
-export { getStepRhythmLabel, getStepLabel, AVAILABLE_FRETS, validateLegatoTechnique };
+export {
+  getStepRhythmLabel,
+  getStepLabel,
+  AVAILABLE_FRETS,
+  validateLegatoTechnique,
+  QUANTIZE_OPTIONS,
+  getQuantizedStep,
+};
+export type { QuantizeValue };
 
 
 type InstrumentCategory = 'drums' | 'bass' | 'guitar' | 'piano';
@@ -57,6 +71,7 @@ type SubdivisionType = '1/4' | '1/8' | '1/16' | '1/32' | '1/8T' | '1/16T' | 'qui
 
 interface EditorNote {
   step: number;        // Global step index: measureIndex * stepsPerMeasure + stepInMeasure
+  stepIndex?: number;  // Local/global index alias
   string?: number;     // 1 to 4/6 (para cuerdas)
   fret?: number;       // 0 to 24 (para cuerdas)
   technique?: StringTechnique | 'pm';
@@ -1205,19 +1220,70 @@ export const ExerciseBuilder: React.FC = () => {
   );
 
   const handleAddChordToPianoStep = useCallback(
-    (stepInMeasure: number, midiNumbers: number[], velocity: number = 100) => {
+    (
+      stepInMeasure: number,
+      midiNumbers: number[],
+      velocity: number = 100,
+      duration: NoteDuration = 'quarter'
+    ) => {
       const globalStep = currentMeasureRef.current * stepsPerMeasureRef.current + stepInMeasure;
+      const durationStepsMap: Record<NoteDuration, number> = {
+        whole: 16,
+        half: 8,
+        quarter: 4,
+        eighth: 2,
+        sixteenth: 1,
+      };
       setNotes((prev) => {
         const filtered = prev.filter(
-          (n) => !(n.step === globalStep && midiNumbers.includes(n.midiNumber || -1))
+          (n) => !(n.step === globalStep && (n.isRest || midiNumbers.includes(n.midiNumber || -1)))
         );
         const newNotes: EditorNote[] = midiNumbers.map((midiNumber) => ({
           step: globalStep,
           midiNumber,
           velocity,
-          durationSteps: 1,
+          duration,
+          durationSteps: durationStepsMap[duration] || 1,
+          isRest: false,
         }));
         const next = [...filtered, ...newNotes];
+        activeNotesRef.current = next;
+        return next;
+      });
+    },
+    []
+  );
+
+  const handleQuantizePianoMeasure = useCallback(
+    (quantizeVal: QuantizeValue) => {
+      const quantizeConfig =
+        QUANTIZE_OPTIONS.find((q) => q.id === quantizeVal) || QUANTIZE_OPTIONS[4];
+      const liveStepsPerMeasure = stepsPerMeasureRef.current;
+      const liveMeasureStart = currentMeasureRef.current * liveStepsPerMeasure;
+      const stepRatio = liveStepsPerMeasure / quantizeConfig.subdivisions;
+
+      setNotes((prev) => {
+        const next = prev.map((n) => {
+          const stepNum = n.step !== undefined ? n.step : n.stepIndex ?? 0;
+          if (
+            stepNum >= liveMeasureStart &&
+            stepNum < liveMeasureStart + liveStepsPerMeasure &&
+            n.midiNumber !== undefined
+          ) {
+            const stepInMeasure = stepNum - liveMeasureStart;
+            const gridIndex = Math.round(stepInMeasure / stepRatio);
+            const newStepInMeasure = Math.min(
+              liveStepsPerMeasure - 1,
+              Math.max(0, Math.round(gridIndex * stepRatio))
+            );
+            return {
+              ...n,
+              step: liveMeasureStart + newStepInMeasure,
+              stepIndex: newStepInMeasure,
+            };
+          }
+          return n;
+        });
         activeNotesRef.current = next;
         return next;
       });
@@ -2418,6 +2484,7 @@ export const ExerciseBuilder: React.FC = () => {
           onStopPlayback={() => {
             if (isPlayingRef.current) handleTogglePlay();
           }}
+          onQuantizeMeasure={handleQuantizePianoMeasure}
         />
       ) : (
       <div 

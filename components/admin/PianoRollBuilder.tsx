@@ -5,7 +5,50 @@ import { useWebMidi } from '@/lib/midi/useWebMidi';
 import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
 import { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
 import { PianoGrandStaffView, NoteDuration } from './PianoGrandStaffView';
-import { Radio, Music2, ChevronLeft, ChevronRight, Zap, Square } from 'lucide-react';
+import { Radio, Music2, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
+
+export type QuantizeValue = '1/1' | '1/2' | '1/4' | '1/8' | '1/16' | '1/32';
+
+export interface QuantizeOption {
+  id: QuantizeValue;
+  label: string;
+  fraction: number; // Porción de compás de 4/4
+  subdivisions: number; // Pasos por compás
+}
+
+export const QUANTIZE_OPTIONS: QuantizeOption[] = [
+  { id: '1/1', label: '𝅝 Redonda (1/1)', fraction: 1, subdivisions: 1 },
+  { id: '1/2', label: '𝅗𝅥 Blanca (1/2)', fraction: 0.5, subdivisions: 2 },
+  { id: '1/4', label: '♩ Negra (1/4)', fraction: 0.25, subdivisions: 4 },
+  { id: '1/8', label: '♪ Corchea (1/8)', fraction: 0.125, subdivisions: 8 },
+  { id: '1/16', label: '𝅘𝅥𝅯 Semicorchea (1/16)', fraction: 0.0625, subdivisions: 16 },
+  { id: '1/32', label: '𝅘𝅥𝅰 Fusa (1/32)', fraction: 0.03125, subdivisions: 32 },
+];
+
+/**
+ * Función matemática para cuantizar un tiempo transcurrido según el valor seleccionado
+ */
+export const getQuantizedStep = (
+  elapsedSeconds: number,
+  measureDurationSeconds: number,
+  quantizeVal: QuantizeValue,
+  baseSteps: number = 16
+): number => {
+  const quantizeConfig =
+    QUANTIZE_OPTIONS.find((q) => q.id === quantizeVal) || QUANTIZE_OPTIONS[4];
+  const safeMeasureDuration = Math.max(0.1, measureDurationSeconds);
+  const normalizedTime = (elapsedSeconds % safeMeasureDuration) / safeMeasureDuration;
+
+  // Cuantizar al grid de subdivisiones
+  const gridIndex =
+    Math.round(normalizedTime * quantizeConfig.subdivisions) % quantizeConfig.subdivisions;
+
+  // Escalar el índice de la rejilla a los pasos del compás (base 16 o totalSteps)
+  const stepRatio = baseSteps / quantizeConfig.subdivisions;
+  const targetStep = Math.round(gridIndex * stepRatio);
+
+  return Math.min(baseSteps - 1, Math.max(0, targetStep));
+};
 
 export interface PianoNoteStep {
   step?: number;
@@ -178,7 +221,12 @@ export interface PianoRollBuilderProps {
     duration?: NoteDuration
   ) => void;
   onToggleRest?: (stepInMeasure: number, duration: NoteDuration) => void;
-  onAddChordToStep?: (stepInMeasure: number, midiNumbers: number[], velocity?: number) => void;
+  onAddChordToStep?: (
+    stepInMeasure: number,
+    midiNumbers: number[],
+    velocity?: number,
+    duration?: NoteDuration
+  ) => void;
   isPlaying?: boolean;
   playbackActiveStep?: number;
   measureStartStep?: number;
@@ -189,12 +237,19 @@ export interface PianoRollBuilderProps {
   onTogglePlay?: () => void;
   onStartPlayback?: () => void;
   onStopPlayback?: () => void;
+  onQuantizeMeasure?: (quantizeVal: QuantizeValue) => void;
 }
 
 // Rango de concierto completo: C1 (24) a C8 (108) -> 85 teclas ordenadas de agudo a grave
 const PIANO_KEYS = Array.from({ length: 85 }, (_, i) => 108 - i);
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+interface BufferedMidiNote {
+  midi: number;
+  velocity: number;
+  timestamp: number;
+}
 
 export function PianoRollBuilder({
   currentMeasure = 0,
@@ -216,6 +271,7 @@ export function PianoRollBuilder({
   onTogglePlay,
   onStartPlayback,
   onStopPlayback,
+  onQuantizeMeasure,
 }: PianoRollBuilderProps) {
   const [internalViewMode, setInternalViewMode] = useState<'pianoroll' | 'sheet'>('pianoroll');
   const editorViewMode = controlledViewMode ?? internalViewMode;
@@ -229,10 +285,17 @@ export function PianoRollBuilder({
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [countInBeat, setCountInBeat] = useState<number | null>(null); // 4, 3, 2, 1 o null
 
+  // Modo monitoreo libre (por defecto apagado para no escribir accidentalmente)
+  const [stepInputEnabled, setStepInputEnabled] = useState<boolean>(false);
+  const [selectedQuantize, setSelectedQuantize] = useState<QuantizeValue>('1/16');
+
   const recordStartTimeRef = useRef<number>(0);
   const countIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const advanceDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Buffer de acordes con temporizador de confirmación
+  const chordBufferRef = useRef<BufferedMidiNote[]>([]);
+  const chordCommitTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Referencia viva para las notas del compás activo en tiempo de ejecución
   const activeNotesRef = useRef<PianoNoteStep[]>(notes);
@@ -240,7 +303,7 @@ export function PianoRollBuilder({
     activeNotesRef.current = notes;
   }, [notes]);
 
-  // Referencias actualizadas para evitar re-suscripciones innecesarias en el stream MIDI
+  // Referencias actualizadas para evitar cierres obsoletos en el listener MIDI
   const activeStepInputRef = useRef(activeStepInput);
   activeStepInputRef.current = activeStepInput;
 
@@ -256,6 +319,12 @@ export function PianoRollBuilder({
   const countInBeatRef = useRef(countInBeat);
   countInBeatRef.current = countInBeat;
 
+  const stepInputEnabledRef = useRef(stepInputEnabled);
+  stepInputEnabledRef.current = stepInputEnabled;
+
+  const selectedQuantizeRef = useRef(selectedQuantize);
+  selectedQuantizeRef.current = selectedQuantize;
+
   const tempoRef = useRef(tempo);
   tempoRef.current = tempo;
 
@@ -267,6 +336,9 @@ export function PianoRollBuilder({
 
   const onAddNoteRef = useRef(onAddNote);
   onAddNoteRef.current = onAddNote;
+
+  const onAddChordRef = useRef(onAddChordToStep);
+  onAddChordRef.current = onAddChordToStep;
 
   const onToggleNoteRef = useRef(onToggleSingleNote || onToggleNote);
   onToggleNoteRef.current = onToggleSingleNote || onToggleNote;
@@ -284,8 +356,8 @@ export function PianoRollBuilder({
       if (countIntervalRef.current) {
         clearInterval(countIntervalRef.current);
       }
-      if (advanceDebounceRef.current) {
-        clearTimeout(advanceDebounceRef.current);
+      if (chordCommitTimerRef.current) {
+        clearTimeout(chordCommitTimerRef.current);
       }
     };
   }, []);
@@ -316,40 +388,77 @@ export function PianoRollBuilder({
     [measureStartStep]
   );
 
-  // Manejador centralizado de pulsaciones de notas MIDI
-  const handleIncomingMidiNote = useCallback(
-    (midiNumber: number, velocity: number) => {
-      // Pre-escucha inmediata con el piano acústico
-      pianoPreviewSynth.playNote(midiNumber, 0.8, velocity);
+  // Registrar conjunto de notas (nota o acorde) en el paso especificado
+  const commitNotesToStep = useCallback(
+    (
+      stepInMeasure: number,
+      chordNotes: { midi: number; velocity: number }[],
+      duration: NoteDuration = 'quarter'
+    ) => {
+      const midiNumbers = chordNotes.map((c) => c.midi);
+      const avgVelocity = chordNotes[0]?.velocity || 100;
 
-      // MODO 1: GRABACIÓN EN TIEMPO REAL (Durante 'isRecording' y tras la cuenta regresiva)
-      if (isRecordingRef.current && countInBeatRef.current === null) {
-        const elapsedSeconds = (performance.now() - recordStartTimeRef.current) / 1000;
-        const beats = parseInt(timeSignatureRef.current.split('/')[0], 10) || 4;
-        const secondsPerMeasure = (60 / Math.max(20, tempoRef.current)) * beats;
-        const measureProgress = (elapsedSeconds % secondsPerMeasure) / secondsPerMeasure;
-        const targetStep = Math.round(measureProgress * totalStepsRef.current) % totalStepsRef.current;
-
-        addNoteToMeasure(targetStep, midiNumber, 'quarter', velocity);
-        return;
-      }
-
-      // MODO 2: STEP RECORDING (Con el cursor de edición activo)
-      const stepToInsert = activeStepInputRef.current;
-      addNoteToMeasure(stepToInsert, midiNumber, 'quarter', velocity);
-
-      // Si Auto-Avance está encendido, avanzar al siguiente paso con un debounce de 70ms para capturar acordes
-      if (autoAdvanceRef.current) {
-        if (advanceDebounceRef.current) {
-          clearTimeout(advanceDebounceRef.current);
-        }
-        advanceDebounceRef.current = setTimeout(() => {
-          setActiveStepInput((prev) => (prev + 1) % totalStepsRef.current);
-          advanceDebounceRef.current = null;
-        }, 70);
+      if (onAddChordRef.current) {
+        onAddChordRef.current(stepInMeasure, midiNumbers, avgVelocity, duration);
+      } else {
+        midiNumbers.forEach((m) => {
+          addNoteToMeasure(stepInMeasure, m, duration, avgVelocity);
+        });
       }
     },
     [addNoteToMeasure]
+  );
+
+  // Manejador centralizado de pulsaciones de notas MIDI con Modo Monitoreo Libre y Cuantizador
+  const handleIncomingMidiNote = useCallback(
+    (midi: number, velocity: number) => {
+      // 1. SIEMPRE reproducir el audio del piano acústico para monitoreo libre en vivo
+      pianoPreviewSynth.playNote(midi, 1.4, velocity);
+
+      // 2. FILTRO DE ESCRITURA: Si no se está grabando y el modo paso a paso está apagado, NO ESCRIBIR NADA
+      if (!isRecordingRef.current && !stepInputEnabledRef.current) {
+        return; // Toca libremente en el teclado sin modificar la partitura ni el roll
+      }
+
+      // Si está en modo grabación o paso a paso, encolar en el buffer de acordes
+      const now = performance.now();
+      chordBufferRef.current.push({ midi, velocity, timestamp: now });
+
+      if (chordCommitTimerRef.current) {
+        clearTimeout(chordCommitTimerRef.current);
+      }
+
+      chordCommitTimerRef.current = setTimeout(() => {
+        const chordNotes = [...chordBufferRef.current];
+        chordBufferRef.current = [];
+        if (chordNotes.length === 0) return;
+
+        // CASO A: Grabación en Tiempo Real (🔴 REC activo y terminada la cuenta atrás)
+        if (isRecordingRef.current && countInBeatRef.current === null) {
+          const elapsedSeconds = (chordNotes[0].timestamp - recordStartTimeRef.current) / 1000;
+          const beats = parseInt(timeSignatureRef.current.split('/')[0], 10) || 4;
+          const secondsPerMeasure = (60 / Math.max(20, tempoRef.current)) * beats;
+          const targetStep = getQuantizedStep(
+            elapsedSeconds,
+            secondsPerMeasure,
+            selectedQuantizeRef.current,
+            totalStepsRef.current
+          );
+
+          commitNotesToStep(targetStep, chordNotes, 'quarter');
+          return;
+        }
+
+        // CASO B: Entrada Paso a Paso Explícita (solo si stepInputEnabled === true)
+        if (stepInputEnabledRef.current) {
+          commitNotesToStep(activeStepInputRef.current, chordNotes, 'quarter');
+          if (autoAdvanceRef.current) {
+            setActiveStepInput((prev) => (prev + 1) % totalStepsRef.current);
+          }
+        }
+      }, 48);
+    },
+    [commitNotesToStep]
   );
 
   // Hook Web MIDI API con Auto-Detección y Reconexión reactiva
@@ -357,7 +466,42 @@ export function PianoRollBuilder({
     handleIncomingMidiNote
   );
 
-  // Función para Iniciar Grabación en Tiempo Real con Cuenta Regresiva
+  // Función para reajustar automáticamente todas las notas existentes del compás activo
+  const handleQuantizeCurrentMeasure = useCallback(() => {
+    if (onQuantizeMeasure) {
+      onQuantizeMeasure(selectedQuantize);
+      return;
+    }
+
+    const quantizeConfig =
+      QUANTIZE_OPTIONS.find((q) => q.id === selectedQuantize) || QUANTIZE_OPTIONS[4];
+    const stepRatio = totalSteps / quantizeConfig.subdivisions;
+
+    const currentMeasureNotes = (notes || []).filter((n: any) => {
+      const stepNum = n.step !== undefined ? n.step : n.stepIndex ?? 0;
+      return (
+        stepNum >= measureStartStep &&
+        stepNum < measureStartStep + totalSteps &&
+        n.midiNumber !== undefined
+      );
+    });
+
+    currentMeasureNotes.forEach((note: any) => {
+      const stepNum = note.step !== undefined ? note.step : note.stepIndex ?? 0;
+      const stepInMeasure = stepNum - measureStartStep;
+      const gridIndex = Math.round(stepInMeasure / stepRatio);
+      const newStepInMeasure = Math.min(
+        totalSteps - 1,
+        Math.max(0, Math.round(gridIndex * stepRatio))
+      );
+      if (newStepInMeasure !== stepInMeasure && onToggleNoteRef.current) {
+        onToggleNoteRef.current(stepInMeasure, note.midiNumber);
+        onToggleNoteRef.current(newStepInMeasure, note.midiNumber, note.velocity, note.duration);
+      }
+    });
+  }, [onQuantizeMeasure, selectedQuantize, totalSteps, measureStartStep, notes]);
+
+  // Función para Iniciar/Detener Grabación en Tiempo Real con Cuenta Regresiva
   const handleStartRealtimeRecord = useCallback(() => {
     if (isRecording) {
       // Detener grabación
@@ -467,7 +611,7 @@ export function PianoRollBuilder({
         </div>
       )}
 
-      {/* 1. Barra Superior de Vista, Estado MIDI y Asistente de Grabación Dual */}
+      {/* 1. Barra Superior de Vista, Estado MIDI y Navegación de Pasos */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-3 sm:px-4 py-2.5 bg-slate-900 border-b border-slate-800 text-xs">
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Conmutador de Modo de Visualización: Piano Roll vs Gran Pentagrama (Sol / Fa) */}
@@ -475,7 +619,7 @@ export function PianoRollBuilder({
             <button
               type="button"
               onClick={() => setEditorViewMode('pianoroll')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 editorViewMode === 'pianoroll'
                   ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
                   : 'text-slate-400 hover:text-white'
@@ -487,7 +631,7 @@ export function PianoRollBuilder({
             <button
               type="button"
               onClick={() => setEditorViewMode('sheet')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 editorViewMode === 'sheet'
                   ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
                   : 'text-slate-400 hover:text-white'
@@ -520,55 +664,6 @@ export function PianoRollBuilder({
               </button>
             )}
           </div>
-
-          {/* Botón de Grabación Dual: Real-Time REC y Step Recording */}
-          {isRecording ? (
-            countInBeat !== null ? (
-              <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-black text-xs shadow-lg animate-pulse">
-                <span className="w-2 h-2 rounded-full bg-slate-950" />
-                <span>Cuenta: {countInBeat}...</span>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={handleStartRealtimeRecord}
-                className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs shadow-lg shadow-red-950/60 ring-2 ring-red-400 animate-pulse transition-all active:scale-95"
-                title="Detener grabación en tiempo real"
-              >
-                <Square className="w-3.5 h-3.5 fill-white text-white" />
-                <span>Grabando (Detener)</span>
-              </button>
-            )
-          ) : (
-            <button
-              type="button"
-              onClick={handleStartRealtimeRecord}
-              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-lg shadow-rose-950/40 transition-all active:scale-95 border border-rose-500/50"
-              title="Iniciar grabación en tiempo real con cuenta regresiva de 4 pulsos"
-            >
-              <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
-              <span>🔴 Grabar (REC)</span>
-            </button>
-          )}
-
-          {/* Interruptor Auto-Avance Inteligente */}
-          <button
-            type="button"
-            onClick={() => setAutoAdvance(!autoAdvance)}
-            className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all text-xs border ${
-              autoAdvance
-                ? 'bg-amber-400 border-amber-300 text-slate-950 font-black shadow-[0_0_12px_rgba(251,191,36,0.35)]'
-                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-            }`}
-            title="Al estar activo (ON), tocar un acorde o nota en el teclado MIDI avanzará automáticamente al siguiente paso al soltar las teclas"
-          >
-            <Zap
-              className={`w-3.5 h-3.5 ${
-                autoAdvance ? 'fill-slate-950 text-slate-950' : 'text-slate-400'
-              }`}
-            />
-            <span>Auto-Avance {autoAdvance ? 'ON' : 'OFF'}</span>
-          </button>
         </div>
 
         {/* Navegación manual de Pasos */}
@@ -577,7 +672,7 @@ export function PianoRollBuilder({
             type="button"
             onClick={() => setActiveStepInput((prev) => Math.max(0, prev - 1))}
             disabled={activeStepInput === 0}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed text-xs transition-colors border border-slate-700"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed text-xs transition-colors border border-slate-700 cursor-pointer"
             title="Paso Anterior (⌫)"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -600,7 +695,7 @@ export function PianoRollBuilder({
             type="button"
             onClick={() => setActiveStepInput((prev) => Math.min(totalSteps - 1, prev + 1))}
             disabled={activeStepInput >= totalSteps - 1}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed text-xs transition-colors border border-slate-700"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed text-xs transition-colors border border-slate-700 cursor-pointer"
             title="Paso Siguiente (⏭)"
           >
             <span className="hidden sm:inline font-sans font-medium text-[11px]">Siguiente</span>
@@ -614,7 +709,111 @@ export function PianoRollBuilder({
         </div>
       </div>
 
-      {/* 2. Renderizado Condicional: Piano Roll vs Gran Pentagrama (Clave de Sol y Fa) */}
+      {/* 2. Barra de Cuantización y Modos de Entrada (Modo Libre vs Paso a Paso vs REC) */}
+      <div className="flex flex-wrap items-center justify-between gap-3 px-3 sm:px-4 py-2.5 bg-slate-950/95 border-b border-slate-800 text-xs">
+        {/* Selector de Cuantización */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-black text-cyan-400 uppercase tracking-wider">
+            CUANTIZAR:
+          </span>
+          <div className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+            {QUANTIZE_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setSelectedQuantize(opt.id)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  selectedQuantize === opt.id
+                    ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                }`}
+                title={`Cuantizar a ${opt.label}`}
+              >
+                {opt.id}
+              </button>
+            ))}
+          </div>
+
+          {/* Botón para aplicar cuantización al compás actual */}
+          <button
+            type="button"
+            onClick={handleQuantizeCurrentMeasure}
+            className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-slate-900 hover:bg-cyan-950/60 border border-slate-700 hover:border-cyan-500/50 text-cyan-300 transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+            title="Alinear todas las notas del compás a la rejilla seleccionada"
+          >
+            <span>⚡ Cuantizar</span>
+          </button>
+        </div>
+
+        {/* Conmutadores de Entrada: Modo Libre vs Paso a Paso vs Grabación */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Conmutador Modo Libre vs Paso a Paso */}
+          <button
+            type="button"
+            onClick={() => setStepInputEnabled(!stepInputEnabled)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
+              stepInputEnabled
+                ? 'bg-amber-400 text-slate-950 border-amber-300 font-black shadow-md'
+                : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+            }`}
+            title={
+              stepInputEnabled
+                ? 'Escribiendo notas en cada toque de tecla'
+                : 'Modo libre: las teclas solo suenan sin escribir'
+            }
+          >
+            <span>{stepInputEnabled ? '✏️ Paso a Paso: ACTIVO' : '🎹 Modo Libre (Solo Sonar)'}</span>
+          </button>
+
+          {/* Auto-Avance (Visible si Paso a Paso está activo) */}
+          {stepInputEnabled && (
+            <button
+              type="button"
+              onClick={() => setAutoAdvance(!autoAdvance)}
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1 cursor-pointer ${
+                autoAdvance
+                  ? 'bg-sky-400 text-slate-950 border-sky-300 font-black'
+                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+              }`}
+              title="Al estar activo (ON), tocar un acorde o nota avanza automáticamente al siguiente paso"
+            >
+              <Zap
+                className={`w-3 h-3 ${
+                  autoAdvance ? 'fill-slate-950 text-slate-950' : 'text-slate-400'
+                }`}
+              />
+              <span>Auto-Avance {autoAdvance ? 'ON' : 'OFF'}</span>
+            </button>
+          )}
+
+          {/* Botón de Grabación en Tiempo Real */}
+          <button
+            type="button"
+            onClick={handleStartRealtimeRecord}
+            className={`px-4 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 cursor-pointer ${
+              isRecording
+                ? 'bg-rose-600 text-white border-rose-400 animate-pulse font-black shadow-lg shadow-rose-950 ring-2 ring-rose-400'
+                : 'bg-slate-900 hover:bg-rose-950/40 text-rose-300 border-rose-900/60'
+            }`}
+            title="Iniciar o detener grabación en tiempo real con cuenta regresiva"
+          >
+            <span
+              className={`w-2.5 h-2.5 rounded-full ${
+                isRecording ? 'bg-white animate-ping' : 'bg-rose-500'
+              }`}
+            />
+            <span>
+              {isRecording
+                ? countInBeat
+                  ? `Iniciando (${countInBeat})...`
+                  : 'Grabando... (Detener)'
+                : '🔴 Grabar (REC)'}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* 3. Renderizado Condicional: Piano Roll vs Gran Pentagrama (Clave de Sol y Fa) */}
       {editorViewMode === 'sheet' ? (
         <div className="flex-1 h-full min-h-0 flex flex-col p-2 sm:p-4 bg-[#0a0c12]">
           <PianoGrandStaffView
@@ -687,7 +886,7 @@ export function PianoRollBuilder({
             </div>
           </div>
 
-          {/* 3. Filas de Notas: Teclado Vertical a la izquierda + Cuadrícula Matricial */}
+          {/* 4. Filas de Notas: Teclado Vertical a la izquierda + Cuadrícula Matricial */}
           <div className="flex flex-col min-w-max">
             {PIANO_KEYS.map((midi) => {
               const black = isBlackKey(midi);
@@ -706,7 +905,9 @@ export function PianoRollBuilder({
                   <div
                     onClick={() => {
                       pianoPreviewSynth.playNote(midi, 0.35, 95);
-                      if (toggleHandler) toggleHandler(activeStepInput, midi, 100);
+                      if (stepInputEnabled && toggleHandler) {
+                        toggleHandler(activeStepInput, midi, 100);
+                      }
                     }}
                     className={`w-20 sm:w-24 shrink-0 px-2 h-full flex items-center justify-between text-[10px] font-mono border-r border-slate-800 cursor-pointer transition-all select-none ${
                       isPressed

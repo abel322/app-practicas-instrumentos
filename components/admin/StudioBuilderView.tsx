@@ -64,6 +64,8 @@ import { ExerciseBuilder } from './ExerciseBuilder';
 
 export { useWebMidi } from '@/lib/midi/useWebMidi';
 export type { MidiDeviceState } from '@/lib/midi/useWebMidi';
+export { QUANTIZE_OPTIONS, getQuantizedStep } from './PianoRollBuilder';
+export type { QuantizeValue, QuantizeOption } from './PianoRollBuilder';
 
 export const StudioBuilderView = ExerciseBuilder;
 export default ExerciseBuilder;
