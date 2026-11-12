@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { DrumVoice, StickingType } from '@/types/drum';
 import { StringTechnique, BendType, BendAmount } from '@/types/strings';
 import { getAudioEngine } from '@/lib/drumAudioEngine';
+import { drumSampler, playDrumHit, drumSynth } from '@/lib/audio/drumSynth';
 import { getStringsAudioEngine } from '@/lib/stringsAudioEngine';
 import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
 import { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
@@ -112,12 +113,14 @@ const GUITAR_STRINGS = [
 ];
 
 const DRUM_ROWS: { voice: DrumVoice; label: string; sub: string }[] = [
-  { voice: 'crash', label: 'Crash / Ride', sub: 'Platillos acento' },
-  { voice: 'hihat', label: 'Hi-Hat', sub: 'Platillo rítmico' },
-  { voice: 'tom1', label: 'High Tom', sub: 'Tom 1 agudo' },
-  { voice: 'snare', label: 'Caja (Snare)', sub: 'Backbeat / ghost' },
-  { voice: 'floor_tom', label: 'Floor Tom', sub: 'Tom base grave' },
-  { voice: 'kick', label: 'Bombo (Kick)', sub: 'Pulso de pedal' },
+  { voice: 'crash', label: 'Crash', sub: 'Platillo Crash' },
+  { voice: 'ride', label: 'Ride', sub: 'Platillo Ride' },
+  { voice: 'hihat', label: 'Hi-Hat', sub: 'Platillo Hi-Hat' },
+  { voice: 'tom1', label: 'Tom 1', sub: 'Tom Aéreo Agudo' },
+  { voice: 'tom2', label: 'Tom 2', sub: 'Tom Aéreo Medio' },
+  { voice: 'snare', label: 'Snare (Caja)', sub: 'Redoblante / Backbeat' },
+  { voice: 'floor_tom', label: 'Granadero', sub: 'Tom de Piso Profundo' },
+  { voice: 'kick', label: 'Bombo (Kick)', sub: 'Pulso de Pedal' },
 ];
 
 const ACTIVE_INSTRUMENT_KEY = 'studio_builder_active_instrument';
@@ -466,14 +469,21 @@ export const ExerciseBuilder: React.FC = () => {
     activeNotesRef.current = notes;
   }, [notes]);
 
-  // Inicializar y precargar el AudioContext de muestras de piano, bajo y guitarra para latencia cero
+  // Inicializar y precargar el AudioContext de muestras de piano, bajo, guitarra y batería para latencia cero
   useEffect(() => {
-    // Pre-cargar muestras de piano acústico para disponibilidad inmediata sin latencia
+    // Pre-cargar muestras de piano acústico y batería para disponibilidad inmediata sin latencia
+    drumSampler.preloadSamples();
     pianoPreviewSynth.initContext();
     pianoPreviewSynth.preloadSamples();
     bassPreviewSynth.initContext();
     guitarPreviewSynth.init();
   }, []);
+
+  useEffect(() => {
+    if (instrument === 'drums') {
+      drumSampler.preloadSamples();
+    }
+  }, [instrument]);
 
   // Estado de Celda Activa / Modal de Edición Rápida de Traste
   const [activeCell, setActiveCell] = useState<{ step: number; string?: number; voice?: DrumVoice } | null>(null);
@@ -774,12 +784,10 @@ export const ExerciseBuilder: React.FC = () => {
           activeNotesRef.current = next;
           return next;
         });
-        // Sonido de prueba inmediato con panorama y sticking estéreo
-        const engine = getAudioEngine();
-        engine.init();
-        engine.trigger({
+        // Sonido de prueba inmediato con muestras acústicas reales, panorama y sticking
+        playDrumHit({
           instrument: drumVoice!,
-          velocity: 0.85,
+          velocity: 90,
           accent: selectedAccent,
           sticking: (selectedSticking as 'R' | 'L') || 'R',
           isDoubleRebound: false,
@@ -2515,6 +2523,41 @@ export const ExerciseBuilder: React.FC = () => {
                 L (Izq)
               </button>
             </div>
+
+            {/* Separador vertical */}
+            <div className="h-5 w-px bg-white/10 hidden sm:block" />
+
+            {/* Pads de Pre-escucha Rápida Acústica */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider mr-1">Pads:</span>
+              {[
+                { voice: 'kick', label: 'Bombo', color: 'hover:border-amber-400 hover:text-amber-300' },
+                { voice: 'snare', label: 'Snare', color: 'hover:border-cyan-400 hover:text-cyan-300' },
+                { voice: 'hihat', label: 'Hi-Hat', color: 'hover:border-yellow-400 hover:text-yellow-300' },
+                { voice: 'tom1', label: 'Tom 1', color: 'hover:border-emerald-400 hover:text-emerald-300' },
+                { voice: 'tom2', label: 'Tom 2', color: 'hover:border-teal-400 hover:text-teal-300' },
+                { voice: 'floor_tom', label: 'Granadero', color: 'hover:border-orange-400 hover:text-orange-300' },
+                { voice: 'ride', label: 'Ride', color: 'hover:border-indigo-400 hover:text-indigo-300' },
+                { voice: 'crash', label: 'Crash', color: 'hover:border-pink-400 hover:text-pink-300' },
+              ].map((pad) => (
+                <button
+                  key={`audition-pad-${pad.voice}`}
+                  type="button"
+                  onClick={() =>
+                    playDrumHit({
+                      instrument: pad.voice,
+                      velocity: 95,
+                      accent: selectedAccent,
+                      sticking: (selectedSticking as 'R' | 'L') || 'R',
+                    })
+                  }
+                  className={`px-2 py-1 rounded-lg bg-zinc-900 border border-white/10 text-[11px] font-semibold text-zinc-300 active:scale-95 transition-all ${pad.color}`}
+                  title={`Probar sonido de ${pad.label}`}
+                >
+                  {pad.label}
+                </button>
+              ))}
+            </div>
           </div>
         ) : instrument === 'piano' ? (
           // Controles para Piano / Teclado
@@ -2825,12 +2868,24 @@ export const ExerciseBuilder: React.FC = () => {
             // Filas de Batería
             DRUM_ROWS.map((row) => (
               <div key={row.voice} className="flex items-center h-12 relative border-b border-white/5 group">
-                <div className="w-24 shrink-0 flex flex-col pr-2">
-                  <span className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-cyan-500 dark:group-hover:text-cyan-400 transition-colors">
+                <button
+                  type="button"
+                  onClick={() =>
+                    playDrumHit({
+                      instrument: row.voice,
+                      velocity: 95,
+                      accent: selectedAccent,
+                      sticking: (selectedSticking as 'R' | 'L') || 'R',
+                    })
+                  }
+                  title={`Probar sonido de ${row.label}`}
+                  className="w-24 shrink-0 flex flex-col pr-2 text-left hover:opacity-80 active:scale-95 transition-all cursor-pointer group/label"
+                >
+                  <span className="text-xs font-bold text-slate-900 dark:text-white group-hover/label:text-cyan-500 dark:group-hover/label:text-cyan-400 transition-colors">
                     {row.label}
                   </span>
                   <span className="text-[9px] text-slate-500 dark:text-zinc-400 truncate">{row.sub}</span>
-                </div>
+                </button>
 
                 {/* Línea horizontal continua de pentagrama */}
                 <div className="absolute left-24 right-0 top-1/2 -translate-y-1/2 h-px bg-slate-300 dark:bg-white/15 pointer-events-none" />

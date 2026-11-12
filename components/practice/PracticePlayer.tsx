@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import Link from 'next/link';
 import { DrumExerciseData, DrumHit } from '@/types/drum';
 import { getAudioEngine } from '@/lib/drumAudioEngine';
+import { drumSampler } from '@/lib/audio/drumSynth';
 import { DrumScoreRenderer } from './DrumScoreSVG';
 import { TransportBar } from './TransportBar';
 import { StickingLegend } from './StickingLegend';
@@ -72,6 +73,11 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
   useEffect(() => {
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
+
+  // Precarga de muestras de batería acústica real
+  useEffect(() => {
+    drumSampler.preloadSamples();
+  }, []);
 
   // ==============================================================
   // 1. LECTURA DINÁMICA DE SUBDIVISIÓN Y PASOS POR COMPÁS

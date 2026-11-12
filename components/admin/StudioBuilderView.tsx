@@ -71,6 +71,8 @@ export type { ScoreMeasure, ScoreNote, ExtendedScoreViewProps } from '@/componen
 export { PrintableScoreModal } from '@/components/studio/PrintableScoreModal';
 export type { PrintableScoreModalProps } from '@/components/studio/PrintableScoreModal';
 export { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
+export { drumSampler, playDrumHit, drumSynth, getDrumAudioContext } from '@/lib/audio/drumSynth';
+export type { DrumHitOptions, DrumPiece } from '@/lib/audio/drumSynth';
 
 export const StudioBuilderView = ExerciseBuilder;
 export default ExerciseBuilder;

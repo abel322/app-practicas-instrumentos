@@ -1,61 +1,43 @@
-import { DrumVoice } from '@/types/drum';
+// lib/drumAudioEngine.ts
+// Motor Integrado de Batería Acústica y Metrónomo para Práctica y Secuenciadores
 
-export interface DrumHitOptions {
-  instrument: DrumVoice | 'pad';
-  time?: number;
-  velocity?: number;
-  sticking?: 'R' | 'L' | null;
-  accent?: boolean;
-  isDoubleRebound?: boolean;
-}
+import { DrumVoice } from '@/types/drum';
+import {
+  drumSampler,
+  DrumHitOptions,
+  playDrumHit,
+  getDrumAudioContext,
+  drumSynth,
+  DrumPiece,
+} from './audio/drumSynth';
+
+export type { DrumHitOptions, DrumPiece };
+export { drumSampler, playDrumHit, drumSynth, getDrumAudioContext };
 
 export class DrumAudioEngine {
-  private ctx: AudioContext | null = null;
-  private noiseBuffer: AudioBuffer | null = null;
   private metronomeEnabled: boolean = true;
-  private masterGain: GainNode | null = null;
   private metronomeGain: GainNode | null = null;
 
-  constructor() {
-    // AudioContext will be initialized on first user gesture
-  }
+  constructor() {}
 
   public init() {
-    if (this.ctx) return;
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
-
-    this.ctx = new AudioContextClass();
-
-    // Master Gain
-    this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.setValueAtTime(0.9, this.ctx.currentTime);
-    this.masterGain.connect(this.ctx.destination);
-
-    // Metronome Gain
-    this.metronomeGain = this.ctx.createGain();
-    this.metronomeGain.gain.setValueAtTime(0.6, this.ctx.currentTime);
-    this.metronomeGain.connect(this.ctx.destination);
-
-    // Pre-generate 2 seconds of high quality white noise for cymbals and snare wire
-    this.generateNoiseBuffer();
+    drumSampler.getContext();
+    this.ensureMetronomeGain();
   }
 
   public resume() {
-    if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
+    const ctx = drumSampler.getContext();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
     }
   }
 
-  public getAudioContext(): AudioContext | null {
-    if (!this.ctx) {
-      this.init();
-    }
-    return this.ctx;
+  public getAudioContext(): AudioContext {
+    return drumSampler.getContext();
   }
 
   public getCurrentTime(): number {
-    return this.ctx ? this.ctx.currentTime : 0;
+    return drumSampler.getContext().currentTime;
   }
 
   public setMetronomeEnabled(enabled: boolean) {
@@ -66,20 +48,20 @@ export class DrumAudioEngine {
     return this.metronomeEnabled;
   }
 
-  private generateNoiseBuffer() {
-    if (!this.ctx) return;
-    const bufferSize = this.ctx.sampleRate * 2;
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const output = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      output[i] = Math.random() * 2 - 1;
+  private ensureMetronomeGain(): GainNode | null {
+    const ctx = drumSampler.getContext();
+    if (!ctx) return null;
+    if (!this.metronomeGain) {
+      this.metronomeGain = ctx.createGain();
+      this.metronomeGain.gain.setValueAtTime(0.6, ctx.currentTime);
+      this.metronomeGain.connect(ctx.destination);
     }
-    this.noiseBuffer = buffer;
+    return this.metronomeGain;
   }
 
   /**
    * Dispara el instrumento especificado en el tiempo exacto de Web Audio
-   * Admite opciones avanzadas de sticking ('R'/'L'), acento y rebote doble
+   * mediante el motor de muestras acústicas reales (Drum Sampler)
    */
   public trigger(
     instrumentOrOptions: DrumVoice | 'pad' | DrumHitOptions,
@@ -89,71 +71,33 @@ export class DrumAudioEngine {
     sticking?: 'R' | 'L' | null,
     isDoubleRebound: boolean = false
   ) {
-    if (!this.ctx) this.init();
-    if (!this.ctx) return;
-
-    let instrument: DrumVoice = 'snare';
-    let hitTime = time ?? this.ctx.currentTime;
-    let hitVelocity = velocity;
-    let hitAccent = isAccent;
-    let hitSticking: 'R' | 'L' | null | undefined = sticking;
-    let hitDoubleRebound = isDoubleRebound;
-
     if (typeof instrumentOrOptions === 'object' && instrumentOrOptions !== null) {
-      instrument = (instrumentOrOptions.instrument === 'pad' ? 'snare' : instrumentOrOptions.instrument) as DrumVoice;
-      hitTime = instrumentOrOptions.time ?? this.ctx.currentTime;
-      hitVelocity = instrumentOrOptions.velocity ?? velocity;
-      hitAccent = Boolean(instrumentOrOptions.accent ?? isAccent);
-      hitSticking = instrumentOrOptions.sticking ?? sticking;
-      hitDoubleRebound = Boolean(instrumentOrOptions.isDoubleRebound ?? isDoubleRebound);
+      drumSampler.playHit(instrumentOrOptions);
     } else {
-      instrument = (instrumentOrOptions === 'pad' ? 'snare' : instrumentOrOptions) as DrumVoice;
-    }
-
-    const effectiveVelocity = hitAccent ? Math.min(1.0, hitVelocity * 1.35) : hitVelocity;
-
-    switch (instrument) {
-      case 'kick':
-        this.playKick(hitTime, effectiveVelocity, hitAccent);
-        break;
-      case 'snare':
-        this.playSnare(hitTime, effectiveVelocity, hitAccent, hitSticking, hitDoubleRebound);
-        break;
-      case 'hihat':
-        this.playHiHat(hitTime, effectiveVelocity, false);
-        break;
-      case 'hihat_open':
-        this.playHiHat(hitTime, effectiveVelocity, true);
-        break;
-      case 'ride':
-        this.playRide(hitTime, effectiveVelocity, hitAccent);
-        break;
-      case 'crash':
-        this.playCrash(hitTime, effectiveVelocity);
-        break;
-      case 'tom1':
-        this.playTom(hitTime, 185, 110, effectiveVelocity);
-        break;
-      case 'tom2':
-        this.playTom(hitTime, 140, 80, effectiveVelocity);
-        break;
-      case 'floor_tom':
-        this.playTom(hitTime, 95, 55, effectiveVelocity);
-        break;
-      default:
-        this.playSnare(hitTime, effectiveVelocity, hitAccent, hitSticking, hitDoubleRebound);
-        break;
+      drumSampler.playHit({
+        instrument: instrumentOrOptions,
+        time,
+        velocity,
+        accent: isAccent,
+        sticking,
+        isDoubleRebound,
+      });
     }
   }
 
   /**
-   * Clic del metrónomo sintetizado nítido y preciso
+   * Clic del metrónomo sintetizado nítido y preciso (independiente de los samples)
    */
   public playMetronome(time: number, isDownbeat: boolean = false) {
-    if (!this.metronomeEnabled || !this.ctx || !this.metronomeGain) return;
+    if (!this.metronomeEnabled) return;
+    const ctx = drumSampler.getContext();
+    if (!ctx) return;
 
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
+    const metroGain = this.ensureMetronomeGain();
+    if (!metroGain) return;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
 
     osc.type = 'sine';
     // Downbeat agudo (1600 Hz), beats secundarios (920 Hz)
@@ -164,262 +108,10 @@ export class DrumAudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.0001, time + (isDownbeat ? 0.045 : 0.03));
 
     osc.connect(gain);
-    gain.connect(this.metronomeGain);
+    gain.connect(metroGain);
 
     osc.start(time);
     osc.stop(time + 0.05);
-  }
-
-  // SÍNTESIS DE BOMBO (KICK)
-  private playKick(time: number, velocity: number, isAccent: boolean) {
-    if (!this.ctx || !this.masterGain) return;
-
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    const startFreq = isAccent ? 165 : 140;
-    const endFreq = 42;
-    const duration = isAccent ? 0.28 : 0.22;
-
-    osc.frequency.setValueAtTime(startFreq, time);
-    osc.frequency.exponentialRampToValueAtTime(endFreq, time + 0.07);
-
-    // Click sutil para ataque punchy
-    const clickOsc = this.ctx.createOscillator();
-    const clickGain = this.ctx.createGain();
-    clickOsc.type = 'triangle';
-    clickOsc.frequency.setValueAtTime(320, time);
-    clickGain.gain.setValueAtTime(0.4 * velocity, time);
-    clickGain.gain.exponentialRampToValueAtTime(0.001, time + 0.015);
-
-    clickOsc.connect(clickGain);
-    clickGain.connect(this.masterGain);
-    clickOsc.start(time);
-    clickOsc.stop(time + 0.02);
-
-    const peakGain = 0.95 * velocity;
-    gain.gain.setValueAtTime(peakGain, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
-
-    osc.connect(gain);
-    gain.connect(this.masterGain);
-
-    osc.start(time);
-    osc.stop(time + duration);
-  }
-
-  // SÍNTESIS DE CAJA / PAD (SNARE) CON DIFERENCIACIÓN TÍMBRICA, ESTÉREO Y REBOTE DOBLE
-  private playSnare(
-    time: number,
-    velocity: number,
-    isAccent: boolean,
-    sticking?: 'R' | 'L' | null,
-    isDoubleRebound: boolean = false
-  ) {
-    if (!this.ctx || !this.masterGain || !this.noiseBuffer) return;
-
-    const isRight = sticking === 'R';
-    const isLeft = sticking === 'L';
-
-    // 1. Panorama estéreo desde perspectiva del baterista
-    let panner: StereoPannerNode | null = null;
-    if (typeof this.ctx.createStereoPanner === 'function') {
-      panner = this.ctx.createStereoPanner();
-      if (isRight) {
-        panner.pan.setValueAtTime(0.26, time);
-      } else if (isLeft) {
-        panner.pan.setValueAtTime(-0.26, time);
-      } else {
-        panner.pan.setValueAtTime(0, time);
-      }
-      panner.connect(this.masterGain);
-    }
-    const outputNode: AudioNode = panner || this.masterGain;
-
-    // 2. Dinámica, micro-afinación y brillo por mano
-    let dynamicGain = 0.62;
-    let pitchDetuneCents = 0;
-    let lowpassFreq = 4500;
-    let decayFactor = 1.0;
-
-    if (isAccent) {
-      dynamicGain = 1.0;
-      pitchDetuneCents = 0;
-      lowpassFreq = 7600;
-    } else if (isRight) {
-      dynamicGain = 0.62;
-      pitchDetuneCents = 22; // Ligero brillo de golpe derecha
-      lowpassFreq = 4600;
-    } else if (isLeft) {
-      dynamicGain = 0.54;
-      pitchDetuneCents = -32; // Timbre ligeramente más cálido y profundo izquierda
-      lowpassFreq = 3700;
-    }
-
-    // 3. Rebote natural en golpes dobles consecutivos (RR o LL)
-    if (isDoubleRebound && !isAccent) {
-      dynamicGain *= 0.86;
-      decayFactor = 0.88;
-    }
-
-    const effectiveVel = velocity * dynamicGain;
-
-    // 4. Tono de cuerpo (membrana) con micro-afinación
-    const osc = this.ctx.createOscillator();
-    const oscGain = this.ctx.createGain();
-    osc.type = 'triangle';
-    const fundamental = isAccent ? 205 : 185;
-    osc.frequency.setValueAtTime(fundamental, time);
-    if (osc.detune) {
-      osc.detune.setValueAtTime(pitchDetuneCents, time);
-    }
-    osc.frequency.exponentialRampToValueAtTime(90, time + 0.08 * decayFactor);
-
-    const bodyDuration = (isAccent ? 0.16 : 0.12) * decayFactor;
-    oscGain.gain.setValueAtTime(0.7 * effectiveVel, time);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, time + bodyDuration);
-
-    osc.connect(oscGain);
-    oscGain.connect(outputNode);
-    osc.start(time);
-    osc.stop(time + bodyDuration + 0.02);
-
-    // 5. Ruido de bordonera (snare wires) filtrado dinámicamente
-    const noiseSource = this.ctx.createBufferSource();
-    noiseSource.buffer = this.noiseBuffer;
-
-    const noiseHpFilter = this.ctx.createBiquadFilter();
-    noiseHpFilter.type = 'highpass';
-    noiseHpFilter.frequency.setValueAtTime(1400, time);
-
-    const noiseLpFilter = this.ctx.createBiquadFilter();
-    noiseLpFilter.type = 'lowpass';
-    noiseLpFilter.frequency.setValueAtTime(lowpassFreq, time);
-
-    const noiseGain = this.ctx.createGain();
-    const noiseDuration = (isAccent ? 0.22 : 0.15) * decayFactor;
-    noiseGain.gain.setValueAtTime(0.85 * effectiveVel, time);
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, time + noiseDuration);
-
-    noiseSource.connect(noiseHpFilter);
-    noiseHpFilter.connect(noiseLpFilter);
-    noiseLpFilter.connect(noiseGain);
-    noiseGain.connect(outputNode);
-
-    noiseSource.start(time);
-    noiseSource.stop(time + noiseDuration);
-  }
-
-  // SÍNTESIS DE HI-HAT
-  private playHiHat(time: number, velocity: number, isOpen: boolean) {
-    if (!this.ctx || !this.masterGain || !this.noiseBuffer) return;
-
-    const source = this.ctx.createBufferSource();
-    source.buffer = this.noiseBuffer;
-
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'highpass';
-    filter.frequency.setValueAtTime(7500, time);
-
-    const gain = this.ctx.createGain();
-    const duration = isOpen ? 0.38 : 0.045;
-
-    gain.gain.setValueAtTime(0.65 * velocity, time);
-    gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
-
-    source.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.masterGain);
-
-    source.start(time);
-    source.stop(time + duration);
-  }
-
-  // SÍNTESIS DE RIDE
-  private playRide(time: number, velocity: number, isAccent: boolean) {
-    if (!this.ctx || !this.masterGain || !this.noiseBuffer) return;
-
-    // Campana armónica
-    const osc = this.ctx.createOscillator();
-    const oscGain = this.ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(isAccent ? 820 : 610, time);
-
-    oscGain.gain.setValueAtTime(0.4 * velocity, time);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, time + 0.35);
-
-    osc.connect(oscGain);
-    oscGain.connect(this.masterGain);
-    osc.start(time);
-    osc.stop(time + 0.4);
-
-    // Resonancia metálica
-    const source = this.ctx.createBufferSource();
-    source.buffer = this.noiseBuffer;
-
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(5200, time);
-    filter.Q.setValueAtTime(6.0, time);
-
-    const gain = this.ctx.createGain();
-    const duration = 0.55;
-    gain.gain.setValueAtTime(0.5 * velocity, time);
-    gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
-
-    source.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.masterGain);
-
-    source.start(time);
-    source.stop(time + duration);
-  }
-
-  // SÍNTESIS DE CRASH
-  private playCrash(time: number, velocity: number) {
-    if (!this.ctx || !this.masterGain || !this.noiseBuffer) return;
-
-    const source = this.ctx.createBufferSource();
-    source.buffer = this.noiseBuffer;
-
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'highpass';
-    filter.frequency.setValueAtTime(3500, time);
-
-    const gain = this.ctx.createGain();
-    const duration = 1.1;
-
-    gain.gain.setValueAtTime(0.85 * velocity, time);
-    gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
-
-    source.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.masterGain);
-
-    source.start(time);
-    source.stop(time + duration);
-  }
-
-  // SÍNTESIS DE TOMS
-  private playTom(time: number, startFreq: number, endFreq: number, velocity: number) {
-    if (!this.ctx || !this.masterGain) return;
-
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(startFreq, time);
-    osc.frequency.exponentialRampToValueAtTime(endFreq, time + 0.15);
-
-    const duration = 0.35;
-    gain.gain.setValueAtTime(0.85 * velocity, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
-
-    osc.connect(gain);
-    gain.connect(this.masterGain);
-
-    osc.start(time);
-    osc.stop(time + duration);
   }
 }
 
@@ -434,8 +126,4 @@ export function getAudioEngine(): DrumAudioEngine {
     globalEngineInstance = new DrumAudioEngine();
   }
   return globalEngineInstance;
-}
-
-export function getDrumAudioContext(): AudioContext | null {
-  return getAudioEngine().getAudioContext();
 }
