@@ -270,6 +270,29 @@ class SampledPianoSynth {
     if (!midis || midis.length === 0) return;
     midis.forEach((m) => this.playNote(m, duration, velocity, scheduleTime));
   }
+
+  /**
+   * Silencia y cancela de inmediato todas las notas y resonancias activas
+   */
+  public stopAll() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    this.activeVoices.forEach((voices) => {
+      voices.forEach((voice) => {
+        try {
+          voice.gainNode.gain.cancelScheduledValues(now);
+          voice.gainNode.gain.setValueAtTime(voice.gainNode.gain.value, now);
+          voice.gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
+          setTimeout(() => {
+            try {
+              voice.source.stop();
+            } catch (e) {}
+          }, 50);
+        } catch (e) {}
+      });
+    });
+    this.activeVoices.clear();
+  }
 }
 
 export const pianoPreviewSynth = new SampledPianoSynth();

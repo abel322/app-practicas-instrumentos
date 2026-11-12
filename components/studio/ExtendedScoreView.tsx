@@ -20,8 +20,10 @@ export interface ExtendedScoreViewProps {
   measures: ScoreMeasure[];
   activeMeasureIndex: number;
   currentStep: number;
-  isPlaying: boolean;
   stepsPerMeasure?: number;
+  isPlaying: boolean;
+  /** Referencia mutable con el paso global fraccionario continuo (ej. 18.42) actualizado en rAF */
+  continuousStepRef?: React.MutableRefObject<number>;
   onSelectMeasureAndStep?: (measureIndex: number, stepIndex: number) => void;
   onNoteClick?: (measureIndex: number, midiNumber: number) => void;
 }
@@ -41,318 +43,345 @@ const SEMITONE_TO_DIATONIC: Record<number, { step: number; isAccidental: boolean
   11: { step: 6, isAccidental: false, name: 'B' },
 };
 
-const LINE_SPACING = 24;
-const STEP_SPACING = 12;
-const BASE_MIDDLE_C_Y = 175;
+const LINE_SPACING = 22;
+const STEP_SPACING = 11;
+const BASE_MIDDLE_C_Y = 165;
 const MIDDLE_C_DIATONIC = 4 * 7 + 0; // C4 = 28
-const SYSTEM_HEIGHT = 330; // Altura de cada sistema de 2 pentagramas
-const SVG_WIDTH = 980;
-const LEFT_MARGIN = 85;
-const RIGHT_MARGIN = 25;
-const MEASURES_PER_SYSTEM = 2;
+const SVG_HEIGHT = 330;
+const CLEF_PANEL_WIDTH = 78;
+const MEASURE_WIDTH = 440;
+const RIGHT_PADDING = 40;
 
-export function getDiatonicY(midi: number, systemOffsetY: number) {
+export function getDiatonicY(midi: number, systemOffsetY: number = 0) {
   const octave = Math.floor(midi / 12) - 1;
   const semitone = ((midi % 12) + 12) % 12;
   const info = SEMITONE_TO_DIATONIC[semitone];
-  const absoluteIndex = octave * 7 + info.step;
+  const absoluteIndex = octave * 7 + (info?.step ?? 0);
   const offset = absoluteIndex - MIDDLE_C_DIATONIC;
-  return systemOffsetY + BASE_MIDDLE_C_Y - (offset * STEP_SPACING);
+  return systemOffsetY + BASE_MIDDLE_C_Y - offset * STEP_SPACING;
 }
 
 export const ExtendedScoreView: React.FC<ExtendedScoreViewProps> = ({
   measures,
   activeMeasureIndex,
   currentStep,
-  isPlaying,
   stepsPerMeasure = 16,
+  isPlaying,
+  continuousStepRef,
   onSelectMeasureAndStep,
   onNoteClick,
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const playheadRef = useRef<SVGLineElement>(null);
 
-  const totalSystems = Math.max(1, Math.ceil(measures.length / MEASURES_PER_SYSTEM));
-  const totalSvgHeight = totalSystems * SYSTEM_HEIGHT + 40;
-  const usableWidth = SVG_WIDTH - LEFT_MARGIN - RIGHT_MARGIN;
-  const measureWidth = usableWidth / MEASURES_PER_SYSTEM;
-  const spm = stepsPerMeasure || 16;
+  const safeMeasures = measures.length > 0 ? measures : [{ measureIndex: 0, notes: [] }];
+  const totalWidth = safeMeasures.length * MEASURE_WIDTH + RIGHT_PADDING;
 
-  // Auto-scroll para seguir el cursor en obras largas
+  const trebleLines = [55, 77, 99, 121, 143];
+  const bassLines = [187, 209, 231, 253, 275];
+
+  // Bucle de interpolación visual continua a 60/120fps (cero saltos, cero re-renders)
   useEffect(() => {
-    if (isPlaying && playheadRef.current && containerRef.current) {
-      const activeSystem = Math.floor(activeMeasureIndex / MEASURES_PER_SYSTEM);
-      const targetScroll = activeSystem * SYSTEM_HEIGHT - 60;
-      containerRef.current.scrollTo({ top: Math.max(0, targetScroll), behavior: 'smooth' });
-    }
-  }, [activeMeasureIndex, isPlaying]);
+    if (!isPlaying) return;
+    let rafId: number;
 
-  // Cálculo de coordenadas del cursor de reproducción
-  const activeSystem = Math.floor(activeMeasureIndex / MEASURES_PER_SYSTEM);
-  const measureInSystem = activeMeasureIndex % MEASURES_PER_SYSTEM;
-  const systemBaseY = activeSystem * SYSTEM_HEIGHT;
-  const currentMeasureStartX = LEFT_MARGIN + measureInSystem * measureWidth;
-  const playheadX = currentMeasureStartX + (currentStep + 0.5) * (measureWidth / spm);
+    const animatePlayhead = () => {
+      const exactGlobalStep = continuousStepRef
+        ? continuousStepRef.current
+        : activeMeasureIndex * stepsPerMeasure + currentStep;
+
+      const measureFloat = exactGlobalStep / stepsPerMeasure;
+      const playheadX = measureFloat * MEASURE_WIDTH;
+
+      if (playheadRef.current) {
+        playheadRef.current.setAttribute('x1', String(playheadX));
+        playheadRef.current.setAttribute('x2', String(playheadX));
+      }
+
+      // Desplazamiento horizontal suave manteniendo el cursor en el primer tercio visible
+      const container = scrollContainerRef.current;
+      if (container) {
+        const viewportWidth = container.clientWidth;
+        const targetScrollLeft = Math.max(0, playheadX - viewportWidth * 0.32);
+        const currentScroll = container.scrollLeft;
+
+        // Si el loop reinicia al Compás 1, regresar suavemente; si avanza, seguir sin tirón
+        if (Math.abs(targetScrollLeft - currentScroll) > viewportWidth * 0.8) {
+          container.scrollTo({ left: targetScrollLeft, behavior: 'smooth' });
+        } else {
+          container.scrollLeft = currentScroll + (targetScrollLeft - currentScroll) * 0.18;
+        }
+      }
+
+      rafId = requestAnimationFrame(animatePlayhead);
+    };
+
+    rafId = requestAnimationFrame(animatePlayhead);
+    return () => cancelAnimationFrame(rafId);
+  }, [isPlaying, continuousStepRef, stepsPerMeasure, activeMeasureIndex, currentStep]);
+
+  // Posición estática cuando está en pausa
+  const staticPlayheadX =
+    activeMeasureIndex * MEASURE_WIDTH + ((currentStep + 0.5) / stepsPerMeasure) * MEASURE_WIDTH;
+
+  // Actualizar playhead al estar en pausa cuando cambie activeMeasureIndex o currentStep
+  useEffect(() => {
+    if (!isPlaying && playheadRef.current) {
+      playheadRef.current.setAttribute('x1', String(staticPlayheadX));
+      playheadRef.current.setAttribute('x2', String(staticPlayheadX));
+    }
+  }, [isPlaying, staticPlayheadX]);
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full max-h-[640px] overflow-y-auto overflow-x-hidden rounded-2xl bg-slate-950 border border-slate-800 shadow-2xl p-4 no-scrollbar"
-    >
-      <svg
-        viewBox={`0 0 ${SVG_WIDTH} ${totalSvgHeight}`}
-        className="w-full h-auto select-none font-sans"
+    <div className="w-full rounded-2xl bg-slate-950 border border-slate-800 shadow-2xl overflow-hidden flex">
+      {/* Panel Izquierdo Fijo con Llave, Clave de Sol y Clave de Fa */}
+      <div
+        className="shrink-0 bg-slate-950 border-r border-slate-800/80 z-10 select-none"
+        style={{ width: CLEF_PANEL_WIDTH }}
       >
-        {Array.from({ length: totalSystems }).map((_, systemIdx) => {
-          const sysY = systemIdx * SYSTEM_HEIGHT + 20;
-          const trebleLines = [55, 79, 103, 127, 151].map((y) => sysY + y);
-          const bassLines = [199, 223, 247, 271, 295].map((y) => sysY + y);
-          const middleCY = sysY + BASE_MIDDLE_C_Y;
+        <svg viewBox={`0 0 ${CLEF_PANEL_WIDTH} ${SVG_HEIGHT}`} className="w-full h-[310px] block">
+          {/* Llave orquestal */}
+          <line x1={68} y1={55} x2={68} y2={275} stroke="#64748b" strokeWidth="4" />
+          <path
+            d={`M 68 55 Q 52 ${BASE_MIDDLE_C_Y} 68 ${BASE_MIDDLE_C_Y} Q 52 ${BASE_MIDDLE_C_Y} 68 275`}
+            fill="none"
+            stroke="#64748b"
+            strokeWidth="2.2"
+          />
 
-          const startMeasureIdx = systemIdx * MEASURES_PER_SYSTEM;
-          const systemMeasures = measures.slice(startMeasureIdx, startMeasureIdx + MEASURES_PER_SYSTEM);
+          {/* Clave de Sol */}
+          <text x={14} y={136} fill="#cbd5e1" fontSize="62" fontFamily="serif">
+            𝄞
+          </text>
+          {/* Clave de Fa */}
+          <text x={16} y={232} fill="#cbd5e1" fontSize="46" fontFamily="serif">
+            𝄢
+          </text>
 
-          return (
-            <g key={`system-${systemIdx}`}>
-              {/* Llave / Corchete orquestal a la izquierda */}
-              <line
-                x1={LEFT_MARGIN - 35}
-                y1={sysY + 55}
-                x2={LEFT_MARGIN - 35}
-                y2={sysY + 295}
-                stroke="#64748b"
-                strokeWidth="4.5"
-              />
-              <path
-                d={`M ${LEFT_MARGIN - 35} ${sysY + 55} Q ${LEFT_MARGIN - 50} ${middleCY} ${LEFT_MARGIN - 35} ${middleCY} Q ${LEFT_MARGIN - 50} ${middleCY} ${LEFT_MARGIN - 35} ${sysY + 295}`}
-                fill="none"
-                stroke="#64748b"
-                strokeWidth="2.5"
-              />
+          {/* Continuidad de líneas en el margen de claves */}
+          {trebleLines.map((y, i) => (
+            <line key={`ct-${i}`} x1={68} y1={y} x2={CLEF_PANEL_WIDTH} y2={y} stroke="#475569" strokeWidth="1.6" />
+          ))}
+          {bassLines.map((y, i) => (
+            <line key={`cb-${i}`} x1={68} y1={y} x2={CLEF_PANEL_WIDTH} y2={y} stroke="#475569" strokeWidth="1.6" />
+          ))}
+        </svg>
+      </div>
 
-              {/* Clave de Sol */}
-              <text x={LEFT_MARGIN - 78} y={sysY + 145} fill="#cbd5e1" fontSize="66" fontFamily="serif">
-                𝄞
-              </text>
-              {/* Clave de Fa */}
-              <text x={LEFT_MARGIN - 76} y={sysY + 246} fill="#cbd5e1" fontSize="50" fontFamily="serif">
-                𝄢
-              </text>
+      {/* Cinta Horizontal Desplazable de Todos los Compases */}
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-x-auto overflow-y-hidden no-scrollbar"
+      >
+        <svg
+          viewBox={`0 0 ${totalWidth} ${SVG_HEIGHT}`}
+          style={{ width: totalWidth, height: 310 }}
+          className="block select-none font-sans"
+        >
+          {/* 5 Líneas Continuas de Clave de Sol */}
+          {trebleLines.map((y, i) => (
+            <line
+              key={`treble-line-${i}`}
+              x1={0}
+              y1={y}
+              x2={totalWidth - RIGHT_PADDING}
+              y2={y}
+              stroke="#475569"
+              strokeWidth="1.6"
+            />
+          ))}
 
-              {/* 5 Líneas de Clave de Sol */}
-              {trebleLines.map((y, i) => (
-                <line
-                  key={`treble-${systemIdx}-${i}`}
-                  x1={LEFT_MARGIN - 35}
-                  y1={y}
-                  x2={SVG_WIDTH - RIGHT_MARGIN}
-                  y2={y}
-                  stroke="#475569"
-                  strokeWidth="1.8"
+          {/* Línea Guía Punteada para Do Central (C4) */}
+          <line
+            x1={0}
+            y1={BASE_MIDDLE_C_Y}
+            x2={totalWidth - RIGHT_PADDING}
+            y2={BASE_MIDDLE_C_Y}
+            stroke="#334155"
+            strokeDasharray="4 6"
+            strokeWidth="1.1"
+          />
+
+          {/* 5 Líneas Continuas de Clave de Fa */}
+          {bassLines.map((y, i) => (
+            <line
+              key={`bass-line-${i}`}
+              x1={0}
+              y1={y}
+              x2={totalWidth - RIGHT_PADDING}
+              y2={y}
+              stroke="#475569"
+              strokeWidth="1.6"
+            />
+          ))}
+
+          {/* Renderizado Horizontal de Cada Compás (Compás 1 -> Compás N) */}
+          {safeMeasures.map((measure, mIdx) => {
+            const mStartX = mIdx * MEASURE_WIDTH;
+            const mEndX = mStartX + MEASURE_WIDTH;
+            const isSelected = activeMeasureIndex === mIdx;
+
+            return (
+              <g key={`h-measure-${mIdx}`}>
+                {/* Área clicable del compás */}
+                <rect
+                  x={mStartX}
+                  y={40}
+                  width={MEASURE_WIDTH}
+                  height={250}
+                  fill={isSelected ? 'rgba(56, 189, 248, 0.04)' : 'transparent'}
+                  className="cursor-pointer hover:fill-cyan-500/5"
+                  onClick={() => onSelectMeasureAndStep?.(mIdx, 0)}
                 />
-              ))}
 
-              {/* Línea guía punteada para Do Central (C4) */}
-              <line
-                x1={LEFT_MARGIN - 15}
-                y1={middleCY}
-                x2={SVG_WIDTH - RIGHT_MARGIN}
-                y2={middleCY}
-                stroke="#334155"
-                strokeDasharray="4 6"
-                strokeWidth="1.2"
-              />
-
-              {/* 5 Líneas de Clave de Fa */}
-              {bassLines.map((y, i) => (
-                <line
-                  key={`bass-${systemIdx}-${i}`}
-                  x1={LEFT_MARGIN - 35}
-                  y1={y}
-                  x2={SVG_WIDTH - RIGHT_MARGIN}
-                  y2={y}
-                  stroke="#475569"
-                  strokeWidth="1.8"
-                />
-              ))}
-
-              {/* Barra vertical de inicio del sistema */}
-              <line
-                x1={LEFT_MARGIN}
-                y1={sysY + 55}
-                x2={LEFT_MARGIN}
-                y2={sysY + 295}
-                stroke="#475569"
-                strokeWidth="2"
-              />
-
-              {/* Renderizado de cada compás en este sistema */}
-              {systemMeasures.map((measure, mSubIdx) => {
-                const globalMeasureIdx = startMeasureIdx + mSubIdx;
-                const mStartX = LEFT_MARGIN + mSubIdx * measureWidth;
-                const mEndX = mStartX + measureWidth;
-                const isSelectedMeasure = activeMeasureIndex === globalMeasureIdx;
-
-                return (
-                  <g key={`measure-${globalMeasureIdx}`}>
-                    {/* Fondo interactivo para seleccionar compás al hacer clic */}
-                    <rect
-                      x={mStartX}
-                      y={sysY + 45}
-                      width={measureWidth}
-                      height={260}
-                      fill={isSelectedMeasure && !isPlaying ? 'rgba(56, 189, 248, 0.04)' : 'transparent'}
-                      className="cursor-pointer hover:fill-cyan-500/5 transition-colors"
-                      onClick={() => onSelectMeasureAndStep?.(globalMeasureIdx, 0)}
-                    />
-
-                    {/* Etiqueta del número de compás */}
-                    <text
-                      x={mStartX + 8}
-                      y={sysY + 40}
-                      fill={isSelectedMeasure ? '#38bdf8' : '#94a3b8'}
-                      fontSize="12"
-                      fontWeight="900"
-                      fontFamily="ui-monospace, monospace"
-                    >
-                      Compás {globalMeasureIdx + 1}
-                    </text>
-
-                    {/* Barra divisoria al final del compás */}
+                {/* Guías sutiles de los 4 tiempos del compás */}
+                {[1, 2, 3].map((beat) => {
+                  const beatX = mStartX + (beat / 4) * MEASURE_WIDTH;
+                  return (
                     <line
-                      x1={mEndX}
-                      y1={sysY + 55}
-                      x2={mEndX}
-                      y2={sysY + 295}
-                      stroke="#475569"
-                      strokeWidth="2"
+                      key={`beat-${mIdx}-${beat}`}
+                      x1={beatX}
+                      y1={55}
+                      x2={beatX}
+                      y2={275}
+                      stroke="#1e293b"
+                      strokeDasharray="3 5"
+                      strokeWidth="1"
                     />
+                  );
+                })}
 
-                    {/* Renderizado de Notas del Compás */}
-                    {(measure.notes || []).map((note, nIdx) => {
-                      if (note.isRest) return null;
+                {/* Número de compás en cabecera */}
+                <text
+                  x={mStartX + 10}
+                  y={36}
+                  fill={isSelected ? '#38bdf8' : '#94a3b8'}
+                  fontSize="12"
+                  fontWeight="900"
+                  fontFamily="ui-monospace, monospace"
+                >
+                  Compás {mIdx + 1}
+                </text>
 
-                      const noteStep =
-                        note.stepIndex !== undefined
-                          ? note.stepIndex
-                          : ((note as any).step !== undefined ? (note as any).step % spm : 0);
-                      const noteX = mStartX + (noteStep + 0.5) * (measureWidth / spm);
-                      const noteY = getDiatonicY(note.midiNumber, sysY);
-                      const isTreble = note.midiNumber >= 60;
-                      const semitone = ((note.midiNumber % 12) + 12) % 12;
-                      const isAccidental = SEMITONE_TO_DIATONIC[semitone].isAccidental;
-
-                      // Líneas adicionales si la nota está fuera de las 5 líneas
-                      const ledgerLines: number[] = [];
-                      if (note.midiNumber === 60 || note.midiNumber === 61) {
-                        ledgerLines.push(middleCY);
-                      } else if (noteY < sysY + 55) {
-                        for (let lY = sysY + 55 - LINE_SPACING; lY >= noteY - 6; lY -= LINE_SPACING) {
-                          ledgerLines.push(lY);
-                        }
-                      } else if (noteY > sysY + 295) {
-                        for (let lY = sysY + 295 + LINE_SPACING; lY <= noteY + 6; lY += LINE_SPACING) {
-                          ledgerLines.push(lY);
-                        }
-                      }
-
-                      return (
-                        <g
-                          key={`note-${globalMeasureIdx}-${nIdx}`}
-                          className="cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onNoteClick?.(globalMeasureIdx, note.midiNumber);
-                          }}
-                        >
-                          {/* Líneas adicionales */}
-                          {ledgerLines.map((lY, lIdx) => (
-                            <line
-                              key={lIdx}
-                              x1={noteX - 14}
-                              y1={lY}
-                              x2={noteX + 14}
-                              y2={lY}
-                              stroke="#94a3b8"
-                              strokeWidth="2.2"
-                            />
-                          ))}
-
-                          {/* Sostenido (#) si aplica */}
-                          {isAccidental && (
-                            <text
-                              x={noteX - 16}
-                              y={noteY + 5}
-                              fill="#f59e0b"
-                              fontSize="16"
-                              fontWeight="bold"
-                              fontFamily="serif"
-                            >
-                              ♯
-                            </text>
-                          )}
-
-                          {/* Plica vertical */}
-                          <line
-                            x1={isTreble ? noteX + 8 : noteX - 8}
-                            y1={noteY}
-                            x2={isTreble ? noteX + 8 : noteX - 8}
-                            y2={isTreble ? noteY - 34 : noteY + 34}
-                            stroke="#f59e0b"
-                            strokeWidth="2.2"
-                          />
-
-                          {/* Cabeza de la nota */}
-                          <ellipse
-                            cx={noteX}
-                            cy={noteY}
-                            rx="9"
-                            ry="6.8"
-                            transform={`rotate(-20 ${noteX} ${noteY})`}
-                            fill="#f59e0b"
-                            stroke="#d97706"
-                            strokeWidth="1.2"
-                          />
-                        </g>
-                      );
-                    })}
-                  </g>
-                );
-              })}
-
-              {/* Doble barra final al término de la obra */}
-              {systemIdx === totalSystems - 1 && (
+                {/* Barra divisoria vertical al final del compás */}
                 <line
-                  x1={SVG_WIDTH - RIGHT_MARGIN - 5}
-                  y1={sysY + 55}
-                  x2={SVG_WIDTH - RIGHT_MARGIN - 5}
-                  y2={sysY + 295}
-                  stroke="#475569"
-                  strokeWidth="4"
+                  x1={mEndX}
+                  y1={55}
+                  x2={mEndX}
+                  y2={275}
+                  stroke="#64748b"
+                  strokeWidth="2"
                 />
-              )}
-            </g>
-          );
-        })}
 
-        {/* Cursor / Escáner de Reproducción en Vivo (Playhead Continuo) */}
-        {isPlaying && (
+                {/* Notas del compás */}
+                {(measure.notes || []).map((note, nIdx) => {
+                  if (note.isRest) return null;
+
+                  const noteX = mStartX + ((note.stepIndex + 0.5) / stepsPerMeasure) * MEASURE_WIDTH;
+                  const noteY = getDiatonicY(note.midiNumber);
+                  const isTreble = note.midiNumber >= 60;
+                  const semitone = ((note.midiNumber % 12) + 12) % 12;
+                  const isAccidental = SEMITONE_TO_DIATONIC[semitone]?.isAccidental ?? false;
+
+                  const ledgerLines: number[] = [];
+                  if (note.midiNumber === 60 || note.midiNumber === 61) {
+                    ledgerLines.push(BASE_MIDDLE_C_Y);
+                  } else if (noteY < 55) {
+                    for (let lY = 55 - LINE_SPACING; lY >= noteY - 5; lY -= LINE_SPACING) {
+                      ledgerLines.push(lY);
+                    }
+                  } else if (noteY > 275) {
+                    for (let lY = 275 + LINE_SPACING; lY <= noteY + 5; lY += LINE_SPACING) {
+                      ledgerLines.push(lY);
+                    }
+                  }
+
+                  return (
+                    <g
+                      key={`h-note-${mIdx}-${nIdx}`}
+                      className="cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onNoteClick?.(mIdx, note.midiNumber);
+                      }}
+                    >
+                      {ledgerLines.map((lY, lIdx) => (
+                        <line
+                          key={lIdx}
+                          x1={noteX - 13}
+                          y1={lY}
+                          x2={noteX + 13}
+                          y2={lY}
+                          stroke="#94a3b8"
+                          strokeWidth="2"
+                        />
+                      ))}
+
+                      {isAccidental && (
+                        <text
+                          x={noteX - 16}
+                          y={noteY + 5}
+                          fill="#f59e0b"
+                          fontSize="15"
+                          fontWeight="bold"
+                          fontFamily="serif"
+                        >
+                          ♯
+                        </text>
+                      )}
+
+                      <line
+                        x1={isTreble ? noteX + 7.5 : noteX - 7.5}
+                        y1={noteY}
+                        x2={isTreble ? noteX + 7.5 : noteX - 7.5}
+                        y2={isTreble ? noteY - 32 : noteY + 32}
+                        stroke="#f59e0b"
+                        strokeWidth="2.1"
+                      />
+
+                      <ellipse
+                        cx={noteX}
+                        cy={noteY}
+                        rx="8.5"
+                        ry="6.4"
+                        transform={`rotate(-20 ${noteX} ${noteY})`}
+                        fill="#f59e0b"
+                        stroke="#d97706"
+                        strokeWidth="1.1"
+                      />
+                    </g>
+                  );
+                })}
+              </g>
+            );
+          })}
+
+          {/* Doble barra final al término del último compás */}
+          <line
+            x1={totalWidth - RIGHT_PADDING - 5}
+            y1={55}
+            x2={totalWidth - RIGHT_PADDING - 5}
+            y2={275}
+            stroke="#64748b"
+            strokeWidth="4"
+          />
+
+          {/* Barra vertical continua del cursor (sin CSS transition para 60/120fps puros) */}
           <line
             ref={playheadRef}
-            x1={playheadX}
-            y1={systemBaseY + 65}
-            x2={playheadX}
-            y2={systemBaseY + 315}
+            x1={staticPlayheadX}
+            y1={45}
+            x2={staticPlayheadX}
+            y2={290}
             stroke="#22d3ee"
             strokeWidth="2.5"
             filter="drop-shadow(0 0 8px rgba(34, 211, 238, 0.95))"
             className="pointer-events-none"
           />
-        )}
-      </svg>
+        </svg>
+      </div>
     </div>
   );
 };
 
 export default ExtendedScoreView;
-
