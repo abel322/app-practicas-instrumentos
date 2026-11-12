@@ -57,19 +57,17 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
   const [isForceLandscapeCSS, setIsForceLandscapeCSS] = useState<boolean>(false);
   const drumFullscreenRef = useRef<HTMLDivElement | null>(null);
 
-  // Referencias para el scheduler de Web Audio API (Chris Wilson lookahead pattern con reloj maestro)
+  // Referencias para el scheduler de Web Audio API (Chris Wilson lookahead pattern con anclaje de fase continua)
   const isPlayingRef = useRef<boolean>(false);
   const bpmRef = useRef<number>(activeExercise.bpmDefault || 100);
   const audioStartTimeRef = useRef<number>(0);
   const nextNoteTimeRef = useRef<number>(0);
   const schedulerStepRef = useRef<number>(0);
+  const anchorStepRef = useRef<number>(0);
+  const anchorAudioTimeRef = useRef<number>(0);
   const timerIdRef = useRef<number | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const lastStickingByInstrumentRef = useRef<Record<string, { sticking: string; step: number; accent: boolean }>>({});
-
-  useEffect(() => {
-    bpmRef.current = bpm;
-  }, [bpm]);
 
   useEffect(() => {
     isPlayingRef.current = isPlaying;
@@ -136,6 +134,25 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     [getSecondsPerStep, stepsPerMeasure]
   );
 
+  // Sincronizar BPM en caliente sin reiniciar el scheduler
+  useEffect(() => {
+    const prevBpm = bpmRef.current;
+    bpmRef.current = bpm;
+
+    // Si el usuario acelera los BPM en vivo y el próximo golpe estaba agendado muy lejos (tempo lento),
+    // acercar el próximo golpe al intervalo del nuevo tempo para respuesta acústica inmediata
+    if (isPlaying && bpm > prevBpm) {
+      const engine = getAudioEngine();
+      const ctx = engine.getAudioContext();
+      if (ctx) {
+        const newSecondsPerStep = getSecondsPerStep(bpm);
+        if (nextNoteTimeRef.current > ctx.currentTime + newSecondsPerStep) {
+          nextNoteTimeRef.current = ctx.currentTime + newSecondsPerStep;
+        }
+      }
+    }
+  }, [bpm, isPlaying, getSecondsPerStep]);
+
   // Indexar hits por paso temporal para acceso instantáneo O(1)
   const hitsByStep = useRef<Map<number, DrumHit[]>>(new Map());
   useEffect(() => {
@@ -200,16 +217,23 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     [metronomeEnabled, stepsPerBeat, stepsPerMeasure, totalSteps]
   );
 
-  // Bucle lookahead de Web Audio con ventana de agendado de 100ms
+  // Bucle lookahead de Web Audio con ventana de agendado de 80ms y anclaje de fase continua
   const scheduler = useCallback(() => {
     const engine = getAudioEngine();
     const ctx = engine.getAudioContext();
     if (!ctx) return;
 
-    const scheduleAheadTime = 0.1;
+    const scheduleAheadTime = 0.08;
 
     while (nextNoteTimeRef.current < ctx.currentTime + scheduleAheadTime) {
-      scheduleNote(schedulerStepRef.current, nextNoteTimeRef.current);
+      const globalStep = schedulerStepRef.current;
+      const hitTime = nextNoteTimeRef.current;
+
+      // Actualizar anclaje de fase para el escáner visual
+      anchorStepRef.current = globalStep;
+      anchorAudioTimeRef.current = hitTime;
+
+      scheduleNote(globalStep, hitTime);
 
       const stepDuration = getSecondsPerStep(bpmRef.current);
       nextNoteTimeRef.current += stepDuration;
@@ -218,29 +242,34 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     }
 
     if (isPlayingRef.current) {
-      timerIdRef.current = window.setTimeout(scheduler, 25);
+      timerIdRef.current = window.setTimeout(scheduler, 20);
     }
   }, [totalSteps, getSecondsPerStep, scheduleNote]);
 
-  // Bucle visual sincronizado a 60/120 FPS con el reloj de hardware AudioContext.currentTime
+  // Bucle visual a 60/120 FPS anclado al último golpe de hardware (fase continua sin desfase al cambiar BPM)
   const updateVisualProgress = useCallback(() => {
     if (!isPlayingRef.current) return;
 
     const engine = getAudioEngine();
     const ctx = engine.getAudioContext();
 
-    if (ctx && audioStartTimeRef.current > 0) {
-      const stepDuration = getSecondsPerStep(bpmRef.current);
-      const elapsed = Math.max(0, ctx.currentTime - audioStartTimeRef.current);
-      const totalStepsElapsed = elapsed / stepDuration;
-      const currentGlobalStep = Math.floor(totalStepsElapsed) % totalSteps;
+    if (ctx && anchorAudioTimeRef.current > 0) {
+      const currentBpm = bpmRef.current;
+      const stepDuration = getSecondsPerStep(currentBpm);
 
-      const measureDuration = stepDuration * stepsPerMeasure;
-      const elapsedInMeasure = elapsed % measureDuration;
-      const normalizedProgress = Math.max(0, Math.min(1, elapsedInMeasure / measureDuration));
+      // Diferencia de tiempo respecto al golpe de referencia más reciente agendado (< 80ms)
+      const deltaFromAnchor = ctx.currentTime - anchorAudioTimeRef.current;
+      const exactStep = anchorStepRef.current + deltaFromAnchor / stepDuration;
+
+      const normalizedStep =
+        ((Math.floor(exactStep) % totalSteps) + totalSteps) % totalSteps;
+
+      // Progreso continuo dentro del compás para la animación del cabezal
+      const stepInMeas = exactStep >= 0 ? exactStep % stepsPerMeasure : 0;
+      const normalizedProgress = Math.max(0, Math.min(1, stepInMeas / stepsPerMeasure));
 
       setProgress(normalizedProgress);
-      setActiveStep(currentGlobalStep);
+      setActiveStep(normalizedStep);
     }
 
     rafIdRef.current = requestAnimationFrame(updateVisualProgress);
@@ -266,6 +295,8 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       audioStartTimeRef.current = startTime;
       nextNoteTimeRef.current = startTime;
       schedulerStepRef.current = 0;
+      anchorStepRef.current = 0;
+      anchorAudioTimeRef.current = startTime;
       lastStickingByInstrumentRef.current = {};
 
       setActiveStep(0);
@@ -284,6 +315,8 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
 
     schedulerStepRef.current = 0;
+    anchorStepRef.current = 0;
+    anchorAudioTimeRef.current = 0;
     audioStartTimeRef.current = 0;
     lastStickingByInstrumentRef.current = {};
     setActiveStep(0);

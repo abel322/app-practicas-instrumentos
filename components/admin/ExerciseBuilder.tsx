@@ -1444,14 +1444,12 @@ export const ExerciseBuilder: React.FC = () => {
   const playStepRef = useRef(0);
   const audioStartTimeRef = useRef(0);
   const playStartStepRef = useRef(0);
+  const anchorStepRef = useRef(0);
+  const anchorAudioTimeRef = useRef(0);
   const lastDrumStickingRef = useRef<Record<string, { sticking: string; step: number; accent: boolean }>>({});
   const timerIdRef = useRef<number | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const bpmRef = useRef(bpm);
-
-  useEffect(() => {
-    bpmRef.current = bpm;
-  }, [bpm]);
 
   const isBeatStep = useCallback((stepNumber: number) => {
     const liveStepsPerMeasure = stepsPerMeasureRef.current;
@@ -1504,6 +1502,31 @@ export const ExerciseBuilder: React.FC = () => {
         return beatDuration / 4;
     }
   }, []);
+
+  // Sincronizar BPM en caliente sin reiniciar el scheduler
+  useEffect(() => {
+    const prevBpm = bpmRef.current;
+    bpmRef.current = bpm;
+
+    // Si el usuario acelera los BPM en vivo y el próximo golpe estaba agendado muy lejos (tempo lento),
+    // acercar el próximo golpe al intervalo del nuevo tempo para respuesta acústica inmediata
+    if (isPlaying && bpm > prevBpm) {
+      const liveInstrument = instrumentRef.current;
+      const audioCtx =
+        liveInstrument === 'drums'
+          ? getAudioEngine().getAudioContext()
+          : liveInstrument === 'piano'
+          ? getPianoAudioEngine().getAudioContext()
+          : getStringsAudioEngine().getAudioContext();
+
+      if (audioCtx) {
+        const newStepDuration = getStepDuration();
+        if (nextNoteTimeRef.current > audioCtx.currentTime + newStepDuration) {
+          nextNoteTimeRef.current = audioCtx.currentTime + newStepDuration;
+        }
+      }
+    }
+  }, [bpm, isPlaying, getStepDuration]);
 
   const playStepAudio = useCallback((stepIdx: number) => {
     // Obtener las notas en tiempo real sin importar si fueron añadidas durante la reproducción
@@ -1722,8 +1745,14 @@ export const ExerciseBuilder: React.FC = () => {
 
     if (!audioCtx) return;
 
-    while (nextNoteTimeRef.current < audioCtx.currentTime + 0.12) {
-      scheduleStep(playStepRef.current, nextNoteTimeRef.current);
+    while (nextNoteTimeRef.current < audioCtx.currentTime + 0.08) {
+      const currentStep = playStepRef.current;
+      const hitTime = nextNoteTimeRef.current;
+
+      anchorStepRef.current = currentStep;
+      anchorAudioTimeRef.current = hitTime;
+
+      scheduleStep(currentStep, hitTime);
 
       nextNoteTimeRef.current += getStepDuration();
       playStepRef.current += 1;
@@ -1733,7 +1762,7 @@ export const ExerciseBuilder: React.FC = () => {
     }
 
     if (isPlayingRef.current) {
-      timerIdRef.current = window.setTimeout(schedulerLoop, 25);
+      timerIdRef.current = window.setTimeout(schedulerLoop, 20);
     }
   }, [getStepDuration, scheduleStep]);
 
@@ -1752,11 +1781,13 @@ export const ExerciseBuilder: React.FC = () => {
     const liveStepsPerMeasure = Math.max(1, stepsPerMeasureRef.current);
     const liveTotalMeasures = Math.max(1, totalMeasuresRef.current);
 
-    if (audioCtx && audioStartTimeRef.current > 0) {
+    if (audioCtx && anchorAudioTimeRef.current > 0) {
       const stepDuration = getStepDuration();
-      const elapsed = Math.max(0, audioCtx.currentTime - audioStartTimeRef.current);
-      const totalStepsElapsed = elapsed / stepDuration;
-      const currentGlobalStep = (playStartStepRef.current + Math.floor(totalStepsElapsed)) % liveTotalSteps;
+      const deltaFromAnchor = audioCtx.currentTime - anchorAudioTimeRef.current;
+      const exactStep = anchorStepRef.current + deltaFromAnchor / stepDuration;
+
+      const currentGlobalStep =
+        ((Math.floor(exactStep) % liveTotalSteps) + liveTotalSteps) % liveTotalSteps;
 
       setPlaybackActiveStep(currentGlobalStep);
 
@@ -1805,6 +1836,8 @@ export const ExerciseBuilder: React.FC = () => {
       const initialStep = currentMeasure * stepsPerMeasure;
       playStepRef.current = initialStep;
       playStartStepRef.current = initialStep;
+      anchorStepRef.current = initialStep;
+      anchorAudioTimeRef.current = startTime;
       lastDrumStickingRef.current = {};
       setPlaybackActiveStep(initialStep);
 
@@ -1821,6 +1854,8 @@ export const ExerciseBuilder: React.FC = () => {
     playStepRef.current = 0;
     playStartStepRef.current = 0;
     audioStartTimeRef.current = 0;
+    anchorStepRef.current = 0;
+    anchorAudioTimeRef.current = 0;
     lastDrumStickingRef.current = {};
     setPlaybackActiveStep(0);
   };
