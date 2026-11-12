@@ -391,7 +391,7 @@ export const ExerciseBuilder: React.FC = () => {
               setNotes(loadedNotes);
               const maxStep = Math.max(...loadedNotes.map((n) => n.step), 0);
               const calculatedMeasures = Math.max(1, Math.ceil((maxStep + 1) / stepsInLoadedMeasure));
-              setTotalMeasures(Math.min(8, calculatedMeasures));
+              setTotalMeasures(calculatedMeasures);
             }
           }
         } catch (err) {
@@ -403,7 +403,7 @@ export const ExerciseBuilder: React.FC = () => {
     }
   }, [searchParams]);
 
-  // Gestión de Compases (1 a 8 compases)
+  // Gestión de Compases (Sin límite / Ilimitados)
   const [totalMeasures, setTotalMeasures] = useState<number>(1);
   const [currentMeasure, setCurrentMeasure] = useState<number>(0);
 
@@ -566,9 +566,9 @@ export const ExerciseBuilder: React.FC = () => {
             setNotes(loadedNotes);
             activeNotesRef.current = loadedNotes;
             if (parsed.totalMeasures) {
-              setTotalMeasures(Math.min(8, Math.max(1, parsed.totalMeasures)));
+              setTotalMeasures(Math.max(1, parsed.totalMeasures));
             } else if (parsed.measures && Array.isArray(parsed.measures)) {
-              setTotalMeasures(Math.min(8, Math.max(1, parsed.measures.length)));
+              setTotalMeasures(Math.max(1, parsed.measures.length));
             }
             if (parsed.title !== undefined) setTitle(parsed.title);
             if (parsed.tempo || parsed.bpm) setBpm(Number(parsed.tempo || parsed.bpm));
@@ -682,18 +682,14 @@ export const ExerciseBuilder: React.FC = () => {
   }, []);
 
   const handleAddMeasure = useCallback(() => {
-    if (totalMeasuresRef.current < 8) {
-      const nextIdx = totalMeasuresRef.current;
-      totalMeasuresRef.current = nextIdx + 1;
-      currentMeasureRef.current = nextIdx;
-      setTotalMeasures((prev) => prev + 1);
-      setCurrentMeasure(nextIdx); // Ir al nuevo compás
-    }
+    const nextIdx = totalMeasuresRef.current;
+    totalMeasuresRef.current = nextIdx + 1;
+    currentMeasureRef.current = nextIdx;
+    setTotalMeasures((prev) => prev + 1);
+    setCurrentMeasure(nextIdx); // Ir al nuevo compás
   }, []);
 
   const handleDuplicateMeasure = () => {
-    if (totalMeasures >= 8) return;
-
     const sourceStart = currentMeasure * stepsPerMeasure;
     const sourceEnd = sourceStart + stepsPerMeasure;
     const currentNotes = notes.filter((n) => n.step >= sourceStart && n.step < sourceEnd);
@@ -706,6 +702,8 @@ export const ExerciseBuilder: React.FC = () => {
       step: targetStart + (n.step - sourceStart),
     }));
 
+    totalMeasuresRef.current = newMeasureIdx + 1;
+    currentMeasureRef.current = newMeasureIdx;
     setTotalMeasures((prev) => prev + 1);
     setNotes((prev) => {
       const next = [...prev, ...duplicatedNotes];
@@ -731,12 +729,11 @@ export const ExerciseBuilder: React.FC = () => {
         return n;
       });
 
+    totalMeasuresRef.current = Math.max(1, totalMeasures - 1);
     activeNotesRef.current = updatedNotes;
     setNotes(updatedNotes);
     setTotalMeasures((prev) => prev - 1);
-    if (currentMeasure >= totalMeasures - 1) {
-      setCurrentMeasure(Math.max(0, totalMeasures - 2));
-    }
+    setCurrentMeasure((prev) => Math.max(0, Math.min(prev, totalMeasures - 2)));
   };
 
   // ============================================================================
@@ -2201,69 +2198,77 @@ export const ExerciseBuilder: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. Gestor de Compases (Barra de Pestañas de Compás) */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl glass-panel border border-white/10">
-        <div className="flex items-center gap-1.5 overflow-x-auto py-1">
-          {Array.from({ length: totalMeasures }).map((_, mIdx) => {
-            const isActive = currentMeasure === mIdx;
-            const measureStart = mIdx * stepsPerMeasure;
-            const measureEnd = measureStart + stepsPerMeasure;
-            const notesInMeasure = notes.filter((n) => n.step >= measureStart && n.step < measureEnd).length;
+      {/* 3. Gestor de Compases (Barra de Pestañas de Compás Ilimitada) */}
+      <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4">
+        {/* Contenedor flexible de pestañas de compases */}
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          {measures.map((m, idx) => {
+            const isSelected = currentMeasure === idx;
+            const noteCount = m.notes?.length || 0;
 
             return (
               <button
-                key={`measure-tab-${mIdx}`}
-                onClick={() => setCurrentMeasure(mIdx)}
-                className={`relative px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                  isActive
-                    ? 'bg-cyan-500 text-zinc-950 shadow-[0_0_15px_rgba(34,211,238,0.35)]'
-                    : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10'
+                key={`measure-tab-${idx}`}
+                type="button"
+                onClick={() => {
+                  setCurrentMeasure(idx);
+                  setActiveCell(null);
+                }}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border cursor-pointer ${
+                  isSelected
+                    ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-lg shadow-cyan-950/50'
+                    : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border-slate-800'
                 }`}
               >
-                <span>Compás {mIdx + 1}</span>
+                <span>Compás {idx + 1}</span>
                 <span
-                  className={`text-[9px] px-1.5 py-0.2 rounded-full font-mono ${
-                    isActive ? 'bg-zinc-950/20 text-zinc-950' : 'bg-white/10 text-zinc-400'
+                  className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${
+                    isSelected ? 'bg-slate-950/20 text-slate-950 font-bold' : 'bg-slate-950 text-slate-400'
                   }`}
                 >
-                  {notesInMeasure} notas
+                  {noteCount} {noteCount === 1 ? 'nota' : 'notas'}
                 </span>
               </button>
             );
           })}
         </div>
 
-        {/* Botones de gestión de compás */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleAddMeasure}
-            disabled={totalMeasures >= 8}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white text-xs font-semibold disabled:opacity-40 transition-colors"
-            title="Añadir nuevo compás vacío"
-          >
-            <Plus className="w-3.5 h-3.5 text-cyan-400" />
-            <span>+ Compás</span>
-          </button>
-
-          <button
-            onClick={handleDuplicateMeasure}
-            disabled={totalMeasures >= 8}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white text-xs font-semibold disabled:opacity-40 transition-colors"
-            title="Duplicar notas del compás actual en uno nuevo"
-          >
-            <Copy className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">Duplicar Compás</span>
-          </button>
-
-          {totalMeasures > 1 && (
+        {/* Barra de acciones de compás (Sin límites) */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => handleDeleteMeasure(currentMeasure)}
-              className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 text-xs font-semibold transition-colors"
-              title="Eliminar compás actual"
+              type="button"
+              onClick={handleAddMeasure}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 border border-slate-700 hover:border-cyan-400 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Compás</span>
             </button>
-          )}
+
+            <button
+              type="button"
+              onClick={handleDuplicateMeasure}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              <span>❐ Duplicar Compás</span>
+            </button>
+
+            {measures.length > 1 && (
+              <button
+                type="button"
+                onClick={() => handleDeleteMeasure(currentMeasure)}
+                className="p-2 rounded-xl text-xs font-bold bg-rose-950/50 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-900/60 transition-all cursor-pointer"
+                title={`Eliminar Compás ${currentMeasure + 1}`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <span className="text-[11px] font-mono text-slate-400">
+            Total: <strong className="text-cyan-400">{measures.length}</strong> {measures.length === 1 ? 'compás' : 'compases'}
+          </span>
         </div>
       </div>
 
@@ -2967,7 +2972,7 @@ export const ExerciseBuilder: React.FC = () => {
       <div className="p-4 rounded-xl bg-zinc-900/40 border border-white/5 text-xs text-zinc-400 flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <HelpCircle className="w-4 h-4 text-cyan-400" />
-          <span>Haz clic en cualquier celda para añadir o modificar trastes/golpes. Usa <strong>+ Compás</strong> para crear patrones largos de hasta 8 compases.</span>
+          <span>Haz clic en cualquier celda para añadir o modificar trastes/golpes. Usa <strong>+ Compás</strong> para crear patrones y obras sin límite de compases.</span>
         </div>
         <div className="text-zinc-400 font-mono text-[11px]">
           Total de notas en el ejercicio: <span className="text-cyan-400 font-bold">{notes.length}</span>
