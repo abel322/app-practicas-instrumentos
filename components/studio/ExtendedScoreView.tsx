@@ -61,7 +61,7 @@ export function getDiatonicY(midi: number, systemOffsetY: number = 0) {
   return systemOffsetY + BASE_MIDDLE_C_Y - offset * STEP_SPACING;
 }
 
-export const ExtendedScoreView: React.FC<ExtendedScoreViewProps> = ({
+const ExtendedScoreViewComponent: React.FC<ExtendedScoreViewProps> = ({
   measures,
   activeMeasureIndex,
   currentStep,
@@ -80,7 +80,12 @@ export const ExtendedScoreView: React.FC<ExtendedScoreViewProps> = ({
   const trebleLines = [55, 77, 99, 121, 143];
   const bassLines = [187, 209, 231, 253, 275];
 
-  // Bucle de interpolación visual continua a 60/120fps (cero saltos, cero re-renders)
+  // Posición inicial fija para no reiniciar x1 en el JSX durante re-renders
+  const initialPlayheadX = useRef(
+    activeMeasureIndex * MEASURE_WIDTH + ((currentStep + 0.5) / stepsPerMeasure) * MEASURE_WIDTH
+  ).current;
+
+  // Bucle de interpolación visual continua a 60/120fps (cero saltos, cero re-renders de React)
   useEffect(() => {
     if (!isPlaying) return;
     let rafId: number;
@@ -98,18 +103,19 @@ export const ExtendedScoreView: React.FC<ExtendedScoreViewProps> = ({
         playheadRef.current.setAttribute('x2', String(playheadX));
       }
 
-      // Desplazamiento horizontal suave manteniendo el cursor en el primer tercio visible
+      // Desplazamiento horizontal continuo sin animaciones CSS conflictivas
       const container = scrollContainerRef.current;
       if (container) {
         const viewportWidth = container.clientWidth;
-        const targetScrollLeft = Math.max(0, playheadX - viewportWidth * 0.32);
+        const maxScroll = Math.max(0, container.scrollWidth - viewportWidth);
+        const targetScrollLeft = Math.min(maxScroll, Math.max(0, playheadX - viewportWidth * 0.32));
         const currentScroll = container.scrollLeft;
 
-        // Si el loop reinicia al Compás 1, regresar suavemente; si avanza, seguir sin tirón
-        if (Math.abs(targetScrollLeft - currentScroll) > viewportWidth * 0.8) {
-          container.scrollTo({ left: targetScrollLeft, behavior: 'smooth' });
+        // Si reinicia al inicio del ejercicio, saltar limpio a 0; si avanza, interpolar suavemente
+        if (targetScrollLeft < currentScroll - viewportWidth * 0.4) {
+          container.scrollLeft = targetScrollLeft;
         } else {
-          container.scrollLeft = currentScroll + (targetScrollLeft - currentScroll) * 0.18;
+          container.scrollLeft = currentScroll + (targetScrollLeft - currentScroll) * 0.2;
         }
       }
 
@@ -120,17 +126,20 @@ export const ExtendedScoreView: React.FC<ExtendedScoreViewProps> = ({
     return () => cancelAnimationFrame(rafId);
   }, [isPlaying, continuousStepRef, stepsPerMeasure, activeMeasureIndex, currentStep]);
 
-  // Posición estática cuando está en pausa
-  const staticPlayheadX =
-    activeMeasureIndex * MEASURE_WIDTH + ((currentStep + 0.5) / stepsPerMeasure) * MEASURE_WIDTH;
-
-  // Actualizar playhead al estar en pausa cuando cambie activeMeasureIndex o currentStep
+  // Al detenerse o al presionar Stop (cuando isPlaying pasa a false)
   useEffect(() => {
-    if (!isPlaying && playheadRef.current) {
-      playheadRef.current.setAttribute('x1', String(staticPlayheadX));
-      playheadRef.current.setAttribute('x2', String(staticPlayheadX));
+    if (!isPlaying) {
+      const resetX =
+        activeMeasureIndex * MEASURE_WIDTH + ((currentStep + 0.5) / stepsPerMeasure) * MEASURE_WIDTH;
+      if (playheadRef.current) {
+        playheadRef.current.setAttribute('x1', String(resetX));
+        playheadRef.current.setAttribute('x2', String(resetX));
+      }
+      if (activeMeasureIndex === 0 && currentStep === 0 && scrollContainerRef.current) {
+        scrollContainerRef.current.scrollLeft = 0;
+      }
     }
-  }, [isPlaying, staticPlayheadX]);
+  }, [isPlaying, activeMeasureIndex, currentStep, stepsPerMeasure]);
 
   return (
     <div className="w-full rounded-2xl bg-slate-950 border border-slate-800 shadow-2xl overflow-hidden flex">
@@ -369,9 +378,9 @@ export const ExtendedScoreView: React.FC<ExtendedScoreViewProps> = ({
           {/* Barra vertical continua del cursor (sin CSS transition para 60/120fps puros) */}
           <line
             ref={playheadRef}
-            x1={staticPlayheadX}
+            x1={initialPlayheadX}
             y1={45}
-            x2={staticPlayheadX}
+            x2={initialPlayheadX}
             y2={290}
             stroke="#22d3ee"
             strokeWidth="2.5"
@@ -383,5 +392,27 @@ export const ExtendedScoreView: React.FC<ExtendedScoreViewProps> = ({
     </div>
   );
 };
+
+// Exportar memoizado para bloquear re-renders durante la reproducción
+export const ExtendedScoreView = React.memo(
+  ExtendedScoreViewComponent,
+  (prevProps, nextProps) => {
+    // Mientras está reproduciendo, evitar re-renders por cambios de step/measure;
+    // el cursor y el scroll se mueven a 60/120fps por continuousStepRef
+    if (prevProps.isPlaying && nextProps.isPlaying) {
+      return (
+        prevProps.measures === nextProps.measures &&
+        prevProps.stepsPerMeasure === nextProps.stepsPerMeasure
+      );
+    }
+    return (
+      prevProps.isPlaying === nextProps.isPlaying &&
+      prevProps.activeMeasureIndex === nextProps.activeMeasureIndex &&
+      prevProps.currentStep === nextProps.currentStep &&
+      prevProps.measures === nextProps.measures &&
+      prevProps.stepsPerMeasure === nextProps.stepsPerMeasure
+    );
+  }
+);
 
 export default ExtendedScoreView;

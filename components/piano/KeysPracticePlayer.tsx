@@ -21,6 +21,7 @@ import {
   Minus,
   Maximize2,
   HelpCircle,
+  Square,
 } from 'lucide-react';
 
 interface KeysPracticePlayerProps {
@@ -346,16 +347,19 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
     }
   }, [isPlaying, activeStep, runPianoScheduler, updateVisualState, stopAllPlayback]);
 
-  // Reiniciar a paso 0
-  const handleReset = useCallback(() => {
+  // Detener y reiniciar al Compás 1, Paso 1 (Stop)
+  const handleStopPlayback = useCallback(() => {
     stopAllPlayback();
     scheduledStepCountRef.current = 0;
     anchorStepRef.current = 0;
     anchorAudioTimeRef.current = 0;
-    lastVisualStepRef.current = -1;
     continuousStepRef.current = 0;
+    lastVisualStepRef.current = -1;
     setActiveStep(0);
   }, [stopAllPlayback]);
+
+  // Alias para compatibilidad
+  const handleReset = handleStopPlayback;
 
   // Control Unificado de Pantalla Completa
   const handleToggleFullscreen = useCallback(async () => {
@@ -452,7 +456,7 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
     };
   }, [isFullscreen]);
 
-  // Atajos de teclado (Space: Play/Pause, R: Reset, M: Metronome, Esc: Exit Fullscreen)
+  // Atajos de teclado (Space: Play/Pause, R: Stop al Compás 1, M: Metronome, Esc: Exit Fullscreen)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
@@ -465,11 +469,11 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
         if (isFullscreen) {
           handleToggleFullscreen();
         } else {
-          handleReset();
+          handleStopPlayback();
         }
       } else if (e.key === 'r' || e.key === 'R') {
         e.preventDefault();
-        handleReset();
+        handleStopPlayback();
       } else if (e.key === 'm' || e.key === 'M') {
         e.preventDefault();
         setMetronomeEnabled((prev) => !prev);
@@ -484,7 +488,7 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleTogglePlay, handleReset, isFullscreen, handleToggleFullscreen]);
+  }, [handleTogglePlay, handleStopPlayback, isFullscreen, handleToggleFullscreen]);
 
   return (
     <div
@@ -574,16 +578,18 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
                 }`}
               >
                 {isPlaying ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                <span>{isPlaying ? 'Pausar' : 'Iniciar Práctica'}</span>
+                <span>{isPlaying ? 'Pausar' : activeStep > 0 ? 'Continuar' : 'Iniciar Práctica'}</span>
               </button>
 
               <button
                 type="button"
-                onClick={handleReset}
-                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
-                title="Reiniciar a paso 0"
+                onClick={handleStopPlayback}
+                disabled={!isPlaying && activeStep === 0}
+                className="px-3 py-2 rounded-xl text-xs font-black bg-rose-950/80 hover:bg-rose-600 disabled:opacity-40 disabled:pointer-events-none text-rose-200 hover:text-white border border-rose-800/70 transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+                title="Detener y volver al Compás 1 (Tecla R)"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
+                <Square className="w-3 h-3 fill-current" />
+                <span>Stop</span>
               </button>
             </div>
 
@@ -671,39 +677,46 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
 
           {/* Barra de Transporte (Transport Controls) */}
           <div className="p-4 sm:p-5 rounded-2xl bg-white/90 dark:bg-slate-900/90 border border-slate-300/80 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center justify-between gap-5">
-            {/* Controles de Reproducción y Reinicio */}
-            <div className="flex items-center gap-3 w-full md:w-auto justify-center">
+            {/* Controles de Reproducción y Stop */}
+            <div className="flex items-center gap-2.5 w-full md:w-auto justify-center">
+              {/* Botón Play / Pausar (conserva posición al pausar) */}
               <button
+                type="button"
                 onClick={handleTogglePlay}
-                className={`px-6 py-3 rounded-2xl font-black text-xs flex items-center gap-2 shadow-lg transition-colors active:scale-95 cursor-pointer ${
+                className={`px-5 py-3 rounded-2xl font-black text-xs flex items-center gap-2 shadow-lg transition-colors active:scale-95 cursor-pointer ${
                   isPlaying
-                    ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/25 ring-2 ring-amber-400'
-                    : 'bg-[#0891b2] hover:bg-[#0e7490] text-white shadow-cyan-600/25 dark:bg-gradient-to-r dark:from-cyan-500 dark:to-cyan-400 dark:text-zinc-950 dark:shadow-[0_0_20px_rgba(34,211,238,0.4)]'
+                    ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-amber-950/50 ring-2 ring-amber-400'
+                    : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-950/50'
                 }`}
               >
                 {isPlaying ? (
                   <>
                     <Pause className="w-4 h-4 fill-current" />
-                    <span>Pausar (Space)</span>
+                    <span>⏸ Pausar (Espacio)</span>
                   </>
                 ) : (
                   <>
                     <Play className="w-4 h-4 fill-current" />
-                    <span>Iniciar Práctica</span>
+                    <span>{activeStep > 0 ? '▶ Continuar (Espacio)' : '▶ Iniciar Práctica'}</span>
                   </>
                 )}
               </button>
 
+              {/* Botón Stop (detiene y regresa al Compás 1, Paso 1) */}
               <button
-                onClick={handleReset}
-                className="p-3 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-zinc-300 transition-colors cursor-pointer"
-                title="Reiniciar al compás 1 (Tecla R)"
+                type="button"
+                onClick={handleStopPlayback}
+                disabled={!isPlaying && activeStep === 0}
+                className="px-4 py-3 rounded-2xl text-xs font-black bg-rose-950/80 hover:bg-rose-600 disabled:opacity-40 disabled:pointer-events-none text-rose-200 hover:text-white border border-rose-800/70 transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                title="Detener y volver al Compás 1 (Tecla R)"
               >
-                <RotateCcw className="w-4 h-4" />
+                <Square className="w-3.5 h-3.5 fill-current" />
+                <span>⏹ Stop</span>
               </button>
 
               {/* Toggle Metrónomo */}
               <button
+                type="button"
                 onClick={() => setMetronomeEnabled((prev) => !prev)}
                 className={`px-3.5 py-3 rounded-2xl text-xs font-mono font-bold flex items-center gap-2 border transition-colors cursor-pointer ${
                   metronomeEnabled
@@ -762,9 +775,9 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
           </div>
 
           {/* Resumen de Notas en Tiempo Real */}
-          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-100/90 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 text-xs font-mono">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-500 dark:text-zinc-400">Sonando ahora:</span>
+          <div className="h-11 min-h-[44px] flex flex-wrap items-center justify-between gap-3 px-3.5 py-1.5 rounded-xl bg-slate-100/90 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 text-xs font-mono">
+            <div className="flex items-center gap-2 h-7 overflow-hidden">
+              <span className="font-bold text-slate-500 dark:text-zinc-400 shrink-0">Sonando ahora:</span>
               {currentlyPlayingNotes.length > 0 ? (
                 <div className="flex flex-wrap items-center gap-1.5">
                   {currentlyPlayingNotes.map((n, i) => {
@@ -791,7 +804,7 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
 
             <div className="text-[11px] text-slate-500 dark:text-zinc-400 flex items-center gap-2">
               <HelpCircle className="w-3.5 h-3.5" />
-              <span>Atajos: [Espacio] Play/Pausa &bull; [R] Reiniciar &bull; [M] Metrónomo &bull; [Esc] Salir</span>
+              <span>Atajos: [Espacio] Play/Pausa &bull; [R] Stop &bull; [M] Metrónomo &bull; [Esc] Salir</span>
             </div>
           </div>
 
