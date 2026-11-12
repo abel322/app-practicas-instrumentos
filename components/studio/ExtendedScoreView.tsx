@@ -21,6 +21,7 @@ export interface ExtendedScoreViewProps {
   activeMeasureIndex: number;
   currentStep: number;
   isPlaying: boolean;
+  stepsPerMeasure?: number;
   onSelectMeasureAndStep?: (measureIndex: number, stepIndex: number) => void;
   onNoteClick?: (measureIndex: number, midiNumber: number) => void;
 }
@@ -64,6 +65,7 @@ export const ExtendedScoreView: React.FC<ExtendedScoreViewProps> = ({
   activeMeasureIndex,
   currentStep,
   isPlaying,
+  stepsPerMeasure = 16,
   onSelectMeasureAndStep,
   onNoteClick,
 }) => {
@@ -74,6 +76,7 @@ export const ExtendedScoreView: React.FC<ExtendedScoreViewProps> = ({
   const totalSvgHeight = totalSystems * SYSTEM_HEIGHT + 40;
   const usableWidth = SVG_WIDTH - LEFT_MARGIN - RIGHT_MARGIN;
   const measureWidth = usableWidth / MEASURES_PER_SYSTEM;
+  const spm = stepsPerMeasure || 16;
 
   // Auto-scroll para seguir el cursor en obras largas
   useEffect(() => {
@@ -89,7 +92,7 @@ export const ExtendedScoreView: React.FC<ExtendedScoreViewProps> = ({
   const measureInSystem = activeMeasureIndex % MEASURES_PER_SYSTEM;
   const systemBaseY = activeSystem * SYSTEM_HEIGHT;
   const currentMeasureStartX = LEFT_MARGIN + measureInSystem * measureWidth;
-  const playheadX = currentMeasureStartX + (currentStep + 0.5) * (measureWidth / 16);
+  const playheadX = currentMeasureStartX + (currentStep + 0.5) * (measureWidth / spm);
 
   return (
     <div
@@ -232,8 +235,8 @@ export const ExtendedScoreView: React.FC<ExtendedScoreViewProps> = ({
                       const noteStep =
                         note.stepIndex !== undefined
                           ? note.stepIndex
-                          : ((note as any).step !== undefined ? (note as any).step % 16 : 0);
-                      const noteX = mStartX + (noteStep + 0.5) * (measureWidth / 16);
+                          : ((note as any).step !== undefined ? (note as any).step % spm : 0);
+                      const noteX = mStartX + (noteStep + 0.5) * (measureWidth / spm);
                       const noteY = getDiatonicY(note.midiNumber, sysY);
                       const isTreble = note.midiNumber >= 60;
                       const semitone = ((note.midiNumber % 12) + 12) % 12;
@@ -343,7 +346,7 @@ export const ExtendedScoreView: React.FC<ExtendedScoreViewProps> = ({
             stroke="#22d3ee"
             strokeWidth="2.5"
             filter="drop-shadow(0 0 8px rgba(34, 211, 238, 0.95))"
-            className="pointer-events-none transition-all duration-75 ease-linear"
+            className="pointer-events-none"
           />
         )}
       </svg>

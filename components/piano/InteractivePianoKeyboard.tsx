@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
+import { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
 import { PianoHand } from '@/types/piano';
 
 export interface ActiveKeyInfo {
@@ -13,9 +13,11 @@ export interface ActiveKeyInfo {
 
 export interface InteractivePianoKeyboardProps {
   activeNotes?: ActiveKeyInfo[];
+  activeMidis?: number[];
   startMidi?: number; // default 36 (C2)
   endMidi?: number;   // default 84 (C6)
   onKeyClick?: (midi: number) => void;
+  onKeyPress?: (midi: number) => void;
   showLabels?: boolean;
   compact?: boolean;
 }
@@ -32,9 +34,11 @@ export interface KeyDefinition {
 
 export const InteractivePianoKeyboard: React.FC<InteractivePianoKeyboardProps> = ({
   activeNotes = [],
+  activeMidis,
   startMidi = 36, // C2
   endMidi = 84,   // C6
   onKeyClick,
+  onKeyPress,
   showLabels = true,
   compact = false,
 }) => {
@@ -44,8 +48,21 @@ export const InteractivePianoKeyboard: React.FC<InteractivePianoKeyboardProps> =
     activeNotes.forEach((n) => {
       map.set(n.midiNumber, n);
     });
+    if (activeMidis) {
+      activeMidis.forEach((midi) => {
+        if (!map.has(midi)) {
+          const pitchIndex = midi % 12;
+          const octave = Math.floor(midi / 12) - 1;
+          map.set(midi, {
+            midiNumber: midi,
+            noteName: `${NOTE_NAMES[pitchIndex]}${octave}`,
+            hand: midi < 60 ? 'left' : 'right',
+          });
+        }
+      });
+    }
     return map;
-  }, [activeNotes]);
+  }, [activeNotes, activeMidis]);
 
   // Generar lista de teclas
   const { whiteKeys, blackKeys, totalWhiteKeys } = useMemo(() => {
@@ -84,8 +101,10 @@ export const InteractivePianoKeyboard: React.FC<InteractivePianoKeyboardProps> =
   }, [startMidi, endMidi]);
 
   const handleKeyPress = (midi: number) => {
-    const engine = getPianoAudioEngine();
-    engine.triggerNote(midi, undefined, 0.9, 0.85);
+    pianoPreviewSynth.playNote(midi, 1.4, 95);
+    if (onKeyPress) {
+      onKeyPress(midi);
+    }
     if (onKeyClick) {
       onKeyClick(midi);
     }
@@ -116,7 +135,7 @@ export const InteractivePianoKeyboard: React.FC<InteractivePianoKeyboardProps> =
                   key={k.midi}
                   type="button"
                   onClick={() => handleKeyPress(k.midi)}
-                  className={`group relative flex-1 h-full rounded-b-md border border-slate-300 dark:border-slate-800 transition-all duration-75 flex flex-col justify-end items-center cursor-pointer shadow-xs ${
+                  className={`group relative flex-1 h-full rounded-b-md border border-slate-300 dark:border-slate-800 flex flex-col justify-end items-center cursor-pointer shadow-xs ${
                     compact ? 'pb-1' : 'pb-2'
                   } ${
                     isActive
@@ -127,10 +146,10 @@ export const InteractivePianoKeyboard: React.FC<InteractivePianoKeyboardProps> =
                   }`}
                   title={`${k.noteName} (MIDI ${k.midi})`}
                 >
-                  {/* Iluminación de pulso activo */}
+                  {/* Iluminación activa sin flicker */}
                   {isActive && (
                     <div
-                      className={`absolute inset-0 rounded-b-md animate-pulse opacity-30 ${
+                      className={`absolute inset-0 rounded-b-md opacity-30 ${
                         isLeftHand ? 'bg-blue-300' : 'bg-cyan-200'
                       }`}
                     />
@@ -199,7 +218,7 @@ export const InteractivePianoKeyboard: React.FC<InteractivePianoKeyboardProps> =
                     width: `${whiteKeyWidthPercent * 0.65}%`,
                     transform: 'translateX(-50%)',
                   }}
-                  className={`absolute top-0 h-[62%] rounded-b-md border transition-all duration-75 flex flex-col justify-end items-center cursor-pointer z-20 shadow-md ${
+                  className={`absolute top-0 h-[62%] rounded-b-md border flex flex-col justify-end items-center cursor-pointer z-20 shadow-md ${
                     compact ? 'pb-1' : 'pb-2'
                   } ${
                     isActive

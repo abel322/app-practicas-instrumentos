@@ -4,8 +4,9 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import Link from 'next/link';
 import { PianoExerciseData, PianoNoteData } from '@/types/piano';
 import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
+import { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
+import { ExtendedScoreView, ScoreMeasure } from '@/components/studio/ExtendedScoreView';
 import { InteractivePianoKeyboard } from './InteractivePianoKeyboard';
-import { KeysRunwayMatrix } from './KeysRunwayMatrix';
 import { getSubdivisionConfig } from '@/lib/music-theory/rhythmSubdivisions';
 import {
   Play,
@@ -14,13 +15,11 @@ import {
   Volume2,
   VolumeX,
   ArrowLeft,
-  Activity,
   Clock,
   KeyboardMusic,
   Plus,
   Minus,
   Maximize2,
-  Minimize2,
   HelpCircle,
 } from 'lucide-react';
 
@@ -39,17 +38,27 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
   const [isForceLandscapeCSS, setIsForceLandscapeCSS] = useState<boolean>(false);
   const fullscreenWrapperRef = useRef<HTMLDivElement | null>(null);
 
+  // Referencias para el Scheduler Web Audio con fase continua y cero flicker
   const isPlayingRef = useRef<boolean>(false);
   const bpmRef = useRef<number>(exercise.bpmDefault || 90);
   const metronomeRef = useRef<boolean>(true);
+  const measuresRef = useRef<ScoreMeasure[]>([]);
+  const stepsPerMeasureRef = useRef<number>(16);
+  const isLoopRef = useRef<boolean>(true);
+
   const nextNoteTimeRef = useRef<number>(0);
-  const currentStepRef = useRef<number>(0);
+  const scheduledStepCountRef = useRef<number>(0);
+  const anchorStepRef = useRef<number>(0);
+  const anchorAudioTimeRef = useRef<number>(0);
+  const lastVisualStepRef = useRef<number>(-1);
   const timerIdRef = useRef<number | null>(null);
   const rafIdRef = useRef<number | null>(null);
 
+  // Precarga instantánea del motor acústico de piano muestreado
   useEffect(() => {
-    bpmRef.current = bpm;
-  }, [bpm]);
+    pianoPreviewSynth.initContext();
+    pianoPreviewSynth.preloadSamples();
+  }, []);
 
   useEffect(() => {
     isPlayingRef.current = isPlaying;
@@ -117,77 +126,167 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
     return notesByStep.get(activeStep) || [];
   }, [notesByStep, activeStep]);
 
-  // Programador de notas (Lookahead Web Audio Scheduler)
-  const scheduleNote = useCallback(
-    (stepNumber: number, time: number) => {
-      const engine = getPianoAudioEngine();
-      const notesInStep = notesByStep.get(stepNumber) || [];
+  // Mapear ejercicio de piano al formato de partitura multi-compás (ExtendedScoreView)
+  const scoreMeasures: ScoreMeasure[] = useMemo(() => {
+    const spm = stepsPerMeasure || 16;
+    return Array.from({ length: totalMeasures }).map((_, mIdx) => {
+      const mStart = mIdx * spm;
+      const mEnd = mStart + spm;
+      const mNotes = (exercise.notesData || [])
+        .filter((n) => n.step >= mStart && n.step < mEnd)
+        .map((n) => ({
+          id: n.id,
+          stepIndex: n.step - mStart,
+          midiNumber: n.midiNumber,
+          velocity: typeof n.velocity === 'number' ? n.velocity : 95,
+          duration: n.durationSteps ? `${n.durationSteps} steps` : undefined,
+          isRest: false,
+        }));
+      return {
+        measureIndex: mIdx,
+        notes: mNotes,
+      };
+    });
+  }, [totalMeasures, stepsPerMeasure, exercise.notesData]);
 
-      // 1. Disparar cada nota polifónica en este paso
-      notesInStep.forEach((note) => {
-        const vel = typeof note.velocity === 'number' ? note.velocity / 127 : 0.85;
-        const durationSec = (note.durationSteps || 1) * getSecondsPerStep(bpmRef.current);
-        engine.triggerNote(note.midiNumber, time, durationSec, vel);
-      });
+  // Sincronizar referencias para el bucle de scheduler
+  useEffect(() => {
+    measuresRef.current = scoreMeasures;
+    stepsPerMeasureRef.current = stepsPerMeasure;
+  }, [scoreMeasures, stepsPerMeasure]);
 
-      // 2. Metrónomo en tiempos fuertes según subdivisión
-      if (metronomeRef.current && stepNumber % stepsPerBeat === 0) {
-        const isDownbeat = stepNumber % stepsPerMeasure === 0;
-        engine.playMetronome(time, isDownbeat);
+  // Sincronización en vivo de BPM sin reiniciar el scheduler y aproximando notas al acelerar
+  useEffect(() => {
+    const prevBpm = bpmRef.current;
+    bpmRef.current = bpm;
+
+    if (isPlaying && bpm > prevBpm) {
+      const ctx = pianoPreviewSynth.getAudioContext();
+      if (ctx) {
+        const spm = stepsPerMeasureRef.current || 16;
+        const newStepSec = (60 / bpm) * (4 / spm);
+        if (nextNoteTimeRef.current > ctx.currentTime + newStepSec) {
+          nextNoteTimeRef.current = ctx.currentTime + newStepSec;
+        }
       }
-    },
-    [notesByStep, getSecondsPerStep, stepsPerBeat, stepsPerMeasure]
-  );
+    }
+  }, [bpm, isPlaying]);
 
-  const schedulerLoop = useCallback(() => {
-    const engine = getPianoAudioEngine();
-    const ctx = engine.getAudioContext();
+  // Programador de notas (Lookahead Web Audio Scheduler con pianoPreviewSynth)
+  const runPianoScheduler = useCallback(() => {
+    const allMeasures = measuresRef.current;
+    if (!allMeasures || allMeasures.length === 0) return;
+
+    const ctx = pianoPreviewSynth.getAudioContext();
     if (!ctx) return;
 
-    const scheduleAheadTime = 0.12;
+    const currentSpm = stepsPerMeasureRef.current || 16;
+    const totalSteps = allMeasures.length * currentSpm;
+    const stepDurationSec = (60 / bpmRef.current) * (4 / currentSpm);
+    const scheduleAheadTime = 0.08;
 
     while (nextNoteTimeRef.current < ctx.currentTime + scheduleAheadTime) {
-      scheduleNote(currentStepRef.current, nextNoteTimeRef.current);
+      const globalStep = scheduledStepCountRef.current;
 
-      const stepDuration = getSecondsPerStep(bpmRef.current);
-      nextNoteTimeRef.current += stepDuration;
+      if (!isLoopRef.current && globalStep >= totalSteps) {
+        setIsPlaying(false);
+        isPlayingRef.current = false;
+        setActiveStep(0);
+        return;
+      }
 
-      currentStepRef.current = (currentStepRef.current + 1) % exercise.totalSteps;
+      const wrappedStep = globalStep % totalSteps;
+      const measureIdx = Math.floor(wrappedStep / currentSpm);
+      const stepInMeasureIdx = wrappedStep % currentSpm;
+      const hitTime = nextNoteTimeRef.current;
+
+      anchorStepRef.current = wrappedStep;
+      anchorAudioTimeRef.current = hitTime;
+
+      const currentMeasure = allMeasures[measureIdx];
+      const stepNotes = (currentMeasure?.notes || []).filter(
+        (n) => n.stepIndex === stepInMeasureIdx && !n.isRest
+      );
+
+      if (stepNotes.length > 0) {
+        const delayMs = Math.max(0, (hitTime - ctx.currentTime) * 1000);
+        const midis = stepNotes.map((n) => n.midiNumber);
+        if (delayMs <= 10) {
+          pianoPreviewSynth.playChord(midis, Math.max(0.45, stepDurationSec * 1.6), 95);
+        } else {
+          window.setTimeout(() => {
+            if (isPlayingRef.current) {
+              pianoPreviewSynth.playChord(midis, Math.max(0.45, stepDurationSec * 1.6), 95);
+            }
+          }, delayMs);
+        }
+      }
+
+      if (metronomeRef.current && stepInMeasureIdx % stepsPerBeat === 0) {
+        const isDownbeat = stepInMeasureIdx === 0;
+        getPianoAudioEngine().playMetronome(hitTime, isDownbeat);
+      }
+
+      nextNoteTimeRef.current += stepDurationSec;
+      scheduledStepCountRef.current += 1;
     }
 
     if (isPlayingRef.current) {
-      timerIdRef.current = window.setTimeout(schedulerLoop, 25);
+      timerIdRef.current = window.setTimeout(runPianoScheduler, 20);
     }
-  }, [exercise.totalSteps, getSecondsPerStep, scheduleNote]);
+  }, [stepsPerBeat]);
 
-  // Sincronizador visual de alta fidelidad vía requestAnimationFrame
-  const updateVisualProgress = useCallback(() => {
+  // Sincronizador visual de alta fidelidad vía requestAnimationFrame (Cero parpadeo)
+  const updateVisualState = useCallback(() => {
     if (!isPlayingRef.current) return;
-    setActiveStep(currentStepRef.current);
-    rafIdRef.current = requestAnimationFrame(updateVisualProgress);
+    const ctx = pianoPreviewSynth.getAudioContext();
+    const allMeasures = measuresRef.current;
+
+    if (ctx && allMeasures && allMeasures.length > 0 && anchorAudioTimeRef.current > 0) {
+      const currentSpm = stepsPerMeasureRef.current || 16;
+      const totalSteps = allMeasures.length * currentSpm;
+      const stepDurationSec = (60 / bpmRef.current) * (4 / currentSpm);
+
+      const delta = ctx.currentTime - anchorAudioTimeRef.current;
+      const exactStep = anchorStepRef.current + delta / stepDurationSec;
+      const normalized = ((Math.floor(exactStep) % totalSteps) + totalSteps) % totalSteps;
+
+      // Solo actualizar estado de React cuando cambia el paso rítmico entero
+      if (normalized !== lastVisualStepRef.current) {
+        lastVisualStepRef.current = normalized;
+        setActiveStep(normalized);
+      }
+    }
+    rafIdRef.current = requestAnimationFrame(updateVisualState);
   }, []);
 
   // Iniciar / Pausar
   const handleTogglePlay = useCallback(() => {
-    const engine = getPianoAudioEngine();
-    engine.resume();
-    const ctx = engine.getAudioContext();
+    pianoPreviewSynth.initContext();
+    const ctx = pianoPreviewSynth.getAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
 
     if (!isPlaying) {
-      if (ctx) {
-        nextNoteTimeRef.current = ctx.currentTime + 0.05;
-      }
+      const startTime = (ctx ? ctx.currentTime : 0) + 0.03;
+      nextNoteTimeRef.current = startTime;
+      scheduledStepCountRef.current = activeStep;
+      anchorStepRef.current = activeStep;
+      anchorAudioTimeRef.current = startTime;
+      lastVisualStepRef.current = -1;
+
       setIsPlaying(true);
       isPlayingRef.current = true;
-      schedulerLoop();
-      rafIdRef.current = requestAnimationFrame(updateVisualProgress);
+      runPianoScheduler();
+      rafIdRef.current = requestAnimationFrame(updateVisualState);
     } else {
       setIsPlaying(false);
       isPlayingRef.current = false;
       if (timerIdRef.current) clearTimeout(timerIdRef.current);
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     }
-  }, [isPlaying, schedulerLoop, updateVisualProgress]);
+  }, [isPlaying, activeStep, runPianoScheduler, updateVisualState]);
 
   // Reiniciar a paso 0
   const handleReset = useCallback(() => {
@@ -195,7 +294,10 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
     isPlayingRef.current = false;
     if (timerIdRef.current) clearTimeout(timerIdRef.current);
     if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
-    currentStepRef.current = 0;
+    scheduledStepCountRef.current = 0;
+    anchorStepRef.current = 0;
+    anchorAudioTimeRef.current = 0;
+    lastVisualStepRef.current = -1;
     setActiveStep(0);
   }, []);
 
@@ -256,7 +358,7 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
     }
   }, [isFullscreen]);
 
-  // Monitoreo de eventos de pantalla completa y redimensionado
+  // Monitoreo de rotación y eventos de pantalla
   useEffect(() => {
     const handleResize = () => {
       if (isFullscreen) {
@@ -265,7 +367,9 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
     };
 
     const handleFullscreenChange = () => {
-      const isFs = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
+      const isFs = !!(
+        document.fullscreenElement || (document as any).webkitFullscreenElement
+      );
       setIsFullscreen(isFs);
       if (!isFs) {
         setIsForceLandscapeCSS(false);
@@ -337,7 +441,7 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
   return (
     <div
       ref={fullscreenWrapperRef}
-      className={`transition-all duration-200 ${
+      className={`transition-colors duration-150 ${
         isFullscreen
           ? isForceLandscapeCSS
             ? 'fixed inset-0 z-[9999] bg-[#0c0e14] w-[100vh] h-[100vw] origin-top-left rotate-90 translate-x-[100vw] flex flex-col justify-between p-3 sm:p-4 overflow-hidden select-none'
@@ -365,27 +469,29 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
               <button
                 type="button"
                 onClick={handleToggleFullscreen}
-                className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <span>✕ Salir</span>
               </button>
             </div>
           </header>
 
-          {/* Lienzo Principal con Pista Superior y Teclado Inferior */}
+          {/* Lienzo Principal con Partitura Superior y Teclado Inferior */}
           <main className="w-full flex-1 min-h-0 flex flex-col justify-between gap-2 bg-[#10131c] rounded-2xl border border-slate-800/80 overflow-hidden shadow-2xl my-2 p-2 sm:p-3 relative">
-            {/* Pista de Notas Superior (Keys Runway Matrix Fijo al 100%) */}
-            <div className="w-full flex-1 min-h-0 flex flex-col justify-center">
-              <KeysRunwayMatrix
-                totalSteps={exercise.totalSteps}
-                activeStep={activeStep}
-                notes={exercise.notesData || []}
-                timeSignature={exercise.timeSignature}
+            {/* Partitura Superior (ExtendedScoreView con Gran Pentagrama) */}
+            <div className="w-full flex-1 min-h-0 overflow-y-auto no-scrollbar">
+              <ExtendedScoreView
+                measures={scoreMeasures}
                 activeMeasureIndex={activeMeasureIndex}
+                currentStep={stepInMeasure}
+                isPlaying={isPlaying}
                 stepsPerMeasure={stepsPerMeasure}
-                totalMeasures={totalMeasures}
-                subdivision={subdivisionKey}
-                isFullscreen={true}
+                onSelectMeasureAndStep={(mIdx, sIdx) => {
+                  setActiveStep(mIdx * stepsPerMeasure + sIdx);
+                }}
+                onNoteClick={(_mIdx, midi) => {
+                  pianoPreviewSynth.playNote(midi, 1.4, 95);
+                }}
               />
             </div>
 
@@ -397,6 +503,9 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
                 endMidi={84}   // C6
                 showLabels={true}
                 compact={true}
+                onKeyPress={(midi) => {
+                  pianoPreviewSynth.playNote(midi, 1.4, 95);
+                }}
               />
             </div>
           </main>
@@ -407,9 +516,9 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
               <button
                 type="button"
                 onClick={handleTogglePlay}
-                className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all shadow-md cursor-pointer ${
+                className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-colors shadow-md cursor-pointer ${
                   isPlaying
-                    ? 'bg-amber-400 text-slate-950 animate-pulse'
+                    ? 'bg-amber-400 text-slate-950 ring-2 ring-amber-400'
                     : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                 }`}
               >
@@ -442,7 +551,7 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
             <button
               type="button"
               onClick={() => setMetronomeEnabled(!metronomeEnabled)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-colors cursor-pointer ${
                 metronomeEnabled
                   ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
                   : 'bg-slate-950 text-slate-500 border-slate-800'
@@ -472,7 +581,7 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/40">
-                    Piano Lab &bull; Keys Runway
+                    Piano Lab &bull; Gran Pentagrama
                   </span>
                   <span className="text-xs text-slate-500 dark:text-zinc-400 font-mono">
                     {exercise.category} &bull; {exercise.difficulty}
@@ -490,7 +599,7 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
               <button
                 type="button"
                 onClick={handleToggleFullscreen}
-                className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
                 title="Activar Pantalla Completa Apaisada"
               >
                 <Maximize2 className="w-3.5 h-3.5 text-cyan-400" />
@@ -515,7 +624,7 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
             <div className="flex items-center gap-3 w-full md:w-auto justify-center">
               <button
                 onClick={handleTogglePlay}
-                className={`px-6 py-3 rounded-2xl font-black text-xs flex items-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer ${
+                className={`px-6 py-3 rounded-2xl font-black text-xs flex items-center gap-2 shadow-lg transition-colors active:scale-95 cursor-pointer ${
                   isPlaying
                     ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/25 ring-2 ring-amber-400'
                     : 'bg-[#0891b2] hover:bg-[#0e7490] text-white shadow-cyan-600/25 dark:bg-gradient-to-r dark:from-cyan-500 dark:to-cyan-400 dark:text-zinc-950 dark:shadow-[0_0_20px_rgba(34,211,238,0.4)]'
@@ -545,7 +654,7 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
               {/* Toggle Metrónomo */}
               <button
                 onClick={() => setMetronomeEnabled((prev) => !prev)}
-                className={`px-3.5 py-3 rounded-2xl text-xs font-mono font-bold flex items-center gap-2 border transition-all cursor-pointer ${
+                className={`px-3.5 py-3 rounded-2xl text-xs font-mono font-bold flex items-center gap-2 border transition-colors cursor-pointer ${
                   metronomeEnabled
                     ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 shadow-sm'
                     : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-500'
@@ -635,30 +744,32 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
             </div>
           </div>
 
-          {/* Matriz Runway con Paginación Fija por Compás (Zero-Jerk Flip) */}
-          <section className="space-y-2">
-            <KeysRunwayMatrix
-              totalSteps={exercise.totalSteps}
-              activeStep={activeStep}
-              notes={exercise.notesData || []}
-              timeSignature={exercise.timeSignature}
+          {/* 1. Partitura Multi-Compás (Gran Pentagrama con Clave de Sol y Clave de Fa) */}
+          <section className="w-full rounded-2xl overflow-hidden shadow-xl border border-slate-800">
+            <ExtendedScoreView
+              measures={scoreMeasures}
               activeMeasureIndex={activeMeasureIndex}
+              currentStep={stepInMeasure}
+              isPlaying={isPlaying}
               stepsPerMeasure={stepsPerMeasure}
-              totalMeasures={totalMeasures}
-              subdivision={subdivisionKey}
-              isFullscreen={false}
+              onSelectMeasureAndStep={(mIdx, sIdx) => {
+                setActiveStep(mIdx * stepsPerMeasure + sIdx);
+              }}
+              onNoteClick={(_mIdx, midi) => {
+                pianoPreviewSynth.playNote(midi, 1.4, 95);
+              }}
             />
           </section>
 
-          {/* Teclado Virtual Horizontal con Iluminación Reactiva */}
+          {/* 2. Teclado Virtual Horizontal con Iluminación Reactiva */}
           <section className="space-y-2">
             <div className="flex items-center justify-between px-1">
               <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
                 <KeyboardMusic className="w-4 h-4 text-cyan-500" />
-                Teclado Interactivo (C2 a C6 &bull; Pulsa las teclas o deja que Runway guíe)
+                Teclado Interactivo (C2 a C6 &bull; Pulsa las teclas o deja que la partitura guíe)
               </h2>
               <span className="text-[11px] font-mono text-slate-500 dark:text-zinc-400">
-                49 Teclas Acústicas Sintetizadas
+                49 Teclas Acústicas Reales
               </span>
             </div>
 
@@ -668,6 +779,9 @@ export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise
               endMidi={84}   // C6
               showLabels={true}
               compact={false}
+              onKeyPress={(midi) => {
+                pianoPreviewSynth.playNote(midi, 1.4, 95);
+              }}
             />
           </section>
         </>
