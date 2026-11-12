@@ -774,10 +774,16 @@ export const ExerciseBuilder: React.FC = () => {
           activeNotesRef.current = next;
           return next;
         });
-        // Sonido de prueba inmediato
+        // Sonido de prueba inmediato con panorama y sticking estéreo
         const engine = getAudioEngine();
         engine.init();
-        engine.trigger(drumVoice!, undefined, 0.85, selectedAccent);
+        engine.trigger({
+          instrument: drumVoice!,
+          velocity: 0.85,
+          accent: selectedAccent,
+          sticking: (selectedSticking as 'R' | 'L') || 'R',
+          isDoubleRebound: false,
+        });
       }
     } else {
       // Para cuerdas:
@@ -1436,6 +1442,9 @@ export const ExerciseBuilder: React.FC = () => {
   const isPlayingRef = useRef(false);
   const nextNoteTimeRef = useRef(0);
   const playStepRef = useRef(0);
+  const audioStartTimeRef = useRef(0);
+  const playStartStepRef = useRef(0);
+  const lastDrumStickingRef = useRef<Record<string, { sticking: string; step: number; accent: boolean }>>({});
   const timerIdRef = useRef<number | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const bpmRef = useRef(bpm);
@@ -1595,8 +1604,30 @@ export const ExerciseBuilder: React.FC = () => {
       if (liveInstrument === 'drums') {
         const engine = getAudioEngine();
         const hits = notesNow.filter((n) => n.step === stepNumber && n.drumVoice);
+        const liveTotalSteps = Math.max(1, totalStepsRef.current);
         hits.forEach((h) => {
-          engine.trigger(h.drumVoice!, time, 0.85, !!h.accent);
+          const lastInfo = lastDrumStickingRef.current[h.drumVoice!];
+          const stepDiff = lastInfo ? (stepNumber - lastInfo.step + liveTotalSteps) % liveTotalSteps : 999;
+          const isDoubleRebound =
+            Boolean(h.sticking) &&
+            lastInfo?.sticking === h.sticking &&
+            !h.accent &&
+            stepDiff <= 2;
+
+          lastDrumStickingRef.current[h.drumVoice!] = {
+            sticking: h.sticking || 'R',
+            step: stepNumber,
+            accent: !!h.accent,
+          };
+
+          engine.trigger({
+            instrument: h.drumVoice!,
+            time,
+            velocity: 0.85,
+            accent: !!h.accent,
+            sticking: (h.sticking as 'R' | 'L') || 'R',
+            isDoubleRebound,
+          });
         });
         if (isBeatStep(stepNumber)) {
           engine.playMetronome(time, stepNumber % liveStepsPerMeasure === 0);
@@ -1708,22 +1739,39 @@ export const ExerciseBuilder: React.FC = () => {
 
   const updateVisualProgress = useCallback(() => {
     if (!isPlayingRef.current) return;
-    setPlaybackActiveStep(playStepRef.current);
 
+    const liveInstrument = instrumentRef.current;
+    const audioCtx =
+      liveInstrument === 'drums'
+        ? getAudioEngine().getAudioContext()
+        : liveInstrument === 'piano'
+        ? getPianoAudioEngine().getAudioContext()
+        : getStringsAudioEngine().getAudioContext();
+
+    const liveTotalSteps = Math.max(1, totalStepsRef.current);
     const liveStepsPerMeasure = Math.max(1, stepsPerMeasureRef.current);
     const liveTotalMeasures = Math.max(1, totalMeasuresRef.current);
-    const currentPlayingMeasure = Math.floor(playStepRef.current / liveStepsPerMeasure);
 
-    if (
-      currentPlayingMeasure !== currentMeasureRef.current &&
-      currentPlayingMeasure < liveTotalMeasures
-    ) {
-      currentMeasureRef.current = currentPlayingMeasure;
-      setCurrentMeasure(currentPlayingMeasure);
+    if (audioCtx && audioStartTimeRef.current > 0) {
+      const stepDuration = getStepDuration();
+      const elapsed = Math.max(0, audioCtx.currentTime - audioStartTimeRef.current);
+      const totalStepsElapsed = elapsed / stepDuration;
+      const currentGlobalStep = (playStartStepRef.current + Math.floor(totalStepsElapsed)) % liveTotalSteps;
+
+      setPlaybackActiveStep(currentGlobalStep);
+
+      const currentPlayingMeasure = Math.floor(currentGlobalStep / liveStepsPerMeasure);
+      if (
+        currentPlayingMeasure !== currentMeasureRef.current &&
+        currentPlayingMeasure < liveTotalMeasures
+      ) {
+        currentMeasureRef.current = currentPlayingMeasure;
+        setCurrentMeasure(currentPlayingMeasure);
+      }
     }
 
     rafIdRef.current = requestAnimationFrame(updateVisualProgress);
-  }, []);
+  }, [getStepDuration]);
 
   const handleTogglePlay = () => {
     if (isPlaying) {
@@ -1750,10 +1798,15 @@ export const ExerciseBuilder: React.FC = () => {
       engine.init();
       engine.resume();
       const ctx = engine.getAudioContext();
-      const startTime = (ctx ? ctx.currentTime : 0) + 0.05;
+      const startTime = (ctx ? ctx.currentTime : 0) + 0.03;
 
+      audioStartTimeRef.current = startTime;
       nextNoteTimeRef.current = startTime;
-      playStepRef.current = currentMeasure * stepsPerMeasure;
+      const initialStep = currentMeasure * stepsPerMeasure;
+      playStepRef.current = initialStep;
+      playStartStepRef.current = initialStep;
+      lastDrumStickingRef.current = {};
+      setPlaybackActiveStep(initialStep);
 
       schedulerLoop();
       rafIdRef.current = requestAnimationFrame(updateVisualProgress);
@@ -1766,6 +1819,9 @@ export const ExerciseBuilder: React.FC = () => {
     if (timerIdRef.current) clearTimeout(timerIdRef.current);
     if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     playStepRef.current = 0;
+    playStartStepRef.current = 0;
+    audioStartTimeRef.current = 0;
+    lastDrumStickingRef.current = {};
     setPlaybackActiveStep(0);
   };
 

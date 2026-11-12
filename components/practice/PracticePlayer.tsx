@@ -57,14 +57,15 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
   const [isForceLandscapeCSS, setIsForceLandscapeCSS] = useState<boolean>(false);
   const drumFullscreenRef = useRef<HTMLDivElement | null>(null);
 
-  // Referencias para el scheduler de Web Audio API (Chris Wilson lookahead pattern)
+  // Referencias para el scheduler de Web Audio API (Chris Wilson lookahead pattern con reloj maestro)
   const isPlayingRef = useRef<boolean>(false);
   const bpmRef = useRef<number>(activeExercise.bpmDefault || 100);
+  const audioStartTimeRef = useRef<number>(0);
   const nextNoteTimeRef = useRef<number>(0);
-  const currentStepRef = useRef<number>(0);
+  const schedulerStepRef = useRef<number>(0);
   const timerIdRef = useRef<number | null>(null);
   const rafIdRef = useRef<number | null>(null);
-  const measureStartTimeRef = useRef<number>(0);
+  const lastStickingByInstrumentRef = useRef<Record<string, { sticking: string; step: number; accent: boolean }>>({});
 
   useEffect(() => {
     bpmRef.current = bpm;
@@ -158,7 +159,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     hitsByStep.current = map;
   }, [activeExercise, totalSteps]);
 
-  // Planificador (Scheduler) de notas de Web Audio API
+  // Planificador (Scheduler) de notas de Web Audio API con detección de rebote doble y sticking estéreo
   const scheduleNote = useCallback(
     (stepNumber: number, time: number) => {
       const engine = getAudioEngine();
@@ -166,7 +167,28 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       // 1. Disparar los instrumentos en este paso
       const hits = hitsByStep.current.get(stepNumber) || [];
       hits.forEach((hit) => {
-        engine.trigger(hit.instrument, time, hit.velocity ?? 0.8, !!hit.accent);
+        const lastInfo = lastStickingByInstrumentRef.current[hit.instrument];
+        const stepDiff = lastInfo ? (stepNumber - lastInfo.step + totalSteps) % totalSteps : 999;
+        const isDoubleRebound =
+          Boolean(hit.sticking) &&
+          lastInfo?.sticking === hit.sticking &&
+          !hit.accent &&
+          stepDiff <= 2;
+
+        lastStickingByInstrumentRef.current[hit.instrument] = {
+          sticking: hit.sticking || 'R',
+          step: stepNumber,
+          accent: !!hit.accent,
+        };
+
+        engine.trigger({
+          instrument: hit.instrument,
+          time,
+          velocity: hit.velocity ?? 0.8,
+          accent: !!hit.accent,
+          sticking: (hit.sticking as 'R' | 'L') || 'R',
+          isDoubleRebound,
+        });
       });
 
       // 2. Metrónomo sincronizado en los tiempos de negra/pulso fuerte
@@ -175,28 +197,24 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
         engine.playMetronome(time, isDownbeat);
       }
     },
-    [metronomeEnabled, stepsPerBeat, stepsPerMeasure]
+    [metronomeEnabled, stepsPerBeat, stepsPerMeasure, totalSteps]
   );
 
-  // Bucle lookahead de Web Audio
+  // Bucle lookahead de Web Audio con ventana de agendado de 100ms
   const scheduler = useCallback(() => {
     const engine = getAudioEngine();
     const ctx = engine.getAudioContext();
     if (!ctx) return;
 
-    const scheduleAheadTime = 0.12;
+    const scheduleAheadTime = 0.1;
 
     while (nextNoteTimeRef.current < ctx.currentTime + scheduleAheadTime) {
-      scheduleNote(currentStepRef.current, nextNoteTimeRef.current);
+      scheduleNote(schedulerStepRef.current, nextNoteTimeRef.current);
 
       const stepDuration = getSecondsPerStep(bpmRef.current);
       nextNoteTimeRef.current += stepDuration;
 
-      currentStepRef.current += 1;
-      if (currentStepRef.current >= totalSteps) {
-        currentStepRef.current = 0;
-        measureStartTimeRef.current = nextNoteTimeRef.current;
-      }
+      schedulerStepRef.current = (schedulerStepRef.current + 1) % totalSteps;
     }
 
     if (isPlayingRef.current) {
@@ -204,27 +222,31 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     }
   }, [totalSteps, getSecondsPerStep, scheduleNote]);
 
-  // Bucle de animación visual a 60/120 FPS
+  // Bucle visual sincronizado a 60/120 FPS con el reloj de hardware AudioContext.currentTime
   const updateVisualProgress = useCallback(() => {
     if (!isPlayingRef.current) return;
 
     const engine = getAudioEngine();
     const ctx = engine.getAudioContext();
 
-    if (ctx) {
-      const now = ctx.currentTime;
-      const measureDuration = getMeasureDuration(bpmRef.current);
-      const elapsedInMeasure = (now - measureStartTimeRef.current) % measureDuration;
+    if (ctx && audioStartTimeRef.current > 0) {
+      const stepDuration = getSecondsPerStep(bpmRef.current);
+      const elapsed = Math.max(0, ctx.currentTime - audioStartTimeRef.current);
+      const totalStepsElapsed = elapsed / stepDuration;
+      const currentGlobalStep = Math.floor(totalStepsElapsed) % totalSteps;
+
+      const measureDuration = stepDuration * stepsPerMeasure;
+      const elapsedInMeasure = elapsed % measureDuration;
       const normalizedProgress = Math.max(0, Math.min(1, elapsedInMeasure / measureDuration));
 
       setProgress(normalizedProgress);
-      setActiveStep(currentStepRef.current % totalSteps);
+      setActiveStep(currentGlobalStep);
     }
 
     rafIdRef.current = requestAnimationFrame(updateVisualProgress);
-  }, [totalSteps, getMeasureDuration]);
+  }, [totalSteps, stepsPerMeasure, getSecondsPerStep]);
 
-  // Play / Pause
+  // Play / Pause con sincronización estricta AudioContext + 30ms lead-in
   const handlePlayPause = useCallback(() => {
     const engine = getAudioEngine();
     engine.init();
@@ -239,10 +261,15 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       setIsPlaying(true);
       isPlayingRef.current = true;
       const ctx = engine.getAudioContext();
-      const startTime = (ctx ? ctx.currentTime : 0) + 0.05;
+      // Lookahead lead-in de 30ms para que Web Audio tenga tiempo de programar
+      const startTime = (ctx ? ctx.currentTime : 0) + 0.03;
+      audioStartTimeRef.current = startTime;
       nextNoteTimeRef.current = startTime;
-      measureStartTimeRef.current = startTime;
-      currentStepRef.current = 0;
+      schedulerStepRef.current = 0;
+      lastStickingByInstrumentRef.current = {};
+
+      setActiveStep(0);
+      setProgress(0);
 
       scheduler();
       rafIdRef.current = requestAnimationFrame(updateVisualProgress);
@@ -256,7 +283,9 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     if (timerIdRef.current) clearTimeout(timerIdRef.current);
     if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
 
-    currentStepRef.current = 0;
+    schedulerStepRef.current = 0;
+    audioStartTimeRef.current = 0;
+    lastStickingByInstrumentRef.current = {};
     setActiveStep(0);
     setProgress(0);
   }, []);

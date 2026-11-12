@@ -269,7 +269,7 @@ export function DrumScoreRenderer({
           const stickingNote = stepNotes.find((n: any) => n.sticking);
 
           return (
-            <g key={`step-col-${stepIdx}`} className="transition-all">
+            <g key={`step-col-${stepIdx}`}>
               {/* Plica vertical que conecta la nota con la línea de tiempo */}
               <line
                 x1={cx + 6}
@@ -390,7 +390,6 @@ export function DrumScoreRenderer({
               y2="190"
               stroke="#22d3ee"
               strokeWidth="2.5"
-              className="transition-all duration-75 ease-linear"
               filter="url(#drumScanGlow)"
             />
             <circle

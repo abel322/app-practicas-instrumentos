@@ -500,7 +500,6 @@ export const DrumStaffScore: React.FC<DrumStaffScoreProps> = ({
                 {accentHit && (
                   <g
                     transform={`translate(${noteX}, ${stemTop - 10})`}
-                    className="transition-all duration-100"
                   >
                     <path
                       d="M -6 -4 L 6 0 L -6 4"
