@@ -13,6 +13,8 @@ export type StringTechnique =
   | 'pulloff'
   | 'bend'
   | 'slide'
+  | 'slide_up'
+  | 'slide_down'
   | 'vibrato'
   | 'natural_harmonic'
   | 'pinch_harmonic';
@@ -24,6 +26,7 @@ export interface StringTabNote {
   fret: number;          // 0 = cuerda al aire, 1...24 trastes
   finger?: string;       // "1" (índice), "2" (medio), "3" (anular), "4" (meñique), "T" (pulgar)
   technique?: StringTechnique;
+  slideDirection?: 'up' | 'down' | null;
   bendType?: BendType;
   bendAmount?: BendAmount;
   duration?: string;     // e.g. "16n", "8n"

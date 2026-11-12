@@ -9,6 +9,8 @@ export type BassTechnique =
   | 'pulloff'
   | 'pull'
   | 'slide'
+  | 'slide_up'
+  | 'slide_down'
   | 'vibrato'
   | 'pm';
 
@@ -17,6 +19,7 @@ export interface BassNoteEvent {
   duration?: number;
   velocity?: number;
   technique?: BassTechnique;
+  slideDirection?: 'up' | 'down' | null;
   targetMidi?: number;
   stringIndex?: number; // 0: G, 1: D, 2: A, 3: E
   scheduleTime?: number;
@@ -278,15 +281,40 @@ class SampledBassEngine {
 
     // Afinación de precisión
     const semitoneDistance = midi - baseMidi;
-    const initialPlaybackRate = Math.pow(2, semitoneDistance / 12);
-    source.playbackRate.setValueAtTime(initialPlaybackRate, now);
+    const targetPlaybackRate = Math.pow(2, semitoneDistance / 12);
+    const initialPlaybackRate = targetPlaybackRate;
 
-    // Slide continuo
-    if (normalizedTech === 'slide') {
+    const isSlideUp = normalizedTech === 'slide_up' || event.slideDirection === 'up';
+    const isSlideDown = normalizedTech === 'slide_down' || event.slideDirection === 'down';
+
+    if (isSlideUp) {
+      // SLIDE ASCENDENTE DE ENTRADA (/10):
+      // Arranca 5 semitonos abajo (zona trastes 3-5) y sube rápido al traste objetivo
+      const startDistance = semitoneDistance - 5;
+      const startRate = Math.pow(2, startDistance / 12);
+      const slideArriveTime = now + Math.min(0.12, duration * 0.35);
+
+      source.playbackRate.setValueAtTime(startRate, now);
+      source.playbackRate.exponentialRampToValueAtTime(targetPlaybackRate, slideArriveTime);
+    } else if (isSlideDown) {
+      // SLIDE DESCENDENTE DE SALIDA (8\):
+      // Golpea afinado en el traste durante 55ms y luego arrastra 6 semitonos hacia abajo
+      const slideStartTime = now + 0.055;
+      const endDistance = semitoneDistance - 6;
+      const endRate = Math.pow(2, endDistance / 12);
+      const slideEndTime = now + Math.min(0.45, Math.max(0.22, duration * 0.85));
+
+      source.playbackRate.setValueAtTime(targetPlaybackRate, now);
+      source.playbackRate.setValueAtTime(targetPlaybackRate, slideStartTime);
+      source.playbackRate.exponentialRampToValueAtTime(endRate, slideEndTime);
+    } else if (normalizedTech === 'slide') {
       const destMidi = targetMidi || midi + 2;
       const destDistance = destMidi - baseMidi;
-      const targetRate = Math.pow(2, destDistance / 12);
-      source.playbackRate.exponentialRampToValueAtTime(targetRate, now + duration * 0.7);
+      const destRate = Math.pow(2, destDistance / 12);
+      source.playbackRate.setValueAtTime(targetPlaybackRate, now);
+      source.playbackRate.exponentialRampToValueAtTime(destRate, now + duration * 0.7);
+    } else {
+      source.playbackRate.setValueAtTime(targetPlaybackRate, now);
     }
 
     // =========================================================================

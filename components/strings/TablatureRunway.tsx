@@ -10,6 +10,7 @@ export interface RenderedNote {
   string: number;
   fret: number;
   technique?: string;
+  slideDirection?: 'up' | 'down' | null;
   bendType?: BendType;
   bendAmount?: BendAmount;
   finger?: string;
@@ -134,6 +135,7 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
         string: n.stringIndex !== undefined ? n.stringIndex + 1 : (n.string || 1),
         fret: n.fret,
         technique: n.technique,
+        slideDirection: n.slideDirection,
         bendType: n.bendType,
         bendAmount: n.bendAmount,
         finger: n.finger,
@@ -149,6 +151,7 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
           string: note.string,
           fret: note.fret,
           technique: note.technique,
+          slideDirection: note.slideDirection,
           bendType: note.bendType,
           bendAmount: note.bendAmount,
           finger: note.finger,
@@ -196,7 +199,11 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
       case 'pinch_harmonic':
         return { label: 'A.H.', color: '#eab308', bg: 'rgba(234, 179, 8, 0.2)' };
       case 'slide':
+        return { label: 's', color: '#c084fc', bg: 'rgba(192, 132, 252, 0.2)' };
+      case 'slide_up':
         return { label: '/', color: '#34d399', bg: 'rgba(52, 211, 153, 0.2)' };
+      case 'slide_down':
+        return { label: '\\', color: '#fb7185', bg: 'rgba(251, 113, 133, 0.2)' };
       case 'vibrato':
         return { label: '~', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.2)' };
       default:
@@ -580,8 +587,11 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                     {notes.map((note, noteIdx) => {
                       const noteY = getStringY(note.string);
                       const techBadge = getTechniqueBadge(note.technique);
+                      const hasSlideUp = note.technique === 'slide_up' || note.slideDirection === 'up';
+                      const hasSlideDown = note.technique === 'slide_down' || note.slideDirection === 'down';
                       const isGhost = note.technique === 'ghost';
-                      const fretText = isGhost ? 'X' : `${note.fret}`;
+                      const fretText = isGhost ? 'X' : `${hasSlideUp ? '/' : ''}${note.fret}${hasSlideDown ? '\\' : ''}`;
+                      const pillWidth = fretText.length > 2 ? 28 : 22;
 
                       return (
                         <g key={`note-${effectiveActiveMeasure}-${s}-${noteIdx}`}>
@@ -597,29 +607,71 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                             />
                           )}
 
+                          {/* Trazo diagonal de entrada hacia la izquierda si es slide ascendente (/10) */}
+                          {hasSlideUp && (
+                            <line
+                              x1={noteX - 18}
+                              y1={noteY + 7}
+                              x2={noteX - pillWidth / 2}
+                              y2={noteY - 5}
+                              stroke="#34d399"
+                              strokeWidth="2.5"
+                              strokeLinecap="round"
+                            />
+                          )}
+
                           {/* Píldora de máscara que corta limpiamente la línea */}
                           <rect
-                            x={noteX - 11}
+                            x={noteX - pillWidth / 2}
                             y={noteY - 9.5}
-                            width={22}
+                            width={pillWidth}
                             height={19}
                             rx={5}
                             fill="#09090b"
-                            stroke={isStepActive ? '#22d3ee' : 'rgba(255, 255, 255, 0.25)'}
-                            strokeWidth={isStepActive ? 2 : 1}
+                            stroke={
+                              isStepActive
+                                ? '#22d3ee'
+                                : hasSlideUp
+                                ? '#34d399'
+                                : hasSlideDown
+                                ? '#fb7185'
+                                : 'rgba(255, 255, 255, 0.25)'
+                            }
+                            strokeWidth={isStepActive ? 2 : 1.2}
                             filter={isStepActive ? `url(#runwayGlow-${effectiveActiveMeasure})` : undefined}
                             className="transition-all duration-75"
                           />
+
+                          {/* Trazo diagonal de salida hacia la derecha si es slide descendente (8\) */}
+                          {hasSlideDown && (
+                            <line
+                              x1={noteX + pillWidth / 2}
+                              y1={noteY - 5}
+                              x2={noteX + 18}
+                              y2={noteY + 7}
+                              stroke="#fb7185"
+                              strokeWidth="2.5"
+                              strokeLinecap="round"
+                            />
+                          )}
 
                           {/* Número de traste */}
                           <text
                             x={noteX}
                             y={noteY + 4.5}
                             textAnchor="middle"
-                            fontSize={fretText.length > 1 ? 12 : 13}
+                            fontSize={fretText.length > 2 ? 11 : fretText.length > 1 ? 12 : 13}
                             fontWeight="800"
                             fontFamily="system-ui, -apple-system, sans-serif"
-                            fill={isStepActive ? '#22d3ee' : '#f8fafc'}
+                            fill={
+                              isStepActive
+                                ? '#22d3ee'
+                                : hasSlideUp
+                                ? '#34d399'
+                                : hasSlideDown
+                                ? '#fb7185'
+                                : '#f8fafc'
+                            }
                             className="select-none"
                           >
                             {fretText}
@@ -630,7 +682,9 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                             note.technique !== 'hammer' &&
                             note.technique !== 'pull' &&
                             note.technique !== 'pulloff' &&
-                            note.technique !== 'bend' && (
+                            note.technique !== 'bend' &&
+                            note.technique !== 'slide_up' &&
+                            note.technique !== 'slide_down' && (
                               <g transform={`translate(${noteX}, ${noteY - 14})`}>
                               <rect
                                 x="-6"

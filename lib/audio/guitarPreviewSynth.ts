@@ -10,6 +10,8 @@ export type GuitarTechnique =
   | 'pull'
   | 'bend'
   | 'slide'
+  | 'slide_up'
+  | 'slide_down'
   | 'vibrato'
   | 'natural_harmonic'
   | 'pinch_harmonic'
@@ -20,6 +22,7 @@ export interface GuitarNoteEvent {
   duration?: number;
   velocity?: number;
   technique?: GuitarTechnique | string;
+  slideDirection?: 'up' | 'down' | null;
   bendType?: BendType;
   bendAmount?: BendAmount;
   targetMidi?: number;
@@ -226,6 +229,25 @@ class GuitarPreviewSynth {
       attackTime = 0.02; // Ataque amortiguado sin púa
       cutoff = 3200;
       decayLength = duration * 0.85;
+    } else if (normTech === 'slide_up' || event.slideDirection === 'up') {
+      // Slide-in ascendente desde 5 semitonos abajo hasta la nota objetivo
+      const startFreq = this.midiToFreq(midi - 5);
+      const arriveTime = now + Math.min(0.12, duration * 0.35);
+      osc1.frequency.setValueAtTime(startFreq, now);
+      osc2.frequency.setValueAtTime(startFreq, now);
+      osc1.frequency.exponentialRampToValueAtTime(baseFreq, arriveTime);
+      osc2.frequency.exponentialRampToValueAtTime(baseFreq, arriveTime);
+    } else if (normTech === 'slide_down' || event.slideDirection === 'down') {
+      // Golpea la nota objetivo y arrastra 6 semitonos hacia abajo
+      const startDrop = now + 0.055;
+      const endFreq = this.midiToFreq(midi - 6);
+      const endDrop = now + Math.min(0.45, Math.max(0.22, duration * 0.85));
+      osc1.frequency.setValueAtTime(baseFreq, now);
+      osc2.frequency.setValueAtTime(baseFreq, now);
+      osc1.frequency.setValueAtTime(baseFreq, startDrop);
+      osc2.frequency.setValueAtTime(baseFreq, startDrop);
+      osc1.frequency.exponentialRampToValueAtTime(endFreq, endDrop);
+      osc2.frequency.exponentialRampToValueAtTime(endFreq, endDrop);
     } else if (normTech === 'slide') {
       const destMidi = targetMidi || midi + 2;
       const destFreq = this.midiToFreq(destMidi);

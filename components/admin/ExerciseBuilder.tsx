@@ -77,6 +77,7 @@ interface EditorNote {
   string?: number;     // 1 to 4/6 (para cuerdas)
   fret?: number;       // 0 to 24 (para cuerdas)
   technique?: StringTechnique | 'pm';
+  slideDirection?: 'up' | 'down' | null;
   bendType?: BendType;
   bendAmount?: BendAmount;
   finger?: string;     // '1', '2', '3', '4', 'T'
@@ -133,7 +134,9 @@ export const GUITAR_TECHNIQUES: TechniqueOption[] = [
   { id: 'hammer', label: 'Hammer-on', symbol: 'h', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40' },
   { id: 'pulloff', label: 'Pull-off', symbol: 'p', color: 'bg-amber-500/20 text-amber-400 border-amber-500/40' },
   { id: 'bend', label: 'Bending', symbol: 'b', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' },
-  { id: 'slide', label: 'Slide', symbol: '/', color: 'bg-purple-500/20 text-purple-400 border-purple-500/40' },
+  { id: 'slide_up', label: 'Slide Asc. (/)', symbol: '/', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' },
+  { id: 'slide_down', label: 'Slide Desc. (\\)', symbol: '\\', color: 'bg-rose-500/20 text-rose-400 border-rose-500/40' },
+  { id: 'slide', label: 'Slide Legato', symbol: 's', color: 'bg-purple-500/20 text-purple-400 border-purple-500/40' },
   { id: 'vibrato', label: 'Vibrato', symbol: '~', color: 'bg-rose-500/20 text-rose-400 border-rose-500/40' },
   { id: 'natural_harmonic', label: 'Armónico Nat.', symbol: 'N.H.', color: 'bg-sky-500/20 text-sky-300 border-sky-500/40' },
   { id: 'pinch_harmonic', label: 'Armónico Art.', symbol: 'A.H.', color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' },
@@ -146,7 +149,9 @@ export const BASS_TECHNIQUES: TechniqueOption[] = [
   { id: 'ghost', label: 'Ghost', symbol: 'X', color: 'bg-slate-700 text-slate-300' },
   { id: 'hammer', label: 'Hammer-on', symbol: 'h', color: 'bg-sky-500/20 text-sky-400 border-sky-500/40' },
   { id: 'pulloff', label: 'Pull-off', symbol: 'p', color: 'bg-orange-500/20 text-orange-400 border-orange-500/40' },
-  { id: 'slide', label: 'Slide', symbol: 's', color: 'bg-purple-500/20 text-purple-400 border-purple-500/40' },
+  { id: 'slide_up', label: 'Slide Asc. (/)', symbol: '/', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' },
+  { id: 'slide_down', label: 'Slide Desc. (\\)', symbol: '\\', color: 'bg-rose-500/20 text-rose-400 border-rose-500/40' },
+  { id: 'slide', label: 'Slide Legato', symbol: 's', color: 'bg-purple-500/20 text-purple-400 border-purple-500/40' },
   { id: 'vibrato', label: 'Vibrato', symbol: 'v', color: 'bg-rose-500/20 text-rose-400 border-rose-500/40' },
 ];
 
@@ -155,7 +160,9 @@ export const getTechniqueBadge = (tech?: string, inst?: string): string | null =
   if (inst === 'guitar') {
     switch (tech) {
       case 'bend': return 'b';
-      case 'slide': return '/';
+      case 'slide_up': return '/';
+      case 'slide_down': return '\\';
+      case 'slide': return 's';
       case 'vibrato': return '~';
       case 'natural_harmonic': return 'N.H.';
       case 'pinch_harmonic': return 'A.H.';
@@ -169,6 +176,8 @@ export const getTechniqueBadge = (tech?: string, inst?: string): string | null =
       case 'slap': return 'T';
       case 'pop': return 'P';
       case 'ghost': return 'X';
+      case 'slide_up': return '/';
+      case 'slide_down': return '\\';
       case 'slide': return 's';
       case 'vibrato': return 'v';
       case 'hammer': return 'h';
@@ -797,6 +806,12 @@ export const ExerciseBuilder: React.FC = () => {
 
         const targetBendType = noteTech === 'bend' ? (existingNote.bendType || selectedBendType) : undefined;
         const targetBendAmount = noteTech === 'bend' ? (existingNote.bendAmount || selectedBendAmount) : undefined;
+        const targetSlideDirection =
+          noteTech === 'slide_up'
+            ? 'up'
+            : noteTech === 'slide_down'
+            ? 'down'
+            : existingNote.slideDirection;
 
         // Actualizar técnica/dedo si el usuario seleccionó otra articulación activa
         setNotes((prev) => {
@@ -805,6 +820,7 @@ export const ExerciseBuilder: React.FC = () => {
               ? {
                   ...n,
                   technique: noteTech,
+                  slideDirection: targetSlideDirection,
                   bendType: targetBendType,
                   bendAmount: targetBendAmount,
                   finger: selectedFinger,
@@ -825,6 +841,7 @@ export const ExerciseBuilder: React.FC = () => {
           bassPreviewSynth.playNote({
             midi: calculatedMidi,
             technique: bassTech || 'normal',
+            slideDirection: targetSlideDirection,
             stringIndex: Math.max(0, (stringNum || 4) - 1),
             duration: (60 / bpmRef.current) * 0.8,
             velocity: noteTech === 'pop' || noteTech === 'slap' ? 120 : 95,
@@ -835,6 +852,7 @@ export const ExerciseBuilder: React.FC = () => {
           guitarPreviewSynth.playNote({
             midi: calculatedMidi,
             technique: guitarTech || 'normal',
+            slideDirection: targetSlideDirection,
             bendType: guitarTech === 'bend' ? targetBendType : undefined,
             bendAmount: guitarTech === 'bend' ? targetBendAmount : undefined,
             duration: (60 / bpmRef.current) * 0.8,
@@ -871,12 +889,16 @@ export const ExerciseBuilder: React.FC = () => {
           }
         }
 
+        const targetSlideDirection =
+          noteTech === 'slide_up' ? 'up' : noteTech === 'slide_down' ? 'down' : undefined;
+
         // Agregar nota con el traste y técnica activos
         const newNote: EditorNote = {
           step: globalStep,
           string: stringNum,
           fret: selectedFret,
           technique: noteTech,
+          slideDirection: targetSlideDirection,
           bendType: noteTech === 'bend' ? selectedBendType : undefined,
           bendAmount: noteTech === 'bend' ? selectedBendAmount : undefined,
           finger: selectedFinger,
@@ -895,6 +917,7 @@ export const ExerciseBuilder: React.FC = () => {
           bassPreviewSynth.playNote({
             midi: calculatedMidi,
             technique: bassTech || 'normal',
+            slideDirection: targetSlideDirection,
             stringIndex: Math.max(0, (stringNum || 4) - 1),
             duration: (60 / bpmRef.current) * 0.8,
             velocity: noteTech === 'pop' || noteTech === 'slap' ? 120 : 95,
@@ -905,6 +928,7 @@ export const ExerciseBuilder: React.FC = () => {
           guitarPreviewSynth.playNote({
             midi: calculatedMidi,
             technique: guitarTech || 'normal',
+            slideDirection: targetSlideDirection,
             bendType: guitarTech === 'bend' ? selectedBendType : undefined,
             bendAmount: guitarTech === 'bend' ? selectedBendAmount : undefined,
             duration: (60 / bpmRef.current) * 0.8,
@@ -946,6 +970,8 @@ export const ExerciseBuilder: React.FC = () => {
         }
       }
       finalTech = noteTech;
+      const targetSlideDirection =
+        existing?.slideDirection ?? (noteTech === 'slide_up' ? 'up' : noteTech === 'slide_down' ? 'down' : undefined);
 
       const next =
         fret < 0
@@ -957,6 +983,7 @@ export const ExerciseBuilder: React.FC = () => {
                 string: stringNum,
                 fret,
                 technique: noteTech,
+                slideDirection: targetSlideDirection,
                 bendType: noteTech === 'bend' ? (existing?.bendType || selectedBendType) : undefined,
                 bendAmount: noteTech === 'bend' ? (existing?.bendAmount || selectedBendAmount) : undefined,
                 finger: existing?.finger || selectedFinger,
@@ -973,6 +1000,7 @@ export const ExerciseBuilder: React.FC = () => {
         bassPreviewSynth.playNote({
           midi: calculatedMidi,
           technique: bassTech || 'normal',
+          slideDirection: finalTech === 'slide_up' ? 'up' : finalTech === 'slide_down' ? 'down' : undefined,
           stringIndex: Math.max(0, stringNum - 1),
           duration: (60 / bpmRef.current) * 0.8,
           velocity: finalTech === 'pop' || finalTech === 'slap' ? 120 : 95,
@@ -983,6 +1011,7 @@ export const ExerciseBuilder: React.FC = () => {
         guitarPreviewSynth.playNote({
           midi: calculatedMidi,
           technique: guitarTech || 'normal',
+          slideDirection: finalTech === 'slide_up' ? 'up' : finalTech === 'slide_down' ? 'down' : undefined,
           bendType: guitarTech === 'bend' ? selectedBendType : undefined,
           bendAmount: guitarTech === 'bend' ? selectedBendAmount : undefined,
           duration: (60 / bpmRef.current) * 0.8,
@@ -1038,6 +1067,13 @@ export const ExerciseBuilder: React.FC = () => {
         if (activeNote.bendType) setSelectedBendType(activeNote.bendType);
         if (activeNote.bendAmount) setSelectedBendAmount(activeNote.bendAmount);
 
+        const targetSlideDirection =
+          finalTech === 'slide_up'
+            ? 'up'
+            : finalTech === 'slide_down'
+            ? 'down'
+            : activeNote.slideDirection;
+
         const previewFret = activeNote.fret ?? selectedFret;
         setNotes((prev) => {
           const next = prev.map((n) =>
@@ -1045,6 +1081,7 @@ export const ExerciseBuilder: React.FC = () => {
               ? {
                   ...n,
                   technique: finalTech,
+                  slideDirection: targetSlideDirection,
                   bendType: targetBendType,
                   bendAmount: targetBendAmount,
                 }
@@ -1060,6 +1097,7 @@ export const ExerciseBuilder: React.FC = () => {
           bassPreviewSynth.playNote({
             midi: calculatedMidi,
             technique: bassTech || 'normal',
+            slideDirection: targetSlideDirection,
             stringIndex: Math.max(0, activeCell.string - 1),
             duration: (60 / bpmRef.current) * 0.8,
             velocity: finalTech === 'pop' || finalTech === 'slap' ? 120 : 95,
@@ -1070,6 +1108,7 @@ export const ExerciseBuilder: React.FC = () => {
           guitarPreviewSynth.playNote({
             midi: calculatedMidi,
             technique: guitarTech,
+            slideDirection: targetSlideDirection,
             bendType: guitarTech === 'bend' ? targetBendType : undefined,
             bendAmount: guitarTech === 'bend' ? targetBendAmount : undefined,
             duration: (60 / bpmRef.current) * 0.8,
@@ -1131,6 +1170,66 @@ export const ExerciseBuilder: React.FC = () => {
       return next;
     });
     setActiveCell(null);
+  };
+
+  const handleUpdateNoteSlide = (globalStep: number, stringNum: number, dir: 'up' | 'down') => {
+    let targetSlide: 'up' | 'down' | null = null;
+    let targetFret = selectedFret;
+    let targetTech: any = 'normal';
+
+    setNotes((prev) => {
+      const next = prev.map((n) => {
+        if (n.step === globalStep && n.string === stringNum) {
+          targetFret = n.fret ?? selectedFret;
+          targetTech = n.technique || 'normal';
+          const currentSlide =
+            n.slideDirection ?? (n.technique === 'slide_up' ? 'up' : n.technique === 'slide_down' ? 'down' : null);
+          targetSlide = currentSlide === dir ? null : dir;
+
+          let newTech = n.technique;
+          if (targetSlide === null && (n.technique === 'slide_up' || n.technique === 'slide_down')) {
+            newTech = 'normal';
+          } else if (targetSlide === 'up' && (!n.technique || n.technique === 'normal' || n.technique === 'slide_down')) {
+            newTech = 'slide_up';
+          } else if (targetSlide === 'down' && (!n.technique || n.technique === 'normal' || n.technique === 'slide_up')) {
+            newTech = 'slide_down';
+          }
+
+          return {
+            ...n,
+            technique: newTech,
+            slideDirection: targetSlide,
+          };
+        }
+        return n;
+      });
+      activeNotesRef.current = next;
+      return next;
+    });
+
+    // Vista previa con audio
+    if (instrument === 'bass') {
+      const calculatedMidi = getBassMidiFromString(stringNum, targetFret);
+      const bassTech = (targetTech === 'pull' ? 'pulloff' : targetTech) as BassTechnique;
+      bassPreviewSynth.playNote({
+        midi: calculatedMidi,
+        technique: bassTech || 'normal',
+        slideDirection: targetSlide,
+        stringIndex: Math.max(0, stringNum - 1),
+        duration: (60 / bpmRef.current) * 0.8,
+        velocity: targetTech === 'pop' || targetTech === 'slap' ? 120 : 95,
+      });
+    } else if (instrument === 'guitar') {
+      const calculatedMidi = getGuitarMidiFromString(stringNum, targetFret);
+      const guitarTech = (targetTech === 'pull' ? 'pulloff' : targetTech) as GuitarTechnique;
+      guitarPreviewSynth.playNote({
+        midi: calculatedMidi,
+        technique: guitarTech || 'normal',
+        slideDirection: targetSlide,
+        duration: (60 / bpmRef.current) * 0.8,
+        velocity: 100,
+      });
+    }
   };
 
   // Referencias vivas adicionales para el secuenciador en caliente
@@ -1450,6 +1549,7 @@ export const ExerciseBuilder: React.FC = () => {
       bassPreviewSynth.playNote({
         midi: calculatedMidi,
         technique: tech,
+        slideDirection: note.slideDirection,
         stringIndex: resolvedStringIndex,
         duration: stepDuration * 3.8, // Permitir que las notas con espacio resuenen
         velocity: tech === 'pop' || tech === 'slap' ? 120 : 105,
@@ -1477,6 +1577,7 @@ export const ExerciseBuilder: React.FC = () => {
       guitarPreviewSynth.playNote({
         midi: calculatedMidi,
         technique: tech,
+        slideDirection: note.slideDirection,
         bendType: note.bendType,
         bendAmount: note.bendAmount,
         duration: stepDuration * 3.5,
@@ -1723,6 +1824,7 @@ export const ExerciseBuilder: React.FC = () => {
           string: n.string,
           fret: n.fret,
           technique: n.technique ?? 'normal',
+          slideDirection: n.slideDirection,
           bendType: n.bendType,
           bendAmount: n.bendAmount,
           finger: n.finger ?? '1',
@@ -1743,7 +1845,14 @@ export const ExerciseBuilder: React.FC = () => {
           tabString = `SD: | ${sorted.map((n) => (n.drumVoice === 'snare' ? 'o' : n.drumVoice === 'kick' ? 'B' : 'x')).slice(0, 16).join(' ')} |`;
         } else {
           const sorted = [...notes].filter((n) => n.string !== undefined && n.fret !== undefined).sort((a, b) => a.step - b.step);
-          tabString = sorted.map((n) => `C${n.string}:${n.fret}`).slice(0, 16).join(' ');
+          tabString = sorted
+            .map((n) => {
+              const hasUp = n.technique === 'slide_up' || n.slideDirection === 'up';
+              const hasDown = n.technique === 'slide_down' || n.slideDirection === 'down';
+              return `C${n.string}:${hasUp ? '/' : ''}${n.fret}${hasDown ? '\\' : ''}`;
+            })
+            .slice(0, 16)
+            .join(' ');
           if (!tabString) tabString = `e|---5-7-8---|\nB|---5-7-8---|`;
         }
 
@@ -2886,16 +2995,55 @@ export const ExerciseBuilder: React.FC = () => {
                               note.technique !== 'hammer' &&
                               note.technique !== 'pull' &&
                               (note.technique as any) !== 'pulloff' &&
-                              note.technique !== 'bend' && (
+                              note.technique !== 'bend' &&
+                              note.technique !== 'slide_up' &&
+                              note.technique !== 'slide_down' && (
                                 <span className="absolute -top-3.5 text-[9px] font-mono font-black text-amber-300 bg-amber-500/30 px-1 rounded border border-amber-400/40 shadow-sm whitespace-nowrap">
                                   {getTechniqueBadge(note.technique, instrument)}
                                 </span>
                               )}
 
-                            {/* Píldora de traste enmascarando la línea con alto contraste sobre la madera */}
-                            <div className="w-6 h-6 rounded-md bg-[#0a0402] border-2 border-cyan-400 text-cyan-300 font-black font-mono text-xs flex items-center justify-center shadow-[0_0_12px_rgba(34,211,238,0.6)]">
-                              {note.fret}
-                            </div>
+                            {(() => {
+                              const hasSlideUp = note.technique === 'slide_up' || note.slideDirection === 'up';
+                              const hasSlideDown = note.technique === 'slide_down' || note.slideDirection === 'down';
+                              const displayFretText =
+                                note.technique === 'ghost'
+                                  ? 'X'
+                                  : `${hasSlideUp ? '/' : ''}${note.fret}${hasSlideDown ? '\\' : ''}`;
+
+                              return (
+                                <div className="relative flex items-center justify-center">
+                                  {/* Trazo diagonal de entrada hacia la izquierda si es slide ascendente (/10) */}
+                                  {hasSlideUp && (
+                                    <span
+                                      className="absolute -left-3 w-3 h-[2px] bg-emerald-400 -rotate-45 transform origin-right shadow-[0_0_6px_rgba(52,211,153,0.9)] pointer-events-none"
+                                      title="Slide Ascendente de Entrada"
+                                    />
+                                  )}
+
+                                  {/* Píldora de traste enmascarando la línea con alto contraste sobre la madera */}
+                                  <div
+                                    className={`min-w-[24px] px-1 h-6 rounded-md bg-[#0a0402] border-2 ${
+                                      hasSlideUp
+                                        ? 'border-emerald-400 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.6)]'
+                                        : hasSlideDown
+                                        ? 'border-rose-400 text-rose-300 shadow-[0_0_12px_rgba(251,113,133,0.6)]'
+                                        : 'border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.6)]'
+                                    } font-black font-mono text-xs flex items-center justify-center tracking-tighter`}
+                                  >
+                                    {displayFretText}
+                                  </div>
+
+                                  {/* Trazo diagonal de salida hacia la derecha si es slide descendente (8\) */}
+                                  {hasSlideDown && (
+                                    <span
+                                      className="absolute -right-3 w-3 h-[2px] bg-rose-400 rotate-45 transform origin-left shadow-[0_0_6px_rgba(251,113,133,0.9)] pointer-events-none"
+                                      title="Slide Descendente de Salida"
+                                    />
+                                  )}
+                                </div>
+                              );
+                            })()}
 
                             {/* Dedo sugerido */}
                             {note.finger && (
@@ -2946,6 +3094,47 @@ export const ExerciseBuilder: React.FC = () => {
                   </button>
                 );
               })}
+            </div>
+
+            {/* Selector de Slide de Entrada / Salida con Toggle */}
+            <div className="flex items-center gap-1.5 border-l border-white/10 pl-3 shrink-0">
+              <span className="text-[11px] text-zinc-400 font-medium mr-1">Slide:</span>
+              {(() => {
+                const activeNote = notes.find((n) => n.step === activeCell.step && n.string === activeCell.string);
+                const isSlideUpActive = activeNote?.slideDirection === 'up' || activeNote?.technique === 'slide_up';
+                const isSlideDownActive = activeNote?.slideDirection === 'down' || activeNote?.technique === 'slide_down';
+
+                return (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateNoteSlide(activeCell.step, activeCell.string!, 'up')}
+                      title="Slide Ascendente de Entrada (/10)"
+                      className={`px-2.5 py-1 rounded-xl text-xs font-mono font-bold transition-all border flex items-center gap-1 ${
+                        isSlideUpActive
+                          ? 'bg-emerald-500/30 text-emerald-300 border-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.4)]'
+                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-emerald-500/50'
+                      }`}
+                    >
+                      <span className="font-black text-sm leading-none">/</span>
+                      <span>Asc.</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateNoteSlide(activeCell.step, activeCell.string!, 'down')}
+                      title="Slide Descendente de Salida (8\)"
+                      className={`px-2.5 py-1 rounded-xl text-xs font-mono font-bold transition-all border flex items-center gap-1 ${
+                        isSlideDownActive
+                          ? 'bg-rose-500/30 text-rose-300 border-rose-400 shadow-[0_0_10px_rgba(251,113,133,0.4)]'
+                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-rose-500/50'
+                      }`}
+                    >
+                      <span className="font-black text-sm leading-none">\</span>
+                      <span>Desc.</span>
+                    </button>
+                  </>
+                );
+              })()}
             </div>
           </div>
 

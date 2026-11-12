@@ -138,6 +138,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
             bassPreviewSynth.playNote({
               midi: calculatedMidi,
               technique: tech,
+              slideDirection: note.slideDirection,
               stringIndex: resolvedStringIndex,
               duration: dur,
               velocity: vel,
@@ -148,6 +149,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
                 bassPreviewSynth.playNote({
                   midi: calculatedMidi,
                   technique: tech,
+                  slideDirection: note.slideDirection,
                   stringIndex: resolvedStringIndex,
                   duration: dur,
                   velocity: vel,
@@ -171,6 +173,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
             guitarPreviewSynth.playNote({
               midi: calculatedMidi,
               technique: tech,
+              slideDirection: note.slideDirection,
               bendType: note.bendType,
               bendAmount: note.bendAmount,
               duration: dur,
@@ -182,6 +185,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
                 guitarPreviewSynth.playNote({
                   midi: calculatedMidi,
                   technique: tech,
+                  slideDirection: note.slideDirection,
                   bendType: note.bendType,
                   bendAmount: note.bendAmount,
                   duration: dur,
