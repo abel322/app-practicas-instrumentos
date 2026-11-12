@@ -31,13 +31,10 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
   const bpmRef = useRef<number>(exercise.bpmDefault);
   const nextNoteTimeRef = useRef<number>(0);
   const currentStepRef = useRef<number>(0);
+  const anchorStepRef = useRef<number>(0);
+  const anchorAudioTimeRef = useRef<number>(0);
   const timerIdRef = useRef<number | null>(null);
   const rafIdRef = useRef<number | null>(null);
-  const measureStartTimeRef = useRef<number>(0);
-
-  useEffect(() => {
-    bpmRef.current = bpm;
-  }, [bpm]);
 
   useEffect(() => {
     isPlayingRef.current = isPlaying;
@@ -46,8 +43,10 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
   const isBass = exercise.instrument === 'bass_4';
 
   useEffect(() => {
+    guitarPreviewSynth.preloadSamples();
     if (isBass) {
       bassPreviewSynth.initContext();
+      bassPreviewSynth.preloadSamples?.();
     } else {
       guitarPreviewSynth.init();
     }
@@ -99,6 +98,23 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
     [exercise.totalSteps, getSecondsPerStep]
   );
 
+  // Sincronizar BPM en vivo y ajustar la siguiente nota si se acelera para respuesta inmediata
+  useEffect(() => {
+    const prevBpm = bpmRef.current;
+    bpmRef.current = bpm;
+
+    if (isPlaying && bpm > prevBpm) {
+      const engine = getStringsAudioEngine();
+      const ctx = engine.getAudioContext();
+      if (ctx) {
+        const newSecondsPerStep = getSecondsPerStep(bpm);
+        if (nextNoteTimeRef.current > ctx.currentTime + newSecondsPerStep) {
+          nextNoteTimeRef.current = ctx.currentTime + newSecondsPerStep;
+        }
+      }
+    }
+  }, [bpm, isPlaying, getSecondsPerStep]);
+
   // Indexar notas por paso
   const notesByStep = useRef<Map<number, StringTabNote[]>>(new Map());
   useEffect(() => {
@@ -114,7 +130,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
     notesByStep.current = map;
   }, [exercise]);
 
-  // Planificador (Scheduler) de notas de cuerdas
+  // Planificador (Scheduler) de notas de cuerdas con agendado exacto en Web Audio API
   const scheduleNote = useCallback(
     (stepNumber: number, time: number) => {
       const engine = getStringsAudioEngine();
@@ -123,8 +139,6 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
       const notes = notesByStep.current.get(stepNumber) || [];
       notes.forEach((note) => {
         if (exercise.instrument === 'bass_4') {
-          const ctx = engine.getAudioContext();
-          const delayMs = ctx ? Math.max(0, (time - ctx.currentTime) * 1000) : 0;
           const calculatedMidi = getBassMidiFromString(note.string, note.fret || 0);
           const resolvedStringIndex = Math.max(0, (note.string || 4) - 1); // 0 = G, 1 = D, 2 = A, 3 = E
           const tech = ((note.technique || 'normal').toLowerCase()) as BassTechnique;
@@ -134,32 +148,16 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
               : Math.round((note.velocity ?? 0.85) * 120);
           const dur = getSecondsPerStep(bpmRef.current) * 3.8;
 
-          if (delayMs <= 15) {
-            bassPreviewSynth.playNote({
-              midi: calculatedMidi,
-              technique: tech,
-              slideDirection: note.slideDirection,
-              stringIndex: resolvedStringIndex,
-              duration: dur,
-              velocity: vel,
-            });
-          } else {
-            window.setTimeout(() => {
-              if (isPlayingRef.current) {
-                bassPreviewSynth.playNote({
-                  midi: calculatedMidi,
-                  technique: tech,
-                  slideDirection: note.slideDirection,
-                  stringIndex: resolvedStringIndex,
-                  duration: dur,
-                  velocity: vel,
-                });
-              }
-            }, delayMs);
-          }
+          bassPreviewSynth.playNote({
+            midi: calculatedMidi,
+            technique: tech,
+            slideDirection: note.slideDirection,
+            stringIndex: resolvedStringIndex,
+            duration: dur,
+            velocity: vel,
+            scheduleTime: time,
+          });
         } else if (exercise.instrument === 'guitar_6') {
-          const ctx = engine.getAudioContext();
-          const delayMs = ctx ? Math.max(0, (time - ctx.currentTime) * 1000) : 0;
           const calculatedMidi = getGuitarMidiFromString(note.string, note.fret || 0);
           const rawTech = (note.technique || 'normal').toLowerCase();
           const tech = (rawTech === 'pull' ? 'pulloff' : rawTech) as GuitarTechnique;
@@ -169,31 +167,17 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
               : Math.round((note.velocity ?? 0.85) * 115);
           const dur = getSecondsPerStep(bpmRef.current) * 3.5;
 
-          if (delayMs <= 15) {
-            guitarPreviewSynth.playNote({
-              midi: calculatedMidi,
-              technique: tech,
-              slideDirection: note.slideDirection,
-              bendType: note.bendType,
-              bendAmount: note.bendAmount,
-              duration: dur,
-              velocity: vel,
-            });
-          } else {
-            window.setTimeout(() => {
-              if (isPlayingRef.current) {
-                guitarPreviewSynth.playNote({
-                  midi: calculatedMidi,
-                  technique: tech,
-                  slideDirection: note.slideDirection,
-                  bendType: note.bendType,
-                  bendAmount: note.bendAmount,
-                  duration: dur,
-                  velocity: vel,
-                });
-              }
-            }, delayMs);
-          }
+          guitarPreviewSynth.playNote({
+            midi: calculatedMidi,
+            technique: tech,
+            slideDirection: note.slideDirection,
+            bendType: note.bendType,
+            bendAmount: note.bendAmount,
+            duration: dur,
+            velocity: vel,
+            time,
+            scheduleTime: time,
+          });
         } else {
           engine.triggerNote(
             exercise.instrument,
@@ -215,52 +199,58 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
     [exercise.instrument, getSecondsPerStep, stepsPerBeat, stepsPerMeasure]
   );
 
-  // Lookahead loop
+  // Lookahead loop con ventana de agendado de 80ms y anclaje continuo de fase
   const scheduler = useCallback(() => {
     const engine = getStringsAudioEngine();
     const ctx = engine.getAudioContext();
     if (!ctx) return;
 
-    const scheduleAheadTime = 0.12;
+    const scheduleAheadTime = 0.08;
 
     while (nextNoteTimeRef.current < ctx.currentTime + scheduleAheadTime) {
-      scheduleNote(currentStepRef.current, nextNoteTimeRef.current);
+      const stepToSchedule = currentStepRef.current;
+      const hitTime = nextNoteTimeRef.current;
+
+      anchorStepRef.current = stepToSchedule;
+      anchorAudioTimeRef.current = hitTime;
+
+      scheduleNote(stepToSchedule, hitTime);
 
       const stepDuration = getSecondsPerStep(bpmRef.current);
       nextNoteTimeRef.current += stepDuration;
 
-      currentStepRef.current += 1;
-      if (currentStepRef.current >= exercise.totalSteps) {
-        currentStepRef.current = 0;
-        measureStartTimeRef.current = nextNoteTimeRef.current;
-      }
+      currentStepRef.current = (currentStepRef.current + 1) % exercise.totalSteps;
     }
 
     if (isPlayingRef.current) {
-      timerIdRef.current = window.setTimeout(scheduler, 25);
+      timerIdRef.current = window.setTimeout(scheduler, 20);
     }
   }, [exercise.totalSteps, getSecondsPerStep, scheduleNote]);
 
-  // Animación suave del Runway Cursor
+  // Animación del Runway Cursor anclada al último pulso de audio (sin desfase al mover BPM)
   const updateVisualProgress = useCallback(() => {
     if (!isPlayingRef.current) return;
 
     const engine = getStringsAudioEngine();
     const ctx = engine.getAudioContext();
 
-    if (ctx) {
-      const now = ctx.currentTime;
-      const measureDuration = getMeasureDuration(bpmRef.current);
-      const elapsed = (now - measureStartTimeRef.current) % measureDuration;
-      const normalized = Math.max(0, Math.min(1, elapsed / measureDuration));
+    if (ctx && anchorAudioTimeRef.current > 0) {
+      const stepDuration = getSecondsPerStep(bpmRef.current);
+      const deltaFromAnchor = ctx.currentTime - anchorAudioTimeRef.current;
+      const exactStep = anchorStepRef.current + deltaFromAnchor / stepDuration;
+      const totalSteps = exercise.totalSteps;
 
-      setProgress(normalized);
-      const computedStep = Math.floor(normalized * exercise.totalSteps);
-      setActiveStep(computedStep % exercise.totalSteps);
+      const normalizedStep =
+        ((Math.floor(exactStep) % totalSteps) + totalSteps) % totalSteps;
+
+      const continuousProgress = Math.max(0, Math.min(1, exactStep / totalSteps));
+
+      setProgress(continuousProgress);
+      setActiveStep(normalizedStep);
     }
 
     rafIdRef.current = requestAnimationFrame(updateVisualProgress);
-  }, [exercise.totalSteps, getMeasureDuration]);
+  }, [exercise.totalSteps, getSecondsPerStep]);
 
   // Play / Pausa
   const handlePlayPause = useCallback(() => {
@@ -269,6 +259,8 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
     engine.resume();
     if (isBass) {
       bassPreviewSynth.getAudioContext();
+    } else {
+      guitarPreviewSynth.getContext();
     }
 
     if (isPlaying) {
@@ -280,15 +272,16 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
       setIsPlaying(true);
       isPlayingRef.current = true;
       const ctx = engine.getAudioContext();
-      const startTime = (ctx ? ctx.currentTime : 0) + 0.05;
+      const startTime = (ctx ? ctx.currentTime : 0) + 0.03;
       nextNoteTimeRef.current = startTime;
-      measureStartTimeRef.current = startTime;
       currentStepRef.current = 0;
+      anchorStepRef.current = 0;
+      anchorAudioTimeRef.current = startTime;
 
       scheduler();
       rafIdRef.current = requestAnimationFrame(updateVisualProgress);
     }
-  }, [isPlaying, scheduler, updateVisualProgress]);
+  }, [isPlaying, isBass, scheduler, updateVisualProgress]);
 
   // Stop
   const handleStop = useCallback(() => {
@@ -298,6 +291,8 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
     if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
 
     currentStepRef.current = 0;
+    anchorStepRef.current = 0;
+    anchorAudioTimeRef.current = 0;
     setActiveStep(0);
     setProgress(0);
   }, []);

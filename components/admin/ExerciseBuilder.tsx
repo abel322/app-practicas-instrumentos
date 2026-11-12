@@ -1556,7 +1556,7 @@ export const ExerciseBuilder: React.FC = () => {
     }
   }, []);
 
-  const playBassStep = useCallback((stepIndex: number) => {
+  const playBassStep = useCallback((stepIndex: number, hitTime?: number) => {
     const currentStepNotes =
       activeNotesRef.current?.filter(
         (n: any) =>
@@ -1593,11 +1593,12 @@ export const ExerciseBuilder: React.FC = () => {
         stringIndex: resolvedStringIndex,
         duration: stepDuration * 3.8, // Permitir que las notas con espacio resuenen
         velocity: tech === 'pop' || tech === 'slap' ? 120 : 105,
+        scheduleTime: hitTime,
       });
     });
   }, [getStepDuration]);
 
-  const playGuitarStep = useCallback((stepIndex: number) => {
+  const playGuitarStep = useCallback((stepIndex: number, hitTime?: number) => {
     const currentStepNotes =
       activeNotesRef.current?.filter(
         (n: any) =>
@@ -1622,6 +1623,8 @@ export const ExerciseBuilder: React.FC = () => {
         bendAmount: note.bendAmount,
         duration: stepDuration * 3.5,
         velocity: tech === 'natural_harmonic' || tech === 'pinch_harmonic' ? 115 : 100,
+        time: hitTime,
+        scheduleTime: hitTime,
       });
     });
   }, [getStepDuration]);
@@ -1683,36 +1686,14 @@ export const ExerciseBuilder: React.FC = () => {
         }
       } else if (liveInstrument === 'bass') {
         const engine = getStringsAudioEngine();
-        const ctx = engine.getAudioContext();
-        const delayMs = ctx ? Math.max(0, (time - ctx.currentTime) * 1000) : 0;
-
-        if (delayMs <= 15) {
-          playBassStep(stepNumber);
-        } else {
-          window.setTimeout(() => {
-            if (isPlayingRef.current) {
-              playBassStep(stepNumber);
-            }
-          }, delayMs);
-        }
+        playBassStep(stepNumber, time);
 
         if (isBeatStep(stepNumber)) {
           engine.playMetronome(time, stepNumber % liveStepsPerMeasure === 0);
         }
       } else if (liveInstrument === 'guitar') {
         const engine = getStringsAudioEngine();
-        const ctx = engine.getAudioContext();
-        const delayMs = ctx ? Math.max(0, (time - ctx.currentTime) * 1000) : 0;
-
-        if (delayMs <= 15) {
-          playGuitarStep(stepNumber);
-        } else {
-          window.setTimeout(() => {
-            if (isPlayingRef.current) {
-              playGuitarStep(stepNumber);
-            }
-          }, delayMs);
-        }
+        playGuitarStep(stepNumber, time);
 
         if (isBeatStep(stepNumber)) {
           engine.playMetronome(time, stepNumber % liveStepsPerMeasure === 0);

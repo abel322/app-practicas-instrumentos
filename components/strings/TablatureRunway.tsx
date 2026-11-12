@@ -639,7 +639,6 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                             }
                             strokeWidth={isStepActive ? 2 : 1.2}
                             filter={isStepActive ? `url(#runwayGlow-${effectiveActiveMeasure})` : undefined}
-                            className="transition-all duration-75"
                           />
 
                           {/* Trazo diagonal de salida hacia la derecha si es slide descendente (8\) */}
