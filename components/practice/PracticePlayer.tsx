@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import Link from 'next/link';
 import { DrumExerciseData, DrumHit } from '@/types/drum';
 import { getAudioEngine } from '@/lib/drumAudioEngine';
-import { drumSampler } from '@/lib/audio/drumSynth';
+import { drumSampler, playDrumHit } from '@/lib/audio/drumSynth';
 import { DrumScoreRenderer } from './DrumScoreSVG';
 import { TransportBar } from './TransportBar';
 import { StickingLegend } from './StickingLegend';
@@ -206,10 +206,11 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
           accent: !!hit.accent,
         };
 
-        engine.trigger({
-          instrument: hit.instrument,
+        const targetInstrument = hit.instrument === 'hihat' ? 'hihat_closed' : hit.instrument;
+        playDrumHit({
+          instrument: targetInstrument,
           time,
-          velocity: hit.velocity ?? 0.8,
+          velocity: hit.velocity !== undefined ? (hit.velocity > 1 ? hit.velocity : hit.velocity * 100) : 80,
           accent: !!hit.accent,
           sticking: isFoot ? null : (hit.sticking as 'R' | 'L') || 'R',
           isDoubleRebound,

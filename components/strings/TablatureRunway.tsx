@@ -377,8 +377,8 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                             ? '#22d3ee'
                             : '#f1f5f9'
                           : isStepActive
-                          ? '#38bdf8'
-                          : '#94a3b8'
+                            ? '#38bdf8'
+                            : '#94a3b8'
                       }
                       className="font-mono transition-colors duration-150"
                     >
@@ -488,10 +488,10 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                   note.bendAmount === '1/4'
                     ? '¼'
                     : note.bendAmount === '1/2'
-                    ? '½'
-                    : note.bendAmount === '1.5'
-                    ? '1½'
-                    : 'Full';
+                      ? '½'
+                      : note.bendAmount === '1.5'
+                        ? '1½'
+                        : 'Full';
 
                 return (
                   <g key={`runway-bend-${note.id || idx}`} className="pointer-events-none select-none">
@@ -632,10 +632,10 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                               isStepActive
                                 ? '#22d3ee'
                                 : hasSlideUp
-                                ? '#34d399'
-                                : hasSlideDown
-                                ? '#fb7185'
-                                : 'rgba(255, 255, 255, 0.25)'
+                                  ? '#34d399'
+                                  : hasSlideDown
+                                    ? '#fb7185'
+                                    : 'rgba(255, 255, 255, 0.25)'
                             }
                             strokeWidth={isStepActive ? 2 : 1.2}
                             filter={isStepActive ? `url(#runwayGlow-${effectiveActiveMeasure})` : undefined}
@@ -666,10 +666,10 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                               isStepActive
                                 ? '#22d3ee'
                                 : hasSlideUp
-                                ? '#34d399'
-                                : hasSlideDown
-                                ? '#fb7185'
-                                : '#f8fafc'
+                                  ? '#34d399'
+                                  : hasSlideDown
+                                    ? '#fb7185'
+                                    : '#f8fafc'
                             }
                             className="select-none"
                           >
@@ -685,29 +685,29 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                             note.technique !== 'slide_up' &&
                             note.technique !== 'slide_down' && (
                               <g transform={`translate(${noteX}, ${noteY - 14})`}>
-                              <rect
-                                x="-6"
-                                y="-6"
-                                width="12"
-                                height="12"
-                                rx="3"
-                                fill={techBadge.bg}
-                                stroke={techBadge.color}
-                                strokeWidth="0.8"
-                              />
-                              <text
-                                x="0"
-                                y="3"
-                                textAnchor="middle"
-                                fontSize="9"
-                                fontWeight="900"
-                                fontFamily="monospace"
-                                fill={techBadge.color}
-                              >
-                                {techBadge.label}
-                              </text>
-                            </g>
-                          )}
+                                <rect
+                                  x="-6"
+                                  y="-6"
+                                  width="12"
+                                  height="12"
+                                  rx="3"
+                                  fill={techBadge.bg}
+                                  stroke={techBadge.color}
+                                  strokeWidth="0.8"
+                                />
+                                <text
+                                  x="0"
+                                  y="3"
+                                  textAnchor="middle"
+                                  fontSize="9"
+                                  fontWeight="900"
+                                  fontFamily="monospace"
+                                  fill={techBadge.color}
+                                >
+                                  {techBadge.label}
+                                </text>
+                              </g>
+                            )}
 
                           {/* Dedo sugerido */}
                           {note.finger && !techBadge && (

@@ -1695,10 +1695,11 @@ export const ExerciseBuilder: React.FC = () => {
             accent: !!h.accent,
           };
 
-          engine.trigger({
-            instrument: h.drumVoice!,
+          const targetInstrument = h.drumVoice === 'hihat' ? 'hihat_closed' : h.drumVoice!;
+          playDrumHit({
+            instrument: targetInstrument,
             time,
-            velocity: 0.85,
+            velocity: 85,
             accent: !!h.accent,
             sticking: isFoot ? null : (h.sticking as 'R' | 'L') || 'R',
             isDoubleRebound,

@@ -72,12 +72,13 @@ export class DrumAudioEngine {
     isDoubleRebound: boolean = false
   ) {
     if (typeof instrumentOrOptions === 'object' && instrumentOrOptions !== null) {
-      drumSampler.playHit(instrumentOrOptions);
+      playDrumHit(instrumentOrOptions);
     } else {
-      drumSampler.playHit({
-        instrument: instrumentOrOptions,
+      const inst = instrumentOrOptions === 'hihat' ? 'hihat_closed' : instrumentOrOptions;
+      playDrumHit({
+        instrument: inst,
         time,
-        velocity,
+        velocity: velocity !== undefined ? (velocity > 1 ? velocity : velocity * 100) : 80,
         accent: isAccent,
         sticking,
         isDoubleRebound,
