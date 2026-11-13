@@ -48,7 +48,15 @@ export const StickingLegend: React.FC = () => {
         <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-white/5 border border-white/10 text-zinc-300 font-bold text-xs">
           ✕
         </span>
-        <span className="text-zinc-400">Platillo</span>
+        <span className="text-zinc-400">HH Cerrado</span>
+      </div>
+
+      {/* HiHat open */}
+      <div className="flex items-center gap-1.5">
+        <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold text-xs shadow-[0_0_8px_rgba(251,191,36,0.3)]">
+          ○
+        </span>
+        <span className="text-zinc-400">HH Abierto</span>
       </div>
     </div>
   );

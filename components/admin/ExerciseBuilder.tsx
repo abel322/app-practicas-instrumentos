@@ -112,16 +112,37 @@ const GUITAR_STRINGS = [
   { num: 6, label: 'E', name: '6ª Cuerda (Mi grave)' },
 ];
 
-const DRUM_ROWS: { voice: DrumVoice; label: string; sub: string }[] = [
-  { voice: 'crash', label: 'Crash', sub: 'Platillo Crash' },
-  { voice: 'ride', label: 'Ride', sub: 'Platillo Ride' },
-  { voice: 'hihat', label: 'Hi-Hat', sub: 'Platillo Hi-Hat' },
-  { voice: 'tom1', label: 'Tom 1', sub: 'Tom Aéreo Agudo' },
-  { voice: 'tom2', label: 'Tom 2', sub: 'Tom Aéreo Medio' },
-  { voice: 'snare', label: 'Snare (Caja)', sub: 'Redoblante / Backbeat' },
-  { voice: 'floor_tom', label: 'Granadero', sub: 'Tom de Piso Profundo' },
-  { voice: 'kick', label: 'Bombo (Kick)', sub: 'Pulso de Pedal' },
+export interface DrumTrackConfig {
+  id: DrumVoice;
+  voice: DrumVoice;
+  label: string;
+  sublabel: string;
+  sub: string;
+  padLabel: string;
+  notation: string;
+}
+
+export const DRUM_TRACKS: DrumTrackConfig[] = [
+  { id: 'crash', voice: 'crash', label: 'Crash', sublabel: 'Platillo Crash', sub: 'Platillo Crash', padLabel: 'Crash', notation: '×' },
+  { id: 'ride', voice: 'ride', label: 'Ride', sublabel: 'Platillo Ride', sub: 'Platillo Ride', padLabel: 'Ride', notation: '×' },
+  { id: 'hihat_open', voice: 'hihat_open', label: 'Hi-Hat Abierto', sublabel: 'Platos Abiertos (○)', sub: 'Platos Abiertos (○)', padLabel: 'HH Abierto', notation: '○' },
+  { id: 'hihat', voice: 'hihat', label: 'Hi-Hat Cerrado', sublabel: 'Platos Cerrados (×)', sub: 'Platos Cerrados (×)', padLabel: 'HH Cerrado', notation: '×' },
+  { id: 'tom1', voice: 'tom1', label: 'Tom 1', sublabel: 'Tom Aéreo Agudo', sub: 'Tom Aéreo Agudo', padLabel: 'Tom 1', notation: '●' },
+  { id: 'tom2', voice: 'tom2', label: 'Tom 2', sublabel: 'Tom Aéreo Medio', sub: 'Tom Aéreo Medio', padLabel: 'Tom 2', notation: '●' },
+  { id: 'snare', voice: 'snare', label: 'Snare', sublabel: 'Redoblante / Caja', sub: 'Redoblante / Caja', padLabel: 'Snare', notation: '●' },
+  { id: 'floor_tom', voice: 'floor_tom', label: 'Granadero', sublabel: 'Tom de Piso / Floor', sub: 'Tom de Piso / Floor', padLabel: 'Granadero', notation: '●' },
+  { id: 'kick', voice: 'kick', label: 'Bombo (Kick)', sublabel: 'Golpe de Pedal', sub: 'Golpe de Pedal', padLabel: 'Bombo', notation: '●' },
 ];
+
+export const DRUM_ROWS = DRUM_TRACKS;
+
+export const normalizeDrumVoice = (v: string): DrumVoice => {
+  const norm = (v || '').toLowerCase().trim();
+  if (norm === 'hihat_closed' || norm === 'hihat' || norm === 'hh') return 'hihat';
+  if (norm === 'hihat_open' || norm === 'open_hihat') return 'hihat_open';
+  if (norm === 'floor' || norm === 'granadero' || norm === 'tom3' || norm === 'floor_tom') return 'floor_tom';
+  return (norm as DrumVoice) || 'snare';
+};
 
 const ACTIVE_INSTRUMENT_KEY = 'studio_builder_active_instrument';
 
@@ -369,7 +390,7 @@ export const ExerciseBuilder: React.FC = () => {
               const hits = exerciseData.hitsData || exerciseData.data;
               loadedNotes = hits.map((h: any) => ({
                 step: h.step !== undefined ? h.step : h.stepIndex !== undefined ? h.stepIndex : 0,
-                drumVoice: h.instrument || h.drumType || h.instrumentKey || 'snare',
+                drumVoice: normalizeDrumVoice(h.instrument || h.drumType || h.instrumentKey || 'snare'),
                 accent: !!h.accent,
                 sticking: h.sticking || 'R',
                 velocity: h.velocity ?? 0.8,
@@ -2514,7 +2535,8 @@ export const ExerciseBuilder: React.FC = () => {
               {[
                 { voice: 'kick', label: 'Bombo', color: 'hover:border-amber-400 hover:text-amber-300' },
                 { voice: 'snare', label: 'Snare', color: 'hover:border-cyan-400 hover:text-cyan-300' },
-                { voice: 'hihat', label: 'Hi-Hat', color: 'hover:border-yellow-400 hover:text-yellow-300' },
+                { voice: 'hihat', label: 'HH Cerrado', color: 'hover:border-yellow-400 hover:text-yellow-300' },
+                { voice: 'hihat_open', label: 'HH Abierto', color: 'hover:border-amber-400 hover:text-amber-300' },
                 { voice: 'tom1', label: 'Tom 1', color: 'hover:border-emerald-400 hover:text-emerald-300' },
                 { voice: 'tom2', label: 'Tom 2', color: 'hover:border-teal-400 hover:text-teal-300' },
                 { voice: 'floor_tom', label: 'Granadero', color: 'hover:border-orange-400 hover:text-orange-300' },
@@ -2876,7 +2898,7 @@ export const ExerciseBuilder: React.FC = () => {
                   {Array.from({ length: stepsPerMeasure }).map((_, stepIdx) => {
                     const globalStep = activeMeasureStart + stepIdx;
                     const isPlayback = isPlaying && playbackActiveStep === globalStep;
-                    const hit = notes.find((n) => n.step === globalStep && n.drumVoice === row.voice);
+                    const hit = notes.find((n) => n.step === globalStep && (n.drumVoice === row.voice || (row.voice === 'hihat' && n.drumVoice === 'hihat_closed') || (row.voice === 'floor_tom' && n.drumVoice === 'granadero')));
 
                     return (
                       <button
@@ -2891,9 +2913,15 @@ export const ExerciseBuilder: React.FC = () => {
                             {hit.accent && (
                               <span className="absolute -top-3 text-[11px] font-black text-cyan-500 dark:text-cyan-400">&gt;</span>
                             )}
-                            <div className="w-6 h-6 rounded-full bg-cyan-400 text-zinc-950 font-bold flex items-center justify-center text-xs shadow-[0_0_12px_rgba(34,211,238,0.5)]">
-                              {hit.sticking || '•'}
-                            </div>
+                            {row.voice === 'hihat_open' || hit.drumVoice === 'hihat_open' ? (
+                              <div className="w-6 h-6 rounded-full bg-amber-400 text-zinc-950 font-bold flex items-center justify-center text-xs shadow-[0_0_14px_rgba(251,191,36,0.7)] ring-2 ring-amber-300 ring-offset-1 ring-offset-black">
+                                {hit.sticking || '○'}
+                              </div>
+                            ) : (
+                              <div className="w-6 h-6 rounded-full bg-cyan-400 text-zinc-950 font-bold flex items-center justify-center text-xs shadow-[0_0_12px_rgba(34,211,238,0.5)]">
+                                {hit.sticking || (row.voice === 'hihat' ? '×' : '•')}
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-white/10 group-hover:bg-slate-400 dark:group-hover:bg-white/20" />

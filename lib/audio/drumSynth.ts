@@ -252,6 +252,39 @@ export class AcousticDrumSampler {
       }
     }
 
+    const isCymbalOrHiHat =
+      config.key === 'hihat_closed' ||
+      config.key === 'hihat_open' ||
+      config.key === 'ride' ||
+      config.key === 'crash';
+
+    // Filtro de brillo (High-Shelf + Presencia) para eliminar el sonido opaco del Hi-Hat
+    const sheenShelf = ctx.createBiquadFilter();
+    sheenShelf.type = 'highshelf';
+    sheenShelf.frequency.setValueAtTime(7500, hitTime);
+    sheenShelf.gain.setValueAtTime(
+      config.key === 'hihat_closed' || config.key === 'hihat_open' ? 9.0 : isCymbalOrHiHat ? 4.5 : 0,
+      hitTime
+    );
+
+    const airPeak = ctx.createBiquadFilter();
+    airPeak.type = 'peaking';
+    airPeak.frequency.setValueAtTime(10500, hitTime);
+    airPeak.Q.setValueAtTime(1.1, hitTime);
+    airPeak.gain.setValueAtTime(
+      config.key === 'hihat_closed' || config.key === 'hihat_open' ? 5.5 : 0,
+      hitTime
+    );
+
+    // Ajustar ganancia y duración del Hi-Hat Cerrado (corto, nítido y brillante) y Abierto (largo con shimmer)
+    if (config.key === 'hihat_closed') {
+      finalGain *= 1.18;
+      playbackRate = 1.03; // Ligero ajuste hacia arriba para mayor definición y brillo
+    } else if (config.key === 'hihat_open') {
+      finalGain *= 1.12;
+      playbackRate = 1.01;
+    }
+
     source.playbackRate.setValueAtTime(playbackRate, hitTime);
     filter.frequency.setValueAtTime(filterFreq, hitTime);
 
@@ -267,8 +300,11 @@ export class AcousticDrumSampler {
       this.activeOpenHiHatGain = gainNode;
     }
 
+    // Conectar cadena: source -> filter -> sheenShelf -> airPeak -> gainNode -> panner -> masterGain
     source.connect(filter);
-    filter.connect(gainNode);
+    filter.connect(sheenShelf);
+    sheenShelf.connect(airPeak);
+    airPeak.connect(gainNode);
 
     if (panner) {
       gainNode.connect(panner);

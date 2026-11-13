@@ -2,12 +2,14 @@ export type DrumVoice =
   | 'kick'
   | 'snare'
   | 'hihat'
+  | 'hihat_closed'
   | 'hihat_open'
   | 'crash'
   | 'ride'
   | 'tom1'
   | 'tom2'
-  | 'floor_tom';
+  | 'floor_tom'
+  | 'granadero';
 
 export type StickingType = 'R' | 'L' | 'K' | 'B';
 

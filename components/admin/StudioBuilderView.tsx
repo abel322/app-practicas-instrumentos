@@ -74,5 +74,8 @@ export { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
 export { drumSampler, playDrumHit, drumSynth, getDrumAudioContext } from '@/lib/audio/drumSynth';
 export type { DrumHitOptions, DrumPiece } from '@/lib/audio/drumSynth';
 
+export { DRUM_TRACKS, DRUM_ROWS } from './ExerciseBuilder';
+export type { DrumTrackConfig } from './ExerciseBuilder';
+
 export const StudioBuilderView = ExerciseBuilder;
 export default ExerciseBuilder;
