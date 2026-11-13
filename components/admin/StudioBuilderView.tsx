@@ -61,6 +61,11 @@ export function validateLegatoTechnique(
 }
 
 import { ExerciseBuilder } from './ExerciseBuilder';
+import { playDrumHit, drumSampler } from '@/lib/audio/drumSynth';
+
+if (typeof window !== 'undefined') {
+  drumSampler.preloadSamples();
+}
 
 export { useWebMidi } from '@/lib/midi/useWebMidi';
 export type { MidiDeviceState } from '@/lib/midi/useWebMidi';

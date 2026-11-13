@@ -196,29 +196,11 @@ class AcousticDrumEngine {
   public resolveConfig(instrument: string, accent?: boolean): SampleConfig {
     const norm = (instrument || 'snare').toLowerCase().trim();
     if (norm === 'kick' || norm === 'bombo') return DRUM_SAMPLE_MAP.kick;
-    if (
-      norm === 'hihat_open' ||
-      norm === 'open_hihat' ||
-      norm === 'hh_open' ||
-      norm.includes('open') ||
-      norm.includes('abierto')
-    ) {
-      return DRUM_SAMPLE_MAP.hihat_open;
-    }
-    if (
-      norm === 'hihat' ||
-      norm === 'hihat_closed' ||
-      norm === 'hh' ||
-      norm.includes('hihat') ||
-      norm.includes('cerrado')
-    ) {
-      return DRUM_SAMPLE_MAP.hihat_closed;
-    }
-    if (norm === 'tom1' || norm === 'high_tom') return DRUM_SAMPLE_MAP.tom1;
-    if (norm === 'tom2' || norm === 'mid_tom') return DRUM_SAMPLE_MAP.tom2;
-    if (norm === 'floor' || norm === 'granadero' || norm === 'tom3' || norm === 'floor_tom') {
-      return DRUM_SAMPLE_MAP.floor;
-    }
+    if (norm.includes('open') || norm.includes('abierto')) return DRUM_SAMPLE_MAP.hihat_open;
+    if (norm.includes('hihat') || norm.includes('cerrado') || norm === 'hh') return DRUM_SAMPLE_MAP.hihat_closed;
+    if (norm === 'tom1') return DRUM_SAMPLE_MAP.tom1;
+    if (norm === 'tom2') return DRUM_SAMPLE_MAP.tom2;
+    if (norm === 'floor' || norm === 'granadero' || norm === 'tom3' || norm === 'floor_tom') return DRUM_SAMPLE_MAP.floor;
     if (norm === 'ride') return DRUM_SAMPLE_MAP.ride;
     if (norm === 'crash') return DRUM_SAMPLE_MAP.crash;
     return accent ? DRUM_SAMPLE_MAP.snare_accent : DRUM_SAMPLE_MAP.snare;
@@ -266,11 +248,7 @@ class AcousticDrumEngine {
     const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
 
     const velNorm =
-      options.velocity !== undefined
-        ? options.velocity > 1.0
-          ? Math.min(1.1, Math.max(0.2, options.velocity / 100))
-          : Math.min(1.1, Math.max(0.2, options.velocity))
-        : 1.0;
+      options.velocity !== undefined ? Math.min(1.1, Math.max(0.2, options.velocity / 100)) : 1.0;
 
     let finalGain = config.baseGain * velNorm;
     let panValue = config.pan;
@@ -309,14 +287,7 @@ class AcousticDrumEngine {
     if (config.key === 'hihat_open') {
       gainNode.gain.setValueAtTime(finalGain, hitTime + 0.3);
       gainNode.gain.exponentialRampToValueAtTime(0.0001, hitTime + duration);
-      const nodeRecord = { gain: gainNode, source };
-      this.activeOpenHiHatNodes.push(nodeRecord);
-      source.onended = () => {
-        const idx = this.activeOpenHiHatNodes.indexOf(nodeRecord);
-        if (idx !== -1) {
-          this.activeOpenHiHatNodes.splice(idx, 1);
-        }
-      };
+      this.activeOpenHiHatNodes.push({ gain: gainNode, source });
     } else {
       gainNode.gain.setValueAtTime(finalGain, hitTime + duration * 0.7);
       gainNode.gain.exponentialRampToValueAtTime(0.0001, hitTime + duration);
