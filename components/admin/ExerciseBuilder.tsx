@@ -138,8 +138,24 @@ export const DRUM_ROWS = DRUM_TRACKS;
 
 export const normalizeDrumVoice = (v: string): DrumVoice => {
   const norm = (v || '').toLowerCase().trim();
-  if (norm === 'hihat_closed' || norm === 'hihat' || norm === 'hh') return 'hihat';
-  if (norm === 'hihat_open' || norm === 'open_hihat') return 'hihat_open';
+  if (
+    norm === 'hihat_open' ||
+    norm === 'open_hihat' ||
+    norm === 'hh_open' ||
+    norm.includes('open') ||
+    norm.includes('abierto')
+  ) {
+    return 'hihat_open';
+  }
+  if (
+    norm === 'hihat_closed' ||
+    norm === 'hihat' ||
+    norm === 'hh' ||
+    norm.includes('hihat') ||
+    norm.includes('cerrado')
+  ) {
+    return 'hihat';
+  }
   if (norm === 'floor' || norm === 'granadero' || norm === 'tom3' || norm === 'floor_tom') return 'floor_tom';
   return (norm as DrumVoice) || 'snare';
 };
@@ -807,8 +823,9 @@ export const ExerciseBuilder: React.FC = () => {
         });
         // Sonido de prueba inmediato con muestras acústicas reales, panorama y sticking
         const isFoot = drumVoice === 'kick';
+        const targetInstrument = drumVoice === 'hihat' ? 'hihat_closed' : drumVoice!;
         playDrumHit({
-          instrument: drumVoice!,
+          instrument: targetInstrument,
           velocity: 90,
           accent: selectedAccent,
           sticking: isFoot ? null : (selectedSticking as 'R' | 'L') || 'R',
@@ -2538,7 +2555,7 @@ export const ExerciseBuilder: React.FC = () => {
               {[
                 { voice: 'kick', label: 'Bombo', color: 'hover:border-amber-400 hover:text-amber-300' },
                 { voice: 'snare', label: 'Snare', color: 'hover:border-cyan-400 hover:text-cyan-300' },
-                { voice: 'hihat', label: 'HH Cerrado', color: 'hover:border-yellow-400 hover:text-yellow-300' },
+                { voice: 'hihat_closed', label: 'HH Cerrado', color: 'hover:border-yellow-400 hover:text-yellow-300' },
                 { voice: 'hihat_open', label: 'HH Abierto', color: 'hover:border-amber-400 hover:text-amber-300' },
                 { voice: 'tom1', label: 'Tom 1', color: 'hover:border-emerald-400 hover:text-emerald-300' },
                 { voice: 'tom2', label: 'Tom 2', color: 'hover:border-teal-400 hover:text-teal-300' },
@@ -2879,8 +2896,9 @@ export const ExerciseBuilder: React.FC = () => {
                   type="button"
                   onClick={() => {
                     const isFoot = row.voice === 'kick';
+                    const targetInstrument = row.voice === 'hihat' ? 'hihat_closed' : row.voice;
                     playDrumHit({
-                      instrument: row.voice,
+                      instrument: targetInstrument,
                       velocity: 95,
                       accent: selectedAccent,
                       sticking: isFoot ? null : (selectedSticking as 'R' | 'L') || 'R',
