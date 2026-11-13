@@ -190,9 +190,11 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       // 1. Disparar los instrumentos en este paso
       const hits = hitsByStep.current.get(stepNumber) || [];
       hits.forEach((hit) => {
+        const isFoot = hit.instrument === 'kick' || (hit.instrument as string) === 'bombo';
         const lastInfo = lastStickingByInstrumentRef.current[hit.instrument];
         const stepDiff = lastInfo ? (stepNumber - lastInfo.step + totalSteps) % totalSteps : 999;
         const isDoubleRebound =
+          !isFoot &&
           Boolean(hit.sticking) &&
           lastInfo?.sticking === hit.sticking &&
           !hit.accent &&
@@ -209,7 +211,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
           time,
           velocity: hit.velocity ?? 0.8,
           accent: !!hit.accent,
-          sticking: (hit.sticking as 'R' | 'L') || 'R',
+          sticking: isFoot ? null : (hit.sticking as 'R' | 'L') || 'R',
           isDoubleRebound,
         });
       });

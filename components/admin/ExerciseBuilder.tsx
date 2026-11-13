@@ -806,11 +806,12 @@ export const ExerciseBuilder: React.FC = () => {
           return next;
         });
         // Sonido de prueba inmediato con muestras acústicas reales, panorama y sticking
+        const isFoot = drumVoice === 'kick';
         playDrumHit({
           instrument: drumVoice!,
           velocity: 90,
           accent: selectedAccent,
-          sticking: (selectedSticking as 'R' | 'L') || 'R',
+          sticking: isFoot ? null : (selectedSticking as 'R' | 'L') || 'R',
           isDoubleRebound: false,
         });
       }
@@ -1661,9 +1662,11 @@ export const ExerciseBuilder: React.FC = () => {
         const hits = notesNow.filter((n) => n.step === stepNumber && n.drumVoice);
         const liveTotalSteps = Math.max(1, totalStepsRef.current);
         hits.forEach((h) => {
+          const isFoot = h.drumVoice === 'kick';
           const lastInfo = lastDrumStickingRef.current[h.drumVoice!];
           const stepDiff = lastInfo ? (stepNumber - lastInfo.step + liveTotalSteps) % liveTotalSteps : 999;
           const isDoubleRebound =
+            !isFoot &&
             Boolean(h.sticking) &&
             lastInfo?.sticking === h.sticking &&
             !h.accent &&
@@ -1680,7 +1683,7 @@ export const ExerciseBuilder: React.FC = () => {
             time,
             velocity: 0.85,
             accent: !!h.accent,
-            sticking: (h.sticking as 'R' | 'L') || 'R',
+            sticking: isFoot ? null : (h.sticking as 'R' | 'L') || 'R',
             isDoubleRebound,
           });
         });
@@ -2546,14 +2549,15 @@ export const ExerciseBuilder: React.FC = () => {
                 <button
                   key={`audition-pad-${pad.voice}`}
                   type="button"
-                  onClick={() =>
+                  onClick={() => {
+                    const isFoot = pad.voice === 'kick';
                     playDrumHit({
                       instrument: pad.voice,
                       velocity: 95,
                       accent: selectedAccent,
-                      sticking: (selectedSticking as 'R' | 'L') || 'R',
-                    })
-                  }
+                      sticking: isFoot ? null : (selectedSticking as 'R' | 'L') || 'R',
+                    });
+                  }}
                   className={`px-2 py-1 rounded-lg bg-zinc-900 border border-white/10 text-[11px] font-semibold text-zinc-300 active:scale-95 transition-all ${pad.color}`}
                   title={`Probar sonido de ${pad.label}`}
                 >
@@ -2873,14 +2877,15 @@ export const ExerciseBuilder: React.FC = () => {
               <div key={row.voice} className="flex items-center h-12 relative border-b border-white/5 group">
                 <button
                   type="button"
-                  onClick={() =>
+                  onClick={() => {
+                    const isFoot = row.voice === 'kick';
                     playDrumHit({
                       instrument: row.voice,
                       velocity: 95,
                       accent: selectedAccent,
-                      sticking: (selectedSticking as 'R' | 'L') || 'R',
-                    })
-                  }
+                      sticking: isFoot ? null : (selectedSticking as 'R' | 'L') || 'R',
+                    });
+                  }}
                   title={`Probar sonido de ${row.label}`}
                   className="w-24 shrink-0 flex flex-col pr-2 text-left hover:opacity-80 active:scale-95 transition-all cursor-pointer group/label"
                 >

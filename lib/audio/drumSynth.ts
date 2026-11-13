@@ -1,5 +1,5 @@
 // lib/audio/drumSynth.ts
-// Motor de Batería Acústica Real basado en Muestras (Samplers Web Audio API)
+// Motor de Batería Acústica de Estudio (Carácter Yamaha) con Sticking Universal R/L
 
 export type DrumPiece =
   | 'kick'
@@ -30,41 +30,40 @@ export interface DrumHitOptions {
 
 interface SampleConfig {
   key: string;
-  midiNote: number; // Estándar General MIDI Percussion (Channel 10)
-  pan: number;      // Posición estéreo realista (-1 izquierda a +1 derecha, perspectiva baterista)
+  midiNote: number;
+  pan: number;
   baseGain: number;
   maxDuration: number;
+  isFootPiece?: boolean; // True solo para el bombo
 }
 
-// Mapeo acústico de los 8 cuerpos de la batería + variaciones
 const DRUM_SAMPLE_MAP: Record<string, SampleConfig> = {
-  kick: { key: 'kick', midiNote: 36, pan: 0.0, baseGain: 1.25, maxDuration: 1.2 },
-  snare: { key: 'snare', midiNote: 38, pan: -0.05, baseGain: 1.15, maxDuration: 1.4 },
-  snare_accent: { key: 'snare_accent', midiNote: 40, pan: 0.0, baseGain: 1.3, maxDuration: 1.6 },
-  hihat_closed: { key: 'hihat_closed', midiNote: 42, pan: -0.45, baseGain: 0.85, maxDuration: 0.45 },
-  hihat_open: { key: 'hihat_open', midiNote: 46, pan: -0.45, baseGain: 0.9, maxDuration: 1.8 },
-  tom1: { key: 'tom1', midiNote: 48, pan: -0.22, baseGain: 1.1, maxDuration: 1.6 },
-  tom2: { key: 'tom2', midiNote: 45, pan: 0.16, baseGain: 1.1, maxDuration: 1.8 },
-  floor: { key: 'floor', midiNote: 41, pan: 0.42, baseGain: 1.2, maxDuration: 2.2 }, // Granadero
-  ride: { key: 'ride', midiNote: 51, pan: 0.38, baseGain: 0.85, maxDuration: 2.8 },
-  crash: { key: 'crash', midiNote: 49, pan: -0.38, baseGain: 0.95, maxDuration: 3.6 },
+  kick: { key: 'kick', midiNote: 36, pan: 0.0, baseGain: 1.3, maxDuration: 1.15, isFootPiece: true },
+  snare: { key: 'snare', midiNote: 38, pan: 0.0, baseGain: 1.15, maxDuration: 1.35 },
+  snare_accent: { key: 'snare_accent', midiNote: 40, pan: 0.0, baseGain: 1.32, maxDuration: 1.55 },
+  hihat_closed: { key: 'hihat_closed', midiNote: 42, pan: -0.36, baseGain: 1.05, maxDuration: 0.34 },
+  hihat_open: { key: 'hihat_open', midiNote: 46, pan: -0.36, baseGain: 1.02, maxDuration: 1.65 },
+  tom1: { key: 'tom1', midiNote: 48, pan: -0.2, baseGain: 1.15, maxDuration: 1.5 },
+  tom2: { key: 'tom2', midiNote: 45, pan: 0.16, baseGain: 1.15, maxDuration: 1.7 },
+  floor: { key: 'floor', midiNote: 41, pan: 0.38, baseGain: 1.22, maxDuration: 2.1 }, // Granadero
+  ride: { key: 'ride', midiNote: 51, pan: 0.36, baseGain: 0.95, maxDuration: 2.6 },
+  crash: { key: 'crash', midiNote: 49, pan: -0.34, baseGain: 1.0, maxDuration: 3.4 },
 };
 
-// Nombres de archivo estándar en Soundfont FluidR3_GM Percussion
 const MIDI_TO_NOTE_NAME: Record<number, string> = {
-  36: 'C2',  // Acoustic Bass Drum (Bombo)
-  38: 'D2',  // Acoustic Snare (Redoblante)
-  40: 'E2',  // Electric/Rim Snare (Acento)
-  41: 'F2',  // Low Floor Tom (Granadero)
-  42: 'Gb2', // Closed Hi-Hat
-  45: 'A2',  // Low-Mid Tom (Tom 2)
-  46: 'Bb2', // Open Hi-Hat
-  48: 'C3',  // Hi-Mid Tom (Tom 1)
-  49: 'Db3', // Crash Cymbal 1
-  51: 'Eb3', // Ride Cymbal 1
+  36: 'C2',  // Bombo acústico
+  38: 'D2',  // Snare acústico
+  40: 'E2',  // Snare Rimshot / Acento
+  41: 'F2',  // Granadero / Floor Tom
+  42: 'Gb2', // Hi-Hat Cerrado
+  45: 'A2',  // Tom 2
+  46: 'Bb2', // Hi-Hat Abierto
+  48: 'C3',  // Tom 1
+  49: 'Db3', // Crash
+  51: 'Eb3', // Ride
 };
 
-export class AcousticDrumSampler {
+class YamahaAcousticDrumSampler {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
@@ -73,7 +72,12 @@ export class AcousticDrumSampler {
   private isLoaded = false;
   private activeOpenHiHatGain: GainNode | null = null;
 
-  private sampleBaseUrl =
+  // Banco primario de alta definición acústica (timbre brillante y definido tipo Yamaha/Zildjian)
+  private primarySampleBaseUrl =
+    'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/MusyngKite/standard_drum_kit-mp3';
+
+  // Banco secundario de respaldo inmediato
+  private fallbackSampleBaseUrl =
     'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/standard_drum_kit-mp3';
 
   public getContext(): AudioContext {
@@ -81,16 +85,15 @@ export class AcousticDrumSampler {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       this.ctx = new AudioCtx();
 
-      // Compresor de Bus de Batería para pegada acústica natural
       this.compressor = this.ctx.createDynamicsCompressor();
       this.compressor.threshold.setValueAtTime(-14, this.ctx.currentTime);
       this.compressor.knee.setValueAtTime(10, this.ctx.currentTime);
-      this.compressor.ratio.setValueAtTime(4, this.ctx.currentTime);
-      this.compressor.attack.setValueAtTime(0.004, this.ctx.currentTime);
+      this.compressor.ratio.setValueAtTime(3.8, this.ctx.currentTime);
+      this.compressor.attack.setValueAtTime(0.003, this.ctx.currentTime);
       this.compressor.release.setValueAtTime(0.18, this.ctx.currentTime);
 
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.setValueAtTime(1.15, this.ctx.currentTime);
+      this.masterGain.gain.setValueAtTime(1.18, this.ctx.currentTime);
 
       this.masterGain.connect(this.compressor);
       this.compressor.connect(this.ctx.destination);
@@ -103,6 +106,13 @@ export class AcousticDrumSampler {
     }
 
     return this.ctx!;
+  }
+
+  private async fetchAndDecode(url: string, ctx: AudioContext): Promise<AudioBuffer> {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const arrayBuffer = await response.arrayBuffer();
+    return await ctx.decodeAudioData(arrayBuffer);
   }
 
   public async preloadSamples(): Promise<void> {
@@ -118,27 +128,22 @@ export class AcousticDrumSampler {
           const noteName = MIDI_TO_NOTE_NAME[item.midiNote];
           if (!noteName) return;
 
-          // Si ya está en caché, omitir
           if (this.sampleBuffers.has(item.key)) return;
 
-          // Intentar primero desde /soundfonts/drums/${noteName}.mp3 (estático local Next.js con latencia 0)
-          // Fallback a CDN raw github, y luego al baseUrl configurado
+          // Intentar local -> primario MusyngKite -> secundario FluidR3_GM
           const candidateUrls = [
             `/soundfonts/drums/${noteName}.mp3`,
-            `https://raw.githubusercontent.com/dave4mpls/midi-js-soundfonts-with-drums/master/FluidR3_GM/drums-mp3/${noteName}.mp3`,
-            `${this.sampleBaseUrl}/${noteName}.mp3`,
+            `${this.primarySampleBaseUrl}/${noteName}.mp3`,
+            `${this.fallbackSampleBaseUrl}/${noteName}.mp3`,
           ];
 
           for (const url of candidateUrls) {
             try {
-              const response = await fetch(url);
-              if (!response.ok) continue;
-              const arrayBuffer = await response.arrayBuffer();
-              const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-              this.sampleBuffers.set(item.key, audioBuffer);
+              const buffer = await this.fetchAndDecode(url, ctx);
+              this.sampleBuffers.set(item.key, buffer);
               break;
-            } catch (err) {
-              // Probar siguiente origen
+            } catch {
+              // Probar siguiente
             }
           }
         })
@@ -149,7 +154,6 @@ export class AcousticDrumSampler {
     }
   }
 
-  // Normaliza alias en español/inglés hacia la clave interna del kit
   public resolveSampleConfig(instrument: string, accent?: boolean): SampleConfig {
     const norm = (instrument || 'snare').toLowerCase().trim();
 
@@ -164,7 +168,6 @@ export class AcousticDrumSampler {
     if (norm === 'ride') return DRUM_SAMPLE_MAP.ride;
     if (norm === 'crash') return DRUM_SAMPLE_MAP.crash;
 
-    // Redoblante / Snare / Pad
     if (accent) return DRUM_SAMPLE_MAP.snare_accent;
     return DRUM_SAMPLE_MAP.snare;
   }
@@ -183,29 +186,31 @@ export class AcousticDrumSampler {
       this.sampleBuffers.get(config.key) ||
       (config.key === 'snare_accent' ? this.sampleBuffers.get('snare') : undefined);
 
-    // Si aún no termina de descargar el MP3 en los primeros milisegundos, usar síntesis de respaldo
     if (!buffer) {
       this.preloadSamples();
       this.playFallbackTransient(ctx, hitTime, config.key, isAccented);
       return;
     }
 
-    // Grupo de corte de Hi-Hat (Choke): el hi-hat cerrado apaga el abierto
+    // Choke Group: el Hi-Hat Cerrado corta de inmediato la cola del Hi-Hat Abierto
     if (config.key === 'hihat_closed' && this.activeOpenHiHatGain) {
       try {
         this.activeOpenHiHatGain.gain.cancelScheduledValues(hitTime);
         this.activeOpenHiHatGain.gain.setValueAtTime(this.activeOpenHiHatGain.gain.value, hitTime);
-        this.activeOpenHiHatGain.gain.exponentialRampToValueAtTime(0.0001, hitTime + 0.035);
-      } catch (e) {}
+        this.activeOpenHiHatGain.gain.exponentialRampToValueAtTime(0.0001, hitTime + 0.03);
+      } catch {}
       this.activeOpenHiHatGain = null;
     }
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
 
-    // Filtro de timbre para diferenciar zona de golpeo de mano derecha vs izquierda
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
+    const lowpass = ctx.createBiquadFilter();
+    lowpass.type = 'lowpass';
+
+    const highShelf = ctx.createBiquadFilter();
+    highShelf.type = 'highshelf';
+    highShelf.frequency.setValueAtTime(6800, hitTime);
 
     const gainNode = ctx.createGain();
     const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
@@ -213,98 +218,81 @@ export class AcousticDrumSampler {
     let velNorm = 1.0;
     if (options.velocity !== undefined) {
       if (options.velocity > 1.0) {
-        velNorm = Math.min(1.2, Math.max(0.2, options.velocity / 100));
+        velNorm = Math.min(1.25, Math.max(0.2, options.velocity / 100));
       } else {
-        velNorm = Math.min(1.2, Math.max(0.2, options.velocity * 1.1));
+        velNorm = Math.min(1.25, Math.max(0.2, options.velocity * 1.1));
       }
     }
 
     let finalGain = config.baseGain * velNorm;
     let panValue = config.pan;
     let playbackRate = 1.0;
-    let filterFreq = 16000;
+    let lowpassFreq = 18000;
+    let highShelfGain = 0;
+    let duration = config.maxDuration;
 
-    // Diferenciación acústica para Sticking (R vs L vs Acento >) en redoblante/pads
-    const isSnareOrPad = config.key === 'snare' || config.key === 'snare_accent';
-    if (isSnareOrPad) {
-      if (isAccented) {
-        finalGain *= 1.15;
-        filterFreq = 18000;
-        playbackRate = 1.01;
-        panValue = isRight ? 0.14 : isLeft ? -0.14 : 0.0;
-      } else if (isRight) {
-        // Mano derecha (R): ligera posición derecha, punta de baqueta más definida
-        finalGain *= 0.68;
-        panValue = 0.24;
-        playbackRate = 1.018; // +30 cents aprox
-        filterFreq = 7800;
-      } else if (isLeft) {
-        // Mano izquierda (L): ligera posición izquierda, cuerpo más redondo y cálido
-        finalGain *= 0.6;
-        panValue = -0.24;
-        playbackRate = 0.982; // -31 cents aprox
-        filterFreq = 5800;
-      }
-
-      // Rebote natural de doble golpe (RR o LL) sin acento
-      if (options.isDoubleRebound && !isAccented) {
-        finalGain *= 0.85;
-      }
+    // Brillo acústico realista para Hi-Hats y Platos Yamaha
+    if (config.key === 'hihat_closed') {
+      highShelfGain = 6.5;
+      playbackRate = 1.02;
+    } else if (config.key === 'hihat_open') {
+      highShelfGain = 5.5;
+    } else if (config.key === 'ride' || config.key === 'crash') {
+      highShelfGain = 3.5;
     }
 
-    const isCymbalOrHiHat =
-      config.key === 'hihat_closed' ||
-      config.key === 'hihat_open' ||
-      config.key === 'ride' ||
-      config.key === 'crash';
+    // Diferenciación real de Sticking (R vs L vs Acento >) para TODOS los elementos excepto el Bombo
+    if (!config.isFootPiece) {
+      if (isAccented) {
+        // Golpe Acentuado (>): máxima energía, brillo abierto y ataque completo en cualquier mano
+        finalGain *= 1.28;
+        lowpassFreq = 19000;
+        highShelfGain += 3.0;
+        playbackRate *= 1.012;
+        panValue = Math.max(-0.6, Math.min(0.6, config.pan + (isRight ? 0.08 : isLeft ? -0.08 : 0)));
+      } else if (isRight) {
+        // Mano Derecha (R): golpe líder definido, punta brillante, ligera apertura a la derecha
+        finalGain *= 1.0;
+        lowpassFreq = 16500;
+        highShelfGain += 2.0;
+        playbackRate *= 1.022; // +38 cents aprox (zona más cercana al borde/punta)
+        panValue = Math.max(-0.65, Math.min(0.65, config.pan + 0.14));
+      } else if (isLeft) {
+        // Mano Izquierda (L): golpe de acompañamiento (~28% más suave), timbre más cálido y grave
+        finalGain *= 0.72;
+        lowpassFreq = 7800; // Punta de baqueta menos brillante que la mano derecha
+        highShelfGain -= 2.5;
+        playbackRate *= 0.976; // -42 cents aprox (golpe ligeramente más interno/cálido)
+        panValue = Math.max(-0.65, Math.min(0.65, config.pan - 0.14));
+        duration *= 0.88;
+      }
 
-    // Filtro de brillo (High-Shelf + Presencia) para eliminar el sonido opaco del Hi-Hat
-    const sheenShelf = ctx.createBiquadFilter();
-    sheenShelf.type = 'highshelf';
-    sheenShelf.frequency.setValueAtTime(7500, hitTime);
-    sheenShelf.gain.setValueAtTime(
-      config.key === 'hihat_closed' || config.key === 'hihat_open' ? 9.0 : isCymbalOrHiHat ? 4.5 : 0,
-      hitTime
-    );
-
-    const airPeak = ctx.createBiquadFilter();
-    airPeak.type = 'peaking';
-    airPeak.frequency.setValueAtTime(10500, hitTime);
-    airPeak.Q.setValueAtTime(1.1, hitTime);
-    airPeak.gain.setValueAtTime(
-      config.key === 'hihat_closed' || config.key === 'hihat_open' ? 5.5 : 0,
-      hitTime
-    );
-
-    // Ajustar ganancia y duración del Hi-Hat Cerrado (corto, nítido y brillante) y Abierto (largo con shimmer)
-    if (config.key === 'hihat_closed') {
-      finalGain *= 1.18;
-      playbackRate = 1.03; // Ligero ajuste hacia arriba para mayor definición y brillo
-    } else if (config.key === 'hihat_open') {
-      finalGain *= 1.12;
-      playbackRate = 1.01;
+      // Rebote natural en golpes dobles consecutivos (RR o LL) sin acento
+      if (options.isDoubleRebound && !isAccented) {
+        finalGain *= 0.82;
+        playbackRate *= 0.99;
+        duration *= 0.85;
+      }
     }
 
     source.playbackRate.setValueAtTime(playbackRate, hitTime);
-    filter.frequency.setValueAtTime(filterFreq, hitTime);
-
+    lowpass.frequency.setValueAtTime(lowpassFreq, hitTime);
+    highShelf.gain.setValueAtTime(highShelfGain, hitTime);
     if (panner) {
       panner.pan.setValueAtTime(panValue, hitTime);
     }
 
     gainNode.gain.setValueAtTime(finalGain, hitTime);
-    gainNode.gain.setValueAtTime(finalGain, hitTime + config.maxDuration * 0.75);
-    gainNode.gain.exponentialRampToValueAtTime(0.0001, hitTime + config.maxDuration);
+    gainNode.gain.setValueAtTime(finalGain, hitTime + duration * 0.72);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, hitTime + duration);
 
     if (config.key === 'hihat_open') {
       this.activeOpenHiHatGain = gainNode;
     }
 
-    // Conectar cadena: source -> filter -> sheenShelf -> airPeak -> gainNode -> panner -> masterGain
-    source.connect(filter);
-    filter.connect(sheenShelf);
-    sheenShelf.connect(airPeak);
-    airPeak.connect(gainNode);
+    source.connect(lowpass);
+    lowpass.connect(highShelf);
+    highShelf.connect(gainNode);
 
     if (panner) {
       gainNode.connect(panner);
@@ -314,7 +302,7 @@ export class AcousticDrumSampler {
     }
 
     source.start(hitTime);
-    source.stop(hitTime + config.maxDuration + 0.05);
+    source.stop(hitTime + duration + 0.05);
   }
 
   // Respaldo inmediato mientras se descargan los samples por primera vez
@@ -333,9 +321,8 @@ export class AcousticDrumSampler {
   }
 }
 
-export const drumSampler = new AcousticDrumSampler();
+export const drumSampler = new YamahaAcousticDrumSampler();
 
-// Exports compatibles con todas las vistas existentes (PracticePage, DrumLab, StudioBuilderView)
 export function getDrumAudioContext(): AudioContext {
   return drumSampler.getContext();
 }
@@ -348,4 +335,3 @@ export const drumSynth = {
   play: (options: DrumHitOptions) => drumSampler.playHit(options),
   preload: () => drumSampler.preloadSamples(),
 };
-
