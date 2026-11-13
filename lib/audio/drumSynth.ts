@@ -35,13 +35,13 @@ interface SampleConfig {
   isFootPiece?: boolean;
 }
 
-// Muestras acústicas limpias de estudio (sin EQ agresivo ni reverb que sature los platos)
 const DRUM_SAMPLE_MAP: Record<string, SampleConfig> = {
+  // Tambores intactos (mismo sonido que ya funcionaba bien)
   kick: {
     key: 'kick',
     urls: [
       'https://cdn.jsdelivr.net/gh/Tonejs/audio@master/drum-samples/acoustic-kit/kick.mp3',
-      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/standard_drum_kit-mp3/C2.mp3',
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/percussion-mp3/C2.mp3',
     ],
     pan: 0.0,
     baseGain: 1.05,
@@ -52,7 +52,7 @@ const DRUM_SAMPLE_MAP: Record<string, SampleConfig> = {
     key: 'snare',
     urls: [
       'https://cdn.jsdelivr.net/gh/Tonejs/audio@master/drum-samples/acoustic-kit/snare.mp3',
-      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/standard_drum_kit-mp3/D2.mp3',
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/percussion-mp3/D2.mp3',
     ],
     pan: 0.0,
     baseGain: 0.95,
@@ -61,37 +61,18 @@ const DRUM_SAMPLE_MAP: Record<string, SampleConfig> = {
   snare_accent: {
     key: 'snare_accent',
     urls: [
-      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/standard_drum_kit-mp3/E2.mp3',
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/percussion-mp3/E2.mp3',
       'https://cdn.jsdelivr.net/gh/Tonejs/audio@master/drum-samples/acoustic-kit/snare.mp3',
     ],
     pan: 0.0,
     baseGain: 1.05,
     maxDuration: 1.35,
   },
-  hihat_closed: {
-    key: 'hihat_closed',
-    urls: [
-      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/standard_drum_kit-mp3/Gb2.mp3',
-      'https://cdn.jsdelivr.net/gh/Tonejs/audio@master/drum-samples/acoustic-kit/hihat.mp3',
-    ],
-    pan: -0.32,
-    baseGain: 0.85,
-    maxDuration: 0.22, // Corto y definido (platos cerrados)
-  },
-  hihat_open: {
-    key: 'hihat_open',
-    urls: [
-      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/standard_drum_kit-mp3/Bb2.mp3',
-    ],
-    pan: -0.32,
-    baseGain: 0.82,
-    maxDuration: 1.35, // Abierto y sostenido (platos abiertos)
-  },
   tom1: {
     key: 'tom1',
     urls: [
       'https://cdn.jsdelivr.net/gh/Tonejs/audio@master/drum-samples/acoustic-kit/tom1.mp3',
-      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/standard_drum_kit-mp3/C3.mp3',
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/percussion-mp3/C3.mp3',
     ],
     pan: -0.2,
     baseGain: 0.95,
@@ -101,7 +82,7 @@ const DRUM_SAMPLE_MAP: Record<string, SampleConfig> = {
     key: 'tom2',
     urls: [
       'https://cdn.jsdelivr.net/gh/Tonejs/audio@master/drum-samples/acoustic-kit/tom2.mp3',
-      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/standard_drum_kit-mp3/A2.mp3',
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/percussion-mp3/A2.mp3',
     ],
     pan: 0.15,
     baseGain: 0.95,
@@ -111,28 +92,55 @@ const DRUM_SAMPLE_MAP: Record<string, SampleConfig> = {
     key: 'floor',
     urls: [
       'https://cdn.jsdelivr.net/gh/Tonejs/audio@master/drum-samples/acoustic-kit/tom3.mp3',
-      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/standard_drum_kit-mp3/F2.mp3',
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/percussion-mp3/F2.mp3',
     ],
     pan: 0.35,
     baseGain: 1.0,
     maxDuration: 1.8,
   },
+
+  // Hi-Hat Cerrado y Abierto acústicos reales (carpeta percussion-mp3 verificada)
+  hihat_closed: {
+    key: 'hihat_closed',
+    urls: [
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/MusyngKite/percussion-mp3/Gb2.mp3',
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/percussion-mp3/Gb2.mp3',
+      'https://cdn.jsdelivr.net/gh/Tonejs/audio@master/drum-samples/acoustic-kit/hihat.mp3',
+    ],
+    pan: -0.32,
+    baseGain: 0.92,
+    maxDuration: 0.24,
+  },
+  hihat_open: {
+    key: 'hihat_open',
+    urls: [
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/MusyngKite/percussion-mp3/Bb2.mp3',
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/percussion-mp3/Bb2.mp3',
+    ],
+    pan: -0.32,
+    baseGain: 0.9,
+    maxDuration: 1.4,
+  },
+
+  // Ride y Crash restaurados desde percussion-mp3
   ride: {
     key: 'ride',
     urls: [
-      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/standard_drum_kit-mp3/Eb3.mp3',
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/percussion-mp3/Eb3.mp3',
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/MusyngKite/percussion-mp3/Eb3.mp3',
     ],
     pan: 0.34,
-    baseGain: 0.78,
+    baseGain: 0.85,
     maxDuration: 2.2,
   },
   crash: {
     key: 'crash',
     urls: [
-      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/standard_drum_kit-mp3/Db3.mp3',
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/percussion-mp3/Db3.mp3',
+      'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/MusyngKite/percussion-mp3/Db3.mp3',
     ],
     pan: -0.32,
-    baseGain: 0.78,
+    baseGain: 0.85,
     maxDuration: 2.6,
   },
 };
@@ -225,7 +233,7 @@ class AcousticDrumEngine {
       return;
     }
 
-    // Choke: al golpear Hi-Hat Cerrado, cierra el Hi-Hat Abierto
+    // Choke: al golpear Hi-Hat Cerrado, cierra suavemente el Hi-Hat Abierto
     if (config.key === 'hihat_closed' && this.activeOpenHiHatNodes.length > 0) {
       this.activeOpenHiHatNodes.forEach(({ gain, source }) => {
         try {
@@ -256,7 +264,7 @@ class AcousticDrumEngine {
     let lowpassFreq = 18000;
     let duration = config.maxDuration;
 
-    // Diferencia entre mano derecha (R) e izquierda (L) excepto Bombo
+    // Diferencia entre mano derecha (R) e izquierda (L) en todos los elementos excepto Bombo
     if (!config.isFootPiece) {
       if (isAccented) {
         finalGain *= 1.18;
@@ -285,7 +293,7 @@ class AcousticDrumEngine {
 
     gainNode.gain.setValueAtTime(finalGain, hitTime);
     if (config.key === 'hihat_open') {
-      gainNode.gain.setValueAtTime(finalGain, hitTime + 0.3);
+      gainNode.gain.setValueAtTime(finalGain, hitTime + 0.35);
       gainNode.gain.exponentialRampToValueAtTime(0.0001, hitTime + duration);
       this.activeOpenHiHatNodes.push({ gain: gainNode, source });
     } else {
