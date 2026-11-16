@@ -9,6 +9,7 @@ import { DrumScoreRenderer } from './DrumScoreSVG';
 import { TransportBar } from './TransportBar';
 import { StickingLegend } from './StickingLegend';
 import { getLocalExercises } from '@/lib/exercises/customExercisesStorage';
+import { analyzeMeasureDuplicates } from '@/lib/music/measureFingerprint';
 import {
   normalizeSubdivisionKey,
   getStepsForSubdivision,
@@ -166,7 +167,22 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     for (let i = 0; i < totalSteps; i++) {
       map.set(i, []);
     }
-    const hits = activeExercise.hitsData || (activeExercise as any).data || [];
+    const rawHits = activeExercise.hitsData || (activeExercise as any).data || [];
+    const hits =
+      Array.isArray(rawHits) && rawHits.length > 0
+        ? rawHits
+        : Array.isArray((activeExercise as any).measures)
+        ? (activeExercise as any).measures.flatMap((m: any, mIdx: number) =>
+            (m.notes || m.hits || []).map((n: any) => ({
+              ...n,
+              step:
+                n.step !== undefined
+                  ? n.step
+                  : mIdx * stepsPerMeasure + (n.stepIndex ?? 0),
+            }))
+          )
+        : [];
+
     hits.forEach((hit: any) => {
       const step = hit.step !== undefined ? hit.step : hit.stepIndex !== undefined ? hit.stepIndex : 0;
       if (step >= 0 && step < totalSteps) {
@@ -180,7 +196,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       }
     });
     hitsByStep.current = map;
-  }, [activeExercise, totalSteps]);
+  }, [activeExercise, totalSteps, stepsPerMeasure]);
 
   // Planificador (Scheduler) de notas de Web Audio API con detección de rebote doble y sticking estéreo
   const scheduleNote = useCallback(
@@ -476,26 +492,94 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     };
   }, []);
 
+  // Compases estructurados del ejercicio completo para la cinta horizontal continua
+  const measures = useMemo(() => {
+    if (
+      Array.isArray((activeExercise as any).measures) &&
+      (activeExercise as any).measures.length > 0
+    ) {
+      return (activeExercise as any).measures.map((m: any, idx: number) => ({
+        measureIndex: idx,
+        measureNumber: idx + 1,
+        notes: (m.notes || m.hits || []).map((n: any) => ({
+          ...n,
+          stepIndex:
+            n.stepIndex !== undefined
+              ? n.stepIndex
+              : n.step !== undefined
+              ? n.step % stepsPerMeasure
+              : 0,
+          step:
+            n.step !== undefined
+              ? n.step
+              : idx * stepsPerMeasure + (n.stepIndex || 0),
+          instrument: n.instrument || n.drumType || n.instrumentKey || 'snare',
+          accent: !!n.accent,
+          sticking: n.sticking || 'R',
+          velocity: n.velocity ?? 0.8,
+        })),
+      }));
+    }
+
+    const hits = activeExercise.hitsData || (activeExercise as any).data || [];
+    return Array.from({ length: totalMeasures }).map((_, mIdx) => {
+      const mStart = mIdx * stepsPerMeasure;
+      const mEnd = mStart + stepsPerMeasure;
+      const mNotes = hits
+        .filter((h: any) => {
+          const s =
+            h.step !== undefined
+              ? h.step
+              : h.stepIndex !== undefined
+              ? h.stepIndex
+              : 0;
+          return s >= mStart && s < mEnd;
+        })
+        .map((h: any) => {
+          const s =
+            h.step !== undefined
+              ? h.step
+              : h.stepIndex !== undefined
+              ? h.stepIndex
+              : 0;
+          return {
+            ...h,
+            step: s,
+            stepIndex: s - mStart,
+            instrument: h.instrument || h.drumType || h.instrumentKey || 'snare',
+            accent: !!h.accent,
+            sticking: h.sticking || 'R',
+            velocity: h.velocity ?? 0.8,
+          };
+        });
+
+      return {
+        measureIndex: mIdx,
+        measureNumber: mIdx + 1,
+        notes: mNotes,
+      };
+    });
+  }, [activeExercise, totalMeasures, stepsPerMeasure]);
+
+  const measureAnalysis = useMemo(() => {
+    return analyzeMeasureDuplicates(measures);
+  }, [measures]);
+
+  const handleSelectMeasure = useCallback(
+    (measureIdx: number) => {
+      const newStep = measureIdx * stepsPerMeasure;
+      setActiveStep(newStep);
+      schedulerStepRef.current = newStep;
+      anchorStepRef.current = newStep;
+      setProgress(0);
+    },
+    [stepsPerMeasure]
+  );
+
   // Hits filtrados y normalizados para el compás activo (0 a stepsPerMeasure - 1)
   const activeMeasureHits = useMemo(() => {
-    const start = activeMeasureIndex * stepsPerMeasure;
-    const end = start + stepsPerMeasure;
-    const hits = activeExercise.hitsData || (activeExercise as any).data || [];
-    return hits
-      .map((h: any) => ({
-        step: h.step !== undefined ? h.step : h.stepIndex !== undefined ? h.stepIndex : 0,
-        instrument: h.instrument || h.drumType || h.instrumentKey || 'snare',
-        accent: !!h.accent,
-        sticking: h.sticking || 'R',
-        velocity: h.velocity ?? 0.8,
-      }))
-      .filter((h: any) => h.step >= start && h.step < end)
-      .map((h: any) => ({
-        ...h,
-        step: h.step - start,
-        stepIndex: h.step - start,
-      }));
-  }, [activeExercise, activeMeasureIndex, stepsPerMeasure]);
+    return measures[activeMeasureIndex]?.notes || [];
+  }, [measures, activeMeasureIndex]);
 
   return (
     <div
@@ -535,15 +619,21 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
             </div>
           </header>
 
-          {/* Lienzo del Compás de Batería Fijo (Sin scroll, 100% visible) */}
+          {/* Lienzo de Cinta Horizontal Continua de Batería */}
           <main className="w-full flex-1 min-h-0 flex flex-col justify-center items-stretch bg-[#10131c] rounded-2xl border border-slate-800/80 overflow-hidden shadow-2xl my-2 p-2 sm:p-4 relative">
             <div className="w-full h-full relative flex flex-col justify-center">
               <DrumScoreRenderer
+                measures={measures}
                 hits={activeMeasureHits}
+                totalMeasures={totalMeasures}
+                activeMeasureIndex={activeMeasureIndex}
                 stepsPerMeasure={stepsPerMeasure}
                 currentStepInMeasure={stepInMeasure}
+                progress={progress}
                 timeSignature={activeExercise.timeSignature}
                 isPlaying={isPlaying}
+                onSelectMeasure={handleSelectMeasure}
+                isFullscreen={true}
               />
             </div>
           </main>
@@ -639,26 +729,44 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
             </div>
           </div>
 
-          {/* Pentagrama SVG de Batería con Paginación Fija (Zero-Jerk Flip) */}
+          {/* Pentagrama de Batería en Cinta Horizontal Continua (Compás Actual + Siguiente) */}
           <div className="w-full relative overflow-hidden rounded-2xl glass-panel p-3 sm:p-5 border border-white/10 shadow-2xl">
             <DrumScoreRenderer
+              measures={measures}
               hits={activeMeasureHits}
+              totalMeasures={totalMeasures}
+              activeMeasureIndex={activeMeasureIndex}
               stepsPerMeasure={stepsPerMeasure}
               currentStepInMeasure={stepInMeasure}
+              progress={progress}
               timeSignature={activeExercise.timeSignature}
               isPlaying={isPlaying}
+              onSelectMeasure={handleSelectMeasure}
+              isFullscreen={false}
             />
 
             {/* Indicador de posición visual y estado del compás */}
-            <div className="w-full mt-3 flex items-center justify-between px-2 text-xs text-zinc-500 font-mono border-t border-white/5 pt-2">
-              <div className="flex items-center gap-2">
+            <div className="w-full mt-3 flex flex-wrap items-center justify-between gap-2 px-2 text-xs text-zinc-500 font-mono border-t border-white/5 pt-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
                 <span>RUNWAY SCANNER:</span>
                 <span className="text-zinc-300 font-medium">
                   {isPlaying
                     ? `Paso ${stepInMeasure + 1} / ${stepsPerMeasure} (Compás ${activeMeasureIndex + 1}/${totalMeasures})`
-                    : 'En pausa'}
+                    : `Compás ${activeMeasureIndex + 1}/${totalMeasures} • En pausa`}
                 </span>
+                {measureAnalysis[activeMeasureIndex]?.isDuplicate && (
+                  <span className="text-amber-300 border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 rounded text-[10px]">
+                    ↻ =C.{measureAnalysis[activeMeasureIndex].sourceMeasureNumber} (
+                    {measureAnalysis[activeMeasureIndex].occurrenceIndex}/
+                    {measureAnalysis[activeMeasureIndex].totalOccurrences})
+                  </span>
+                )}
+                {measureAnalysis[activeMeasureIndex]?.isPatternChange && (
+                  <span className="text-fuchsia-300 border border-fuchsia-500/40 bg-fuchsia-950/60 px-1.5 py-0.5 rounded text-[10px]">
+                    ⚡ CAMBIO DE PATRÓN
+                  </span>
+                )}
               </div>
 
               <div className="flex items-center gap-3">

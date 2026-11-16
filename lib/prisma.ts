@@ -41,7 +41,7 @@ export async function getExercises(): Promise<DrumExerciseData[]> {
     });
 
     if (dbExercises && dbExercises.length > 0) {
-      return dbExercises.map((ex) => ({
+      const dbList = dbExercises.map((ex) => ({
         id: ex.id,
         slug: ex.slug,
         title: ex.title,
@@ -55,6 +55,10 @@ export async function getExercises(): Promise<DrumExerciseData[]> {
         hitsData: (Array.isArray(ex.hitsData) ? ex.hitsData : []) as any,
         createdAt: ex.createdAt,
       }));
+
+      const dbSlugs = new Set(dbList.map((e) => e.slug));
+      const missingSeeds = INITIAL_EXERCISES.filter((s) => !dbSlugs.has(s.slug));
+      return [...dbList, ...missingSeeds];
     }
   } catch (error) {
     console.warn('⚠️ [Prisma Drum] Usando colección predefinida (fallback seguro a seedData):', (error as any)?.message || error);

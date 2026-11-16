@@ -35,13 +35,26 @@ export default async function PracticePage({ params }: PracticePageProps) {
   const { slug } = await params;
   const exercise = await getExerciseBySlug(slug);
 
-  if (!exercise) {
-    notFound();
-  }
+  const safeExercise = exercise ?? {
+    id: `local_${slug}`,
+    slug,
+    title: slug
+      .split('-')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' '),
+    category: 'Rudimentos' as const,
+    difficulty: 'Intermedio' as const,
+    bpmDefault: 100,
+    timeSignature: '4/4' as const,
+    totalSteps: 16,
+    subdivision: '1/16',
+    stepsPerMeasure: 16,
+    hitsData: [],
+  };
 
   return (
     <main className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 flex flex-col justify-center">
-      <PracticePlayer exercise={exercise} />
+      <PracticePlayer exercise={safeExercise} />
     </main>
   );
 }

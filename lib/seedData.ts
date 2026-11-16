@@ -1,4 +1,4 @@
-import { DrumExerciseData } from '@/types/drum';
+import type { DrumExerciseData } from '@/types/drum';
 
 export const INITIAL_EXERCISES: DrumExerciseData[] = [
   {
@@ -221,6 +221,111 @@ export const INITIAL_EXERCISES: DrumExerciseData[] = [
       { step: 14, instrument: "ride", sticking: "R", accent: false, velocity: 0.7 },
       { step: 14, instrument: "kick", sticking: "K", accent: false, velocity: 0.85 },
       { step: 15, instrument: "tom2", sticking: "L", accent: false, velocity: 0.7 },
+    ]
+  },
+  {
+    id: "ex_rudimentos_orquestado_1",
+    slug: "ejercicio-1-de-rudimentos-orquestado",
+    title: "Ejercicio 1 de Rudimentos Orquestado",
+    category: "Rudimentos",
+    difficulty: "Intermedio",
+    bpmDefault: 100,
+    timeSignature: "4/4",
+    totalSteps: 64,
+    subdivision: "1/16",
+    stepsPerMeasure: 16,
+    description: "Estudio orquestado en 4 compases: Compás 1, 2 y 3 ejecutan la misma frase de paradiddle orquestada entre caja y toms, y el Compás 4 concluye con un fill de semicorcheas descendente alrededor del set.",
+    hitsData: [
+      // ---------------------------------------------------------
+      // COMPÁS 1 (Pasos 0 a 15)
+      // ---------------------------------------------------------
+      { step: 0, instrument: "snare", sticking: "R", accent: true, velocity: 1.0 },
+      { step: 0, instrument: "kick", sticking: "K", accent: true, velocity: 1.0 },
+      { step: 1, instrument: "snare", sticking: "L", accent: false, velocity: 0.65 },
+      { step: 2, instrument: "tom1", sticking: "R", accent: false, velocity: 0.75 },
+      { step: 3, instrument: "tom1", sticking: "R", accent: false, velocity: 0.75 },
+      { step: 4, instrument: "snare", sticking: "L", accent: true, velocity: 1.0 },
+      { step: 5, instrument: "snare", sticking: "R", accent: false, velocity: 0.65 },
+      { step: 6, instrument: "tom2", sticking: "L", accent: false, velocity: 0.75 },
+      { step: 7, instrument: "tom2", sticking: "L", accent: false, velocity: 0.75 },
+      { step: 8, instrument: "floor_tom", sticking: "R", accent: true, velocity: 1.0 },
+      { step: 8, instrument: "kick", sticking: "K", accent: true, velocity: 1.0 },
+      { step: 9, instrument: "snare", sticking: "L", accent: false, velocity: 0.65 },
+      { step: 10, instrument: "floor_tom", sticking: "R", accent: false, velocity: 0.75 },
+      { step: 11, instrument: "floor_tom", sticking: "R", accent: false, velocity: 0.75 },
+      { step: 12, instrument: "snare", sticking: "L", accent: true, velocity: 1.0 },
+      { step: 13, instrument: "snare", sticking: "R", accent: false, velocity: 0.65 },
+      { step: 14, instrument: "snare", sticking: "L", accent: false, velocity: 0.65 },
+      { step: 15, instrument: "snare", sticking: "L", accent: false, velocity: 0.65 },
+
+      // ---------------------------------------------------------
+      // COMPÁS 2 (Pasos 16 a 31) - DUPLICADO EXACTO DE COMPÁS 1
+      // ---------------------------------------------------------
+      { step: 16, instrument: "snare", sticking: "R", accent: true, velocity: 1.0 },
+      { step: 16, instrument: "kick", sticking: "K", accent: true, velocity: 1.0 },
+      { step: 17, instrument: "snare", sticking: "L", accent: false, velocity: 0.65 },
+      { step: 18, instrument: "tom1", sticking: "R", accent: false, velocity: 0.75 },
+      { step: 19, instrument: "tom1", sticking: "R", accent: false, velocity: 0.75 },
+      { step: 20, instrument: "snare", sticking: "L", accent: true, velocity: 1.0 },
+      { step: 21, instrument: "snare", sticking: "R", accent: false, velocity: 0.65 },
+      { step: 22, instrument: "tom2", sticking: "L", accent: false, velocity: 0.75 },
+      { step: 23, instrument: "tom2", sticking: "L", accent: false, velocity: 0.75 },
+      { step: 24, instrument: "floor_tom", sticking: "R", accent: true, velocity: 1.0 },
+      { step: 24, instrument: "kick", sticking: "K", accent: true, velocity: 1.0 },
+      { step: 25, instrument: "snare", sticking: "L", accent: false, velocity: 0.65 },
+      { step: 26, instrument: "floor_tom", sticking: "R", accent: false, velocity: 0.75 },
+      { step: 27, instrument: "floor_tom", sticking: "R", accent: false, velocity: 0.75 },
+      { step: 28, instrument: "snare", sticking: "L", accent: true, velocity: 1.0 },
+      { step: 29, instrument: "snare", sticking: "R", accent: false, velocity: 0.65 },
+      { step: 30, instrument: "snare", sticking: "L", accent: false, velocity: 0.65 },
+      { step: 31, instrument: "snare", sticking: "L", accent: false, velocity: 0.65 },
+
+      // ---------------------------------------------------------
+      // COMPÁS 3 (Pasos 32 a 47) - DUPLICADO EXACTO DE COMPÁS 1
+      // ---------------------------------------------------------
+      { step: 32, instrument: "snare", sticking: "R", accent: true, velocity: 1.0 },
+      { step: 32, instrument: "kick", sticking: "K", accent: true, velocity: 1.0 },
+      { step: 33, instrument: "snare", sticking: "L", accent: false, velocity: 0.65 },
+      { step: 34, instrument: "tom1", sticking: "R", accent: false, velocity: 0.75 },
+      { step: 35, instrument: "tom1", sticking: "R", accent: false, velocity: 0.75 },
+      { step: 36, instrument: "snare", sticking: "L", accent: true, velocity: 1.0 },
+      { step: 37, instrument: "snare", sticking: "R", accent: false, velocity: 0.65 },
+      { step: 38, instrument: "tom2", sticking: "L", accent: false, velocity: 0.75 },
+      { step: 39, instrument: "tom2", sticking: "L", accent: false, velocity: 0.75 },
+      { step: 40, instrument: "floor_tom", sticking: "R", accent: true, velocity: 1.0 },
+      { step: 40, instrument: "kick", sticking: "K", accent: true, velocity: 1.0 },
+      { step: 41, instrument: "snare", sticking: "L", accent: false, velocity: 0.65 },
+      { step: 42, instrument: "floor_tom", sticking: "R", accent: false, velocity: 0.75 },
+      { step: 43, instrument: "floor_tom", sticking: "R", accent: false, velocity: 0.75 },
+      { step: 44, instrument: "snare", sticking: "L", accent: true, velocity: 1.0 },
+      { step: 45, instrument: "snare", sticking: "R", accent: false, velocity: 0.65 },
+      { step: 46, instrument: "snare", sticking: "L", accent: false, velocity: 0.65 },
+      { step: 47, instrument: "snare", sticking: "L", accent: false, velocity: 0.65 },
+
+      // ---------------------------------------------------------
+      // COMPÁS 4 (Pasos 48 a 63) - CAMBIO DE PATRÓN: FILL DE SEMICORCHEAS
+      // ---------------------------------------------------------
+      // Beat 1: Caja
+      { step: 48, instrument: "snare", sticking: "R", accent: true, velocity: 1.0 },
+      { step: 49, instrument: "snare", sticking: "L", accent: false, velocity: 0.7 },
+      { step: 50, instrument: "snare", sticking: "R", accent: false, velocity: 0.7 },
+      { step: 51, instrument: "snare", sticking: "L", accent: false, velocity: 0.7 },
+      // Beat 2: Tom 1
+      { step: 52, instrument: "tom1", sticking: "R", accent: true, velocity: 1.0 },
+      { step: 53, instrument: "tom1", sticking: "L", accent: false, velocity: 0.7 },
+      { step: 54, instrument: "tom1", sticking: "R", accent: false, velocity: 0.7 },
+      { step: 55, instrument: "tom1", sticking: "L", accent: false, velocity: 0.7 },
+      // Beat 3: Tom 2
+      { step: 56, instrument: "tom2", sticking: "R", accent: true, velocity: 1.0 },
+      { step: 57, instrument: "tom2", sticking: "L", accent: false, velocity: 0.7 },
+      { step: 58, instrument: "tom2", sticking: "R", accent: false, velocity: 0.7 },
+      { step: 59, instrument: "tom2", sticking: "L", accent: false, velocity: 0.7 },
+      // Beat 4: Floor Tom + Crash & Kick
+      { step: 60, instrument: "floor_tom", sticking: "R", accent: true, velocity: 1.0 },
+      { step: 61, instrument: "floor_tom", sticking: "L", accent: false, velocity: 0.7 },
+      { step: 62, instrument: "floor_tom", sticking: "R", accent: false, velocity: 0.7 },
+      { step: 63, instrument: "crash", sticking: "R", accent: true, velocity: 1.0 },
+      { step: 63, instrument: "kick", sticking: "K", accent: true, velocity: 1.0 },
     ]
   }
 ];
