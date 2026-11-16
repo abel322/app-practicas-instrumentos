@@ -27,6 +27,52 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // ============================================================================
+// PAYLOAD EXTRACTION HELPERS (Soporta formato Legacy Array y Nuevo Objeto con Measures & PatternBank)
+// ============================================================================
+
+export function extractDrumPayload(rawHitsData: any) {
+  if (!rawHitsData) return { hits: [], measures: [], patternBank: [] };
+  if (Array.isArray(rawHitsData)) {
+    return {
+      hits: rawHitsData,
+      measures: [],
+      patternBank: [],
+    };
+  }
+  return {
+    hits: Array.isArray(rawHitsData.hits)
+      ? rawHitsData.hits
+      : Array.isArray(rawHitsData.data)
+      ? rawHitsData.data
+      : [],
+    measures: Array.isArray(rawHitsData.measures) ? rawHitsData.measures : [],
+    patternBank: Array.isArray(rawHitsData.patternBank) ? rawHitsData.patternBank : [],
+  };
+}
+
+export function extractStringPayload(rawTabData: any) {
+  if (!rawTabData) return { tabNotes: [], measures: [], patternBank: [] };
+  if (Array.isArray(rawTabData)) {
+    return {
+      tabNotes: rawTabData,
+      measures: [],
+      patternBank: [],
+    };
+  }
+  return {
+    tabNotes: Array.isArray(rawTabData.tabNotes)
+      ? rawTabData.tabNotes
+      : Array.isArray(rawTabData.notes)
+      ? rawTabData.notes
+      : Array.isArray(rawTabData.data)
+      ? rawTabData.data
+      : [],
+    measures: Array.isArray(rawTabData.measures) ? rawTabData.measures : [],
+    patternBank: Array.isArray(rawTabData.patternBank) ? rawTabData.patternBank : [],
+  };
+}
+
+// ============================================================================
 // DRUM LAB HELPERS
 // ============================================================================
 
@@ -37,24 +83,29 @@ if (process.env.NODE_ENV !== 'production') {
 export async function getExercises(): Promise<DrumExerciseData[]> {
   try {
     const dbExercises = await prisma.drumExercise.findMany({
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
     });
 
     if (dbExercises && dbExercises.length > 0) {
-      const dbList = dbExercises.map((ex) => ({
-        id: ex.id,
-        slug: ex.slug,
-        title: ex.title,
-        category: ex.category as any,
-        difficulty: ex.difficulty as any,
-        bpmDefault: ex.bpmDefault,
-        timeSignature: ex.timeSignature as any,
-        totalSteps: ex.totalSteps,
-        subdivision: normalizeSubdivisionKey((ex as any).subdivision || (ex.totalSteps === 8 ? '1/8' : '1/16')),
-        stepsPerMeasure: (ex as any).stepsPerMeasure || getStepsForSubdivision((ex as any).subdivision || (ex.totalSteps === 8 ? '1/8' : '1/16'), ex.timeSignature),
-        hitsData: (Array.isArray(ex.hitsData) ? ex.hitsData : []) as any,
-        createdAt: ex.createdAt,
-      }));
+      const dbList = dbExercises.map((ex) => {
+        const payload = extractDrumPayload(ex.hitsData);
+        return {
+          id: ex.id,
+          slug: ex.slug,
+          title: ex.title,
+          category: ex.category as any,
+          difficulty: ex.difficulty as any,
+          bpmDefault: ex.bpmDefault,
+          timeSignature: ex.timeSignature as any,
+          totalSteps: ex.totalSteps,
+          subdivision: normalizeSubdivisionKey((ex as any).subdivision || (ex.totalSteps === 8 ? '1/8' : '1/16')),
+          stepsPerMeasure: (ex as any).stepsPerMeasure || getStepsForSubdivision((ex as any).subdivision || (ex.totalSteps === 8 ? '1/8' : '1/16'), ex.timeSignature),
+          hitsData: payload.hits as any,
+          measures: payload.measures.length > 0 ? payload.measures : undefined,
+          patternBank: payload.patternBank.length > 0 ? payload.patternBank : undefined,
+          createdAt: ex.createdAt,
+        };
+      });
 
       const dbSlugs = new Set(dbList.map((e) => e.slug));
       const missingSeeds = INITIAL_EXERCISES.filter((s) => !dbSlugs.has(s.slug));
@@ -77,6 +128,7 @@ export async function getExerciseBySlug(slug: string): Promise<DrumExerciseData 
     });
 
     if (dbEx) {
+      const payload = extractDrumPayload(dbEx.hitsData);
       return {
         id: dbEx.id,
         slug: dbEx.slug,
@@ -88,7 +140,9 @@ export async function getExerciseBySlug(slug: string): Promise<DrumExerciseData 
         totalSteps: dbEx.totalSteps,
         subdivision: normalizeSubdivisionKey((dbEx as any).subdivision || (dbEx.totalSteps === 8 ? '1/8' : '1/16')),
         stepsPerMeasure: (dbEx as any).stepsPerMeasure || getStepsForSubdivision((dbEx as any).subdivision || (dbEx.totalSteps === 8 ? '1/8' : '1/16'), dbEx.timeSignature),
-        hitsData: (Array.isArray(dbEx.hitsData) ? dbEx.hitsData : []) as any,
+        hitsData: payload.hits as any,
+        measures: payload.measures.length > 0 ? payload.measures : undefined,
+        patternBank: payload.patternBank.length > 0 ? payload.patternBank : undefined,
         createdAt: dbEx.createdAt,
       };
     }
@@ -112,26 +166,31 @@ export async function getStringExercises(instrument?: StringInstrument): Promise
     const where = instrument ? { instrument } : { instrument: { in: ['bass_4', 'guitar_6'] } };
     const dbExercises = await prisma.stringExercise.findMany({
       where,
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
     });
 
     if (dbExercises && dbExercises.length > 0) {
-      return dbExercises.map((ex) => ({
-        id: ex.id,
-        slug: ex.slug,
-        title: ex.title,
-        instrument: ex.instrument as any,
-        tuning: ex.tuning,
-        category: ex.category,
-        difficulty: ex.difficulty as any,
-        bpmDefault: ex.bpmDefault,
-        timeSignature: ex.timeSignature as any,
-        totalSteps: ex.totalSteps,
-        subdivision: (ex as any).subdivision || (ex.totalSteps === 8 ? '1/8' : ex.totalSteps === 4 ? '1/4' : ex.totalSteps === 12 && ex.timeSignature === '4/4' ? '1/8T' : '1/16'),
-        stepsPerMeasure: (ex as any).stepsPerMeasure || (ex.totalSteps <= 16 ? ex.totalSteps : (ex.timeSignature === '6/8' ? 12 : 16)),
-        tabData: (Array.isArray(ex.tabData) ? ex.tabData : []) as any,
-        createdAt: ex.createdAt,
-      }));
+      return dbExercises.map((ex) => {
+        const payload = extractStringPayload(ex.tabData);
+        return {
+          id: ex.id,
+          slug: ex.slug,
+          title: ex.title,
+          instrument: ex.instrument as any,
+          tuning: ex.tuning,
+          category: ex.category,
+          difficulty: ex.difficulty as any,
+          bpmDefault: ex.bpmDefault,
+          timeSignature: ex.timeSignature as any,
+          totalSteps: ex.totalSteps,
+          subdivision: (ex as any).subdivision || (ex.totalSteps === 8 ? '1/8' : ex.totalSteps === 4 ? '1/4' : ex.totalSteps === 12 && ex.timeSignature === '4/4' ? '1/8T' : '1/16'),
+          stepsPerMeasure: (ex as any).stepsPerMeasure || (ex.totalSteps <= 16 ? ex.totalSteps : (ex.timeSignature === '6/8' ? 12 : 16)),
+          tabData: payload.tabNotes as any,
+          measures: payload.measures.length > 0 ? payload.measures : undefined,
+          patternBank: payload.patternBank.length > 0 ? payload.patternBank : undefined,
+          createdAt: ex.createdAt,
+        };
+      });
     }
   } catch (error) {
     console.warn('⚠️ [Prisma Strings] Usando colección predefinida (fallback a stringsSeedData):', (error as any)?.message || error);
@@ -153,6 +212,7 @@ export async function getStringExerciseBySlug(slug: string): Promise<StringExerc
     });
 
     if (dbEx && dbEx.instrument !== 'piano') {
+      const payload = extractStringPayload(dbEx.tabData);
       return {
         id: dbEx.id,
         slug: dbEx.slug,
@@ -166,7 +226,9 @@ export async function getStringExerciseBySlug(slug: string): Promise<StringExerc
         totalSteps: dbEx.totalSteps,
         subdivision: (dbEx as any).subdivision || (dbEx.totalSteps === 8 ? '1/8' : dbEx.totalSteps === 4 ? '1/4' : dbEx.totalSteps === 12 && dbEx.timeSignature === '4/4' ? '1/8T' : '1/16'),
         stepsPerMeasure: (dbEx as any).stepsPerMeasure || (dbEx.totalSteps <= 16 ? dbEx.totalSteps : (dbEx.timeSignature === '6/8' ? 12 : 16)),
-        tabData: (Array.isArray(dbEx.tabData) ? dbEx.tabData : []) as any,
+        tabData: payload.tabNotes as any,
+        measures: payload.measures.length > 0 ? payload.measures : undefined,
+        patternBank: payload.patternBank.length > 0 ? payload.patternBank : undefined,
         createdAt: dbEx.createdAt,
       };
     }
@@ -189,26 +251,31 @@ export async function getPianoExercises(): Promise<PianoExerciseData[]> {
   try {
     const dbExercises = await prisma.stringExercise.findMany({
       where: { instrument: 'piano' },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
     });
 
     if (dbExercises && dbExercises.length > 0) {
-      return dbExercises.map((ex) => ({
-        id: ex.id,
-        slug: ex.slug,
-        title: ex.title,
-        instrument: 'piano',
-        category: ex.category,
-        difficulty: ex.difficulty as any,
-        bpmDefault: ex.bpmDefault,
-        timeSignature: ex.timeSignature as any,
-        totalSteps: ex.totalSteps,
-        subdivision: normalizeSubdivisionKey((ex as any).subdivision || (ex.totalSteps === 8 ? '1/8' : '1/16')),
-        stepsPerMeasure: (ex as any).stepsPerMeasure || getStepsForSubdivision((ex as any).subdivision || (ex.totalSteps === 8 ? '1/8' : '1/16'), ex.timeSignature),
-        notesData: (Array.isArray(ex.tabData) ? ex.tabData : []) as any,
-        description: `Ejercicio de piano: ${ex.title}`,
-        createdAt: ex.createdAt,
-      }));
+      return dbExercises.map((ex) => {
+        const payload = extractStringPayload(ex.tabData);
+        return {
+          id: ex.id,
+          slug: ex.slug,
+          title: ex.title,
+          instrument: 'piano',
+          category: ex.category,
+          difficulty: ex.difficulty as any,
+          bpmDefault: ex.bpmDefault,
+          timeSignature: ex.timeSignature as any,
+          totalSteps: ex.totalSteps,
+          subdivision: normalizeSubdivisionKey((ex as any).subdivision || (ex.totalSteps === 8 ? '1/8' : '1/16')),
+          stepsPerMeasure: (ex as any).stepsPerMeasure || getStepsForSubdivision((ex as any).subdivision || (ex.totalSteps === 8 ? '1/8' : '1/16'), ex.timeSignature),
+          notesData: payload.tabNotes as any,
+          measures: payload.measures.length > 0 ? payload.measures : undefined,
+          patternBank: payload.patternBank.length > 0 ? payload.patternBank : undefined,
+          description: `Ejercicio de piano: ${ex.title}`,
+          createdAt: ex.createdAt,
+        };
+      });
     }
   } catch (error) {
     console.warn('⚠️ [Prisma Piano] Usando colección predefinida (fallback a pianoSeedData):', (error as any)?.message || error);
@@ -227,6 +294,7 @@ export async function getPianoExerciseBySlug(slug: string): Promise<PianoExercis
     });
 
     if (dbEx && dbEx.instrument === 'piano') {
+      const payload = extractStringPayload(dbEx.tabData);
       return {
         id: dbEx.id,
         slug: dbEx.slug,
@@ -239,7 +307,9 @@ export async function getPianoExerciseBySlug(slug: string): Promise<PianoExercis
         totalSteps: dbEx.totalSteps,
         subdivision: normalizeSubdivisionKey((dbEx as any).subdivision || (dbEx.totalSteps === 8 ? '1/8' : '1/16')),
         stepsPerMeasure: (dbEx as any).stepsPerMeasure || getStepsForSubdivision((dbEx as any).subdivision || (dbEx.totalSteps === 8 ? '1/8' : '1/16'), dbEx.timeSignature),
-        notesData: (Array.isArray(dbEx.tabData) ? dbEx.tabData : []) as any,
+        notesData: payload.tabNotes as any,
+        measures: payload.measures.length > 0 ? payload.measures : undefined,
+        patternBank: payload.patternBank.length > 0 ? payload.patternBank : undefined,
         description: `Ejercicio de piano: ${dbEx.title}`,
         createdAt: dbEx.createdAt,
       };

@@ -53,6 +53,8 @@ export interface DrumExerciseData {
   subdivision?: string;
   stepsPerMeasure?: number;
   hitsData: DrumHit[];
+  measures?: any[];
+  patternBank?: any[];
   description?: string;
   createdAt?: string | Date;
 }

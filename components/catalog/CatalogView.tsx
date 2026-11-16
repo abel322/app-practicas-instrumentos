@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { DrumExerciseData, ExerciseCategory } from '@/types/drum';
 import { CategoryFilter } from './CategoryFilter';
 import { ExerciseCard } from './ExerciseCard';
-import { Search, Drum } from 'lucide-react';
+import { Search, Drum, Cloud, RefreshCw } from 'lucide-react';
 import { ConfirmDeleteModal } from '@/components/ui/ConfirmDeleteModal';
 import { toast } from '@/components/ui/ToastNotification';
 import { deleteExerciseAction } from '@/app/actions/save-exercise';
@@ -14,6 +14,7 @@ import {
   getDeletedExerciseSlugs,
   markExerciseAsDeleted,
   getLocalExercises,
+  syncLocalExercisesToDb,
 } from '@/lib/exercises/customExercisesStorage';
 
 interface CatalogViewProps {
@@ -38,54 +39,70 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialExercises }) =>
   // Modal de confirmación de eliminación
   const [exerciseToDelete, setExerciseToDelete] = useState<DrumExerciseData | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
-  // Sincronizar en el cliente con ejercicios locales modificados y omitir los eliminados
-  useEffect(() => {
+  // Obtener ejercicios frescos directamente desde PostgreSQL vía API
+  const refreshExercisesFromDb = async () => {
     try {
-      const deletedSlugs = getDeletedExerciseSlugs();
-      const localCustom = getLocalExercises().filter(
-        (ex) => ex.instrumentType === 'drums' || ex.hitsData
-      );
-
-      setExercises((prev) => {
-        // Excluir los eliminados
-        let list = prev.filter((ex) => !deletedSlugs.includes(ex.slug));
-
-        // Fusionar o anteponer ejercicios creados/actualizados en localStorage
-        localCustom.forEach((customEx) => {
-          if (deletedSlugs.includes(customEx.slug)) return;
-
-          const idx = list.findIndex((e) => e.slug === customEx.slug);
-          const mappedEx: DrumExerciseData = {
-            id: customEx.id || customEx.slug,
-            slug: customEx.slug,
-            title: customEx.title,
-            category: customEx.category,
-            difficulty: customEx.difficulty,
-            bpmDefault: customEx.bpmDefault || customEx.bpm || 100,
-            timeSignature: customEx.timeSignature || '4/4',
-            totalSteps: customEx.totalSteps || (customEx.hitsData ? customEx.hitsData.length : 32),
-            hitsData: Array.isArray(customEx.hitsData)
-              ? customEx.hitsData
-              : Array.isArray(customEx.data)
-              ? customEx.data
-              : [],
-            description: customEx.description || '',
-          };
-
-          if (idx !== -1) {
-            list[idx] = mappedEx;
-          } else {
-            list = [mappedEx, ...list];
-          }
-        });
-
-        return list;
-      });
+      const res = await fetch('/api/exercises?instrument=drums', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.exercises)) {
+          const deletedSlugs = getDeletedExerciseSlugs();
+          const filtered = data.exercises.filter((ex: any) => !deletedSlugs.includes(ex.slug));
+          setExercises(filtered);
+          return filtered;
+        }
+      }
     } catch (err) {
-      console.warn('Error sincronizando ejercicios locales:', err);
+      console.warn('Error al obtener ejercicios desde PostgreSQL:', err);
     }
+    return null;
+  };
+
+  // Sincronización automática al montar: migra ejercicios locales a PostgreSQL y lee datos frescos
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncAndRefresh = async () => {
+      // 1. Cargar lo más reciente de la base de datos de inmediato
+      await refreshExercisesFromDb();
+
+      // 2. Si hay ejercicios creados localmente que aún no están en la nube, migrarlos automáticamente
+      try {
+        const syncRes = await syncLocalExercisesToDb();
+        if (syncRes.synced > 0 && isMounted) {
+          toast.success(`☁️ ${syncRes.synced} ejercicio(s) local(es) sincronizado(s) con PostgreSQL.`);
+          await refreshExercisesFromDb();
+        }
+      } catch (e) {
+        console.warn('Auto sync warning:', e);
+      }
+    };
+
+    syncAndRefresh();
+    return () => {
+      isMounted = false;
+    };
   }, []);
+
+  // Botón manual de sincronización hacia la nube
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    try {
+      const syncRes = await syncLocalExercisesToDb();
+      await refreshExercisesFromDb();
+      if (syncRes.synced > 0) {
+        toast.success(`☁️ ${syncRes.synced} ejercicio(s) sincronizado(s) exitosamente a la nube.`);
+      } else {
+        toast.info('☁️ Tu catálogo ya está 100% sincronizado con la base de datos PostgreSQL.');
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Error durante la sincronización a la nube.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Manejar edición: guardar en sessionStorage y navegar a Studio Builder
   const handleEdit = (ex: DrumExerciseData) => {
@@ -169,8 +186,23 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialExercises }) =>
           categoryCounts={categoryCounts}
         />
 
-        {/* Buscador y filtro de dificultad */}
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        {/* Buscador, filtro de dificultad y botón de sincronización */}
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          {/* Botón de Sincronización en la Nube */}
+          <button
+            onClick={handleManualSync}
+            disabled={isSyncing}
+            className="px-3 py-2 rounded-xl text-xs font-bold font-mono flex items-center gap-1.5 border border-cyan-500/30 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/20 active:scale-95 transition-all disabled:opacity-50 shrink-0 shadow-sm"
+            title="Sincronizar ejercicios con la base de datos PostgreSQL en la nube"
+          >
+            {isSyncing ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-500" />
+            ) : (
+              <Cloud className="w-3.5 h-3.5 text-cyan-500" />
+            )}
+            <span>{isSyncing ? 'Sincronizando...' : '☁️ Sincronizar'}</span>
+          </button>
+
           {/* Input de búsqueda */}
           <div className="relative flex-1 md:w-64">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-zinc-500" />

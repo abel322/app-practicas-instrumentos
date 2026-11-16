@@ -70,3 +70,39 @@ export function deleteLocalExercise(slug: string): void {
   }
 }
 
+/**
+ * Sincroniza todos los ejercicios almacenados previamente en localStorage
+ * hacia la base de datos PostgreSQL mediante el endpoint de la API.
+ */
+export async function syncLocalExercisesToDb(): Promise<{ synced: number; total: number }> {
+  if (typeof window === 'undefined') return { synced: 0, total: 0 };
+  const localList = getLocalExercises();
+  if (!localList || localList.length === 0) return { synced: 0, total: 0 };
+
+  const deletedSlugs = getDeletedExerciseSlugs();
+  const eligible = localList.filter((e) => !deletedSlugs.includes(e.slug));
+  if (eligible.length === 0) return { synced: 0, total: 0 };
+
+  let synced = 0;
+  for (const item of eligible) {
+    try {
+      const res = await fetch('/api/exercises', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...item,
+          instrumentType: item.instrumentType || (item.instrument === 'drums' ? 'drums' : item.instrument === 'piano' ? 'piano' : item.instrument === 'bass_4' ? 'bass' : 'guitar'),
+          data: item.hitsData || item.tabData || item.notesData || item.data || [],
+        }),
+      });
+      if (res.ok) {
+        synced++;
+      }
+    } catch (e) {
+      console.warn(`[Sync] Error sincronizando ${item.slug} a la base de datos:`, e);
+    }
+  }
+
+  return { synced, total: eligible.length };
+}
+

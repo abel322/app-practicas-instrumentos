@@ -33,6 +33,8 @@ export interface PianoExerciseData {
   subdivision?: string;
   stepsPerMeasure?: number;
   notesData: PianoNoteData[];
+  measures?: any[];
+  patternBank?: any[];
   description?: string;
   createdAt?: string | Date;
 }

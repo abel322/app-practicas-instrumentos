@@ -3,6 +3,14 @@
 import prisma from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 
+function safeRevalidatePath(path: string) {
+  try {
+    revalidatePath(path);
+  } catch {
+    // Si se ejecuta fuera del contexto de una petición Next.js, ignorar de forma segura
+  }
+}
+
 export interface SaveExercisePayload {
   slug?: string;
   instrumentType: 'drums' | 'bass' | 'guitar' | 'piano';
@@ -16,6 +24,8 @@ export interface SaveExercisePayload {
   subdivision?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: any[];
+  measures?: any[];
+  patternBank?: any[];
 }
 
 function slugify(text: string): string {
@@ -44,6 +54,13 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
     if (formData.instrumentType === 'drums') {
       let slug = baseSlug;
 
+      const hitsPayload = {
+        hits: Array.isArray(formData.data) ? formData.data : [],
+        data: Array.isArray(formData.data) ? formData.data : [],
+        measures: Array.isArray(formData.measures) ? formData.measures : [],
+        patternBank: Array.isArray(formData.patternBank) ? formData.patternBank : [],
+      };
+
       if (formData.slug) {
         // Modo edición o sobreescritura
         const existing = await prisma.drumExercise.findUnique({ where: { slug: formData.slug } }).catch(() => null);
@@ -59,13 +76,14 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
               subdivision: formData.subdivision || '1/16',
               stepsPerMeasure: formData.stepsPerMeasure || (formData.timeSignature === '6/8' ? 12 : 16),
               totalSteps: totalSteps,
-              hitsData: formData.data,
+              hitsData: hitsPayload,
             },
           });
 
-          revalidatePath('/');
-          revalidatePath('/drums');
-          revalidatePath(`/practice/${updated.slug}`);
+          safeRevalidatePath('/');
+          safeRevalidatePath('/drums');
+          safeRevalidatePath(`/practice/${updated.slug}`);
+          safeRevalidatePath(`/drums/practice/${updated.slug}`);
 
           return {
             success: true,
@@ -94,14 +112,15 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
           subdivision: formData.subdivision || '1/16',
           stepsPerMeasure: formData.stepsPerMeasure || (formData.timeSignature === '6/8' ? 12 : 16),
           totalSteps: totalSteps,
-          hitsData: formData.data,
+          hitsData: hitsPayload,
         },
       });
 
       // Revalidar rutas para que aparezca de inmediato en el catálogo y reproductor
-      revalidatePath('/');
-      revalidatePath('/drums');
-      revalidatePath(`/practice/${exercise.slug}`);
+      safeRevalidatePath('/');
+      safeRevalidatePath('/drums');
+      safeRevalidatePath(`/practice/${exercise.slug}`);
+      safeRevalidatePath(`/drums/practice/${exercise.slug}`);
 
       return {
         success: true,
@@ -125,6 +144,14 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
           ? 'E A D G'
           : 'E A D G B E';
 
+      const tabPayload = {
+        tabNotes: Array.isArray(formData.data) ? formData.data : [],
+        notes: Array.isArray(formData.data) ? formData.data : [],
+        data: Array.isArray(formData.data) ? formData.data : [],
+        measures: Array.isArray(formData.measures) ? formData.measures : [],
+        patternBank: Array.isArray(formData.patternBank) ? formData.patternBank : [],
+      };
+
       if (formData.slug) {
         // Modo edición o sobreescritura
         const existing = await prisma.stringExercise.findUnique({ where: { slug: formData.slug } }).catch(() => null);
@@ -142,7 +169,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
               subdivision: formData.subdivision || '1/16',
               stepsPerMeasure: formData.stepsPerMeasure || (formData.timeSignature === '6/8' ? 12 : 16),
               totalSteps: totalSteps,
-              tabData: formData.data,
+              tabData: tabPayload,
             },
           });
 
@@ -151,13 +178,13 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
             ? `/piano/practice/${updated.slug}`
             : `/strings/practice/${updated.slug}`;
 
-          revalidatePath('/');
+          safeRevalidatePath('/');
           if (isPiano) {
-            revalidatePath('/piano');
-            revalidatePath(`/piano/practice/${updated.slug}`);
+            safeRevalidatePath('/piano');
+            safeRevalidatePath(`/piano/practice/${updated.slug}`);
           } else {
-            revalidatePath('/strings');
-            revalidatePath(`/strings/practice/${updated.slug}`);
+            safeRevalidatePath('/strings');
+            safeRevalidatePath(`/strings/practice/${updated.slug}`);
           }
 
           return {
@@ -189,7 +216,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
           subdivision: formData.subdivision || '1/16',
           stepsPerMeasure: formData.stepsPerMeasure || (formData.timeSignature === '6/8' ? 12 : 16),
           totalSteps: totalSteps,
-          tabData: formData.data,
+          tabData: tabPayload,
         },
       });
 
@@ -199,13 +226,13 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
         ? `/piano/practice/${exercise.slug}`
         : `/strings/practice/${exercise.slug}`;
 
-      revalidatePath('/');
+      safeRevalidatePath('/');
       if (isPiano) {
-        revalidatePath('/piano');
-        revalidatePath(`/piano/practice/${exercise.slug}`);
+        safeRevalidatePath('/piano');
+        safeRevalidatePath(`/piano/practice/${exercise.slug}`);
       } else {
-        revalidatePath('/strings');
-        revalidatePath(`/strings/practice/${exercise.slug}`);
+        safeRevalidatePath('/strings');
+        safeRevalidatePath(`/strings/practice/${exercise.slug}`);
       }
 
       return {
@@ -250,18 +277,18 @@ export async function deleteExerciseAction(
       await prisma.drumExercise.delete({ where: { slug } }).catch((err) => {
         console.warn('Prisma drum delete info (probablemente ya eliminado o en memoria):', err?.message || err);
       });
-      revalidatePath('/');
-      revalidatePath('/drums');
+      safeRevalidatePath('/');
+      safeRevalidatePath('/drums');
       return { success: true };
     } else {
       await prisma.stringExercise.delete({ where: { slug } }).catch((err) => {
         console.warn('Prisma string/piano delete info (probablemente ya eliminado o en memoria):', err?.message || err);
       });
-      revalidatePath('/');
+      safeRevalidatePath('/');
       if (instrumentType === 'piano') {
-        revalidatePath('/piano');
+        safeRevalidatePath('/piano');
       } else {
-        revalidatePath('/strings');
+        safeRevalidatePath('/strings');
       }
       return { success: true };
     }

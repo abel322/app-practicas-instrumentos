@@ -470,16 +470,40 @@ export const ExerciseBuilder: React.FC = () => {
               }));
             }
 
+            // Restaurar Banco de Patrones Completo (sin perder patrones P2, P3, P4... creados con 0x usos en secuencia)
+            let restoredBank: PatternSummary[] = [];
+            if (Array.isArray(exerciseData.patternBank) && exerciseData.patternBank.length > 0) {
+              restoredBank = exerciseData.patternBank.map((p: any) => ({
+                code: p.code || 'P1',
+                name: p.name || `Patrón ${p.code || '1'}`,
+                color: p.color || 'cyan',
+                subdivision: normalizeSubdivisionKey(p.subdivision || loadedSubKey),
+                stepsPerMeasure: p.stepsPerMeasure || getStepsForSubdivision(p.subdivision || loadedSubKey, loadedTimeSig),
+                sampleMeasureIndex: p.sampleMeasureIndex ?? 0,
+                usageCount: p.usageCount ?? 0,
+                notes: Array.isArray(p.notes) ? p.notes : [],
+              }));
+            }
+
+            // Extraer y combinar con cualquier patrón referenciado en compases
             if (Array.isArray(exerciseData.measures) && exerciseData.measures.length > 0) {
-              const extractedBank =
-                Array.isArray(exerciseData.patternBank) && exerciseData.patternBank.length > 0
-                  ? exerciseData.patternBank
-                  : extractPatternBankFromMeasures(
-                      exerciseData.measures,
-                      loadedSubKey,
-                      stepsInLoadedMeasure
-                    );
-              if (extractedBank.length > 0) setPatternBank(extractedBank);
+              const bankFromMeasures = extractPatternBankFromMeasures(
+                exerciseData.measures,
+                loadedSubKey,
+                stepsInLoadedMeasure
+              );
+
+              bankFromMeasures.forEach((mPat) => {
+                const existingIdx = restoredBank.findIndex((p) => p.code === mPat.code);
+                if (existingIdx === -1) {
+                  restoredBank.push(mPat);
+                } else {
+                  restoredBank[existingIdx].usageCount = mPat.usageCount;
+                  if ((!restoredBank[existingIdx].notes || restoredBank[existingIdx].notes.length === 0) && mPat.notes && mPat.notes.length > 0) {
+                    restoredBank[existingIdx].notes = mPat.notes;
+                  }
+                }
+              });
 
               const analyzed = analyzeMeasureDuplicates(
                 exerciseData.measures,
@@ -507,6 +531,10 @@ export const ExerciseBuilder: React.FC = () => {
               });
               setMeasureAssignments(nextAssign);
               setTotalMeasures(Math.max(1, exerciseData.measures.length));
+            }
+
+            if (restoredBank.length > 0) {
+              setPatternBank(restoredBank);
             }
 
             if (loadedNotes.length > 0) {
@@ -1394,8 +1422,8 @@ export const ExerciseBuilder: React.FC = () => {
     setCurrentMeasure(newMeasureIdx);
     setEditingPatternCode(newCode);
     setActiveBrushPatternCode(newCode);
-    toast.info(
-      `Patrón ${newCode} (${newPatSub} • ${newPatSteps} pasos) creado en C.${newMeasureIdx + 1}.`
+    toast.success(
+      `✨ Patrón ${newCode} (${newPatSub} • ${newPatSteps} pasos) creado en el banco y listo para componer en C.${newMeasureIdx + 1}.`
     );
   }, [patternBank, timeSignature]);
 
@@ -3574,7 +3602,50 @@ export const ExerciseBuilder: React.FC = () => {
         });
     }
 
-    // Construir copia profunda de measures con patternCode, patternName, patternColor, subdivision, stepsPerMeasure y notes
+    // 1. Sincronizar previamente cualquier edición pendiente del patrón activo (editingPatternCode)
+    const activeCode = editingPatternCode || activeMeasureConfig.patternCode || 'P1';
+    const mStart = activeMeasureConfig.startStep;
+    const mEnd = activeMeasureConfig.endStep;
+    const mSub = activeMeasureSubdivision;
+    const mSteps = activeMeasureConfig.stepsPerMeasure || stepsPerMeasure;
+
+    const currentMeasureRelNotes = notes
+      .filter((n) => n.step >= mStart && n.step < mEnd)
+      .map((n) => {
+        const inst = n.drumVoice || (n as any).instrument || 'snare';
+        const isKick = inst === 'kick' || (inst as string) === 'bombo';
+        return {
+          ...n,
+          step: n.step - mStart,
+          stepIndex: n.step - mStart,
+          instrument: inst,
+          sticking: isKick ? ('K' as StickingType) : n.sticking,
+        };
+      });
+
+    let currentBank = [...patternBank];
+    const patIdx = currentBank.findIndex((p) => p.code === activeCode);
+    if (patIdx !== -1) {
+      currentBank[patIdx] = {
+        ...currentBank[patIdx],
+        subdivision: mSub,
+        stepsPerMeasure: mSteps,
+        notes: JSON.parse(JSON.stringify(currentMeasureRelNotes)),
+      };
+    } else {
+      currentBank.push({
+        code: activeCode,
+        name: activeMeasureConfig.patternName || `Patrón ${activeCode.replace(/\D/g, '') || '1'}`,
+        color: activeMeasureConfig.patternColor || 'cyan',
+        subdivision: mSub,
+        stepsPerMeasure: mSteps,
+        sampleMeasureIndex: currentMeasure,
+        usageCount: 1,
+        notes: JSON.parse(JSON.stringify(currentMeasureRelNotes)),
+      });
+    }
+
+    // 2. Construir copia profunda de measures con patternCode, patternName, patternColor, subdivision, stepsPerMeasure y notes
     const savedMeasures = measureConfigList.map((cfg) => {
       const mNotes = formattedData
         .filter((n) => n.step >= cfg.startStep && n.step < cfg.endStep)
@@ -3599,6 +3670,13 @@ export const ExerciseBuilder: React.FC = () => {
         notes: mNotes,
       };
     });
+
+    // 3. Recalcular usageCount para todos los patrones (incluyendo patrones con 0x usos en secuencia)
+    currentBank = currentBank.map((p) => ({
+      ...p,
+      usageCount: savedMeasures.filter((m) => m.patternCode === p.code).length,
+    }));
+    setPatternBank(currentBank);
 
     try {
       if (destination === 'mastery') {
@@ -3650,6 +3728,8 @@ export const ExerciseBuilder: React.FC = () => {
           stepsPerMeasure,
           subdivision: normalizedSub,
           data: formattedData,
+          measures: savedMeasures,
+          patternBank: currentBank,
         }).catch(() => {});
 
         try {
@@ -3678,6 +3758,8 @@ export const ExerciseBuilder: React.FC = () => {
         stepsPerMeasure,
         subdivision: normalizedSub,
         data: formattedData,
+        measures: savedMeasures,
+        patternBank: currentBank,
       });
 
       if (res.success) {
@@ -3701,7 +3783,7 @@ export const ExerciseBuilder: React.FC = () => {
           totalMeasures,
           stepsPerMeasure,
           measures: savedMeasures,
-          patternBank,
+          patternBank: currentBank,
           hitsData: instrument === 'drums' ? formattedData : undefined,
           tabData: instrument !== 'drums' ? formattedData : undefined,
           instrument: instrument === 'drums' ? 'drums' : instrument === 'bass' ? 'bass_4' : instrument === 'piano' ? 'piano' : 'guitar_6',

@@ -42,6 +42,16 @@ export const PianoCatalogView: React.FC<PianoCatalogViewProps> = ({ initialExerc
 
   // Sincronizar en el cliente con ejercicios locales modificados y omitir los eliminados
   useEffect(() => {
+    fetch('/api/exercises?instrument=piano', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && Array.isArray(data.exercises)) {
+          const deletedSlugs = getDeletedExerciseSlugs();
+          setExercises(data.exercises.filter((ex: any) => !deletedSlugs.includes(ex.slug)));
+        }
+      })
+      .catch(() => {});
+
     try {
       const deletedSlugs = getDeletedExerciseSlugs();
       const localCustom = getLocalExercises().filter(

@@ -47,7 +47,23 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       const found = localList.find((e: any) => e.slug === exercise.slug);
       if (found) {
         setActiveExercise((prev) => ({ ...prev, ...found }));
+        return;
       }
+
+      // 3. Consultar a la API en segundo plano para obtener siempre los compases y patternBank más recientes de PostgreSQL
+      fetch(`/api/exercises/${exercise.slug}?instrument=drums`, { cache: 'no-store' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.success && data?.exercise) {
+            setActiveExercise((prev) => ({
+              ...prev,
+              ...data.exercise,
+            }));
+          }
+        })
+        .catch((e) => {
+          console.warn('API fetch fallback en PracticePlayer:', e);
+        });
     } catch (e) {
       console.warn('Error sincronizando ejercicio local en PracticePlayer:', e);
     }

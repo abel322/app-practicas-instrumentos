@@ -55,6 +55,8 @@ export interface StringExerciseData {
   subdivision?: string;
   stepsPerMeasure?: number;
   tabData: StringTabNote[];
+  measures?: any[];
+  patternBank?: any[];
   description?: string;
   createdAt?: string | Date;
 }
