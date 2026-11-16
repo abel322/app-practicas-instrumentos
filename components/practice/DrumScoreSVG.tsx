@@ -2,7 +2,11 @@
 
 import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import { DrumHit } from '@/types/drum';
-import { analyzeMeasureDuplicates, MeasureAnalysis } from '@/lib/music/measureFingerprint';
+import {
+  analyzeMeasureDuplicates,
+  MeasureAnalysis,
+  getPatternStyle,
+} from '@/lib/music/measureFingerprint';
 
 export interface DrumScoreProps {
   measure?: any;
@@ -62,45 +66,24 @@ export function DrumScoreRenderer({
   isFullscreen = false,
 }: DrumScoreProps) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const pillsContainerRef = useRef<HTMLDivElement | null>(null);
   const prevMeasureRef = useRef<number>(0);
 
   // Métrica
   const [numerator, denominator] = timeSignature ? timeSignature.split('/') : ['4', '4'];
 
-  // Normalizar los compases en una estructura unificada
+  // Normalizar los compases en una estructura unificada preservando patternCode, patternName y patternColor
   const safeMeasures = useMemo(() => {
     if (Array.isArray(measures) && measures.length > 0) {
-      return measures.map((m: any, idx: number) => ({
-        measureIndex: idx,
-        measureNumber: idx + 1,
-        notes: (m.notes || m.hits || []).map((n: any) => ({
-          ...n,
-          stepIndex:
-            n.stepIndex !== undefined
-              ? n.stepIndex
-              : n.step !== undefined
-              ? n.step % stepsPerMeasure
-              : 0,
-          step:
-            n.step !== undefined
-              ? n.step
-              : idx * stepsPerMeasure + (n.stepIndex || 0),
-          instrument: n.instrument || n.drumType || n.instrumentKey || 'snare',
-          accent: Boolean(n.accent),
-          sticking: n.sticking || 'R',
-          velocity: n.velocity ?? 0.8,
-        })),
-      }));
-    }
-
-    if (measure) {
-      const rawNotes = Array.isArray(measure)
-        ? measure
-        : measure.notes || measure.hits || [];
-      return [
-        {
-          measureIndex: 0,
-          measureNumber: 1,
+      return measures.map((m: any, idx: number) => {
+        const rawNotes = m.notes || m.hits || [];
+        const firstNoteWithMeta = rawNotes.find((n: any) => n?.patternCode);
+        return {
+          measureIndex: idx,
+          measureNumber: idx + 1,
+          patternCode: m.patternCode || firstNoteWithMeta?.patternCode,
+          patternName: m.patternName || firstNoteWithMeta?.patternName,
+          patternColor: m.patternColor || firstNoteWithMeta?.patternColor,
           notes: rawNotes.map((n: any) => ({
             ...n,
             stepIndex:
@@ -109,7 +92,42 @@ export function DrumScoreRenderer({
                 : n.step !== undefined
                 ? n.step % stepsPerMeasure
                 : 0,
-            instrument: n.instrument || n.drumType || n.instrumentKey || 'snare',
+            step:
+              n.step !== undefined
+                ? n.step
+                : idx * stepsPerMeasure + (n.stepIndex || 0),
+            instrument:
+              n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare',
+            accent: Boolean(n.accent),
+            sticking: n.sticking || 'R',
+            velocity: n.velocity ?? 0.8,
+          })),
+        };
+      });
+    }
+
+    if (measure) {
+      const rawNotes = Array.isArray(measure)
+        ? measure
+        : measure.notes || measure.hits || [];
+      const firstNoteWithMeta = rawNotes.find((n: any) => n?.patternCode);
+      return [
+        {
+          measureIndex: 0,
+          measureNumber: 1,
+          patternCode: measure.patternCode || firstNoteWithMeta?.patternCode,
+          patternName: measure.patternName || firstNoteWithMeta?.patternName,
+          patternColor: measure.patternColor || firstNoteWithMeta?.patternColor,
+          notes: rawNotes.map((n: any) => ({
+            ...n,
+            stepIndex:
+              n.stepIndex !== undefined
+                ? n.stepIndex
+                : n.step !== undefined
+                ? n.step % stepsPerMeasure
+                : 0,
+            instrument:
+              n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare',
             accent: Boolean(n.accent),
             sticking: n.sticking || 'R',
             velocity: n.velocity ?? 0.8,
@@ -155,16 +173,21 @@ export function DrumScoreRenderer({
             ...h,
             step: s,
             stepIndex: s - mStart,
-            instrument: h.instrument || h.drumType || h.instrumentKey || 'snare',
+            instrument:
+              h.instrument || h.drumVoice || h.drumType || h.instrumentKey || 'snare',
             accent: Boolean(h.accent),
             sticking: h.sticking || 'R',
             velocity: h.velocity ?? 0.8,
           };
         });
 
+      const firstWithMeta = mNotes.find((n: any) => n?.patternCode);
       return {
         measureIndex: mIdx,
         measureNumber: mIdx + 1,
+        patternCode: firstWithMeta?.patternCode,
+        patternName: firstWithMeta?.patternName,
+        patternColor: firstWithMeta?.patternColor,
         notes: mNotes,
       };
     });
@@ -172,10 +195,45 @@ export function DrumScoreRenderer({
 
   const totalMeasures = safeMeasures.length;
 
-  // Análisis automático de huellas digitales de compases duplicados y cambios de patrón
+  // Análisis automático de huellas digitales de compases duplicados y patrones P1..Pn
   const analysisList = useMemo<MeasureAnalysis[]>(() => {
     return analyzeMeasureDuplicates(safeMeasures);
   }, [safeMeasures]);
+
+  const currentAnalysis = analysisList[activeMeasureIndex] || analysisList[0];
+  const nextAnalysis =
+    activeMeasureIndex + 1 < totalMeasures
+      ? analysisList[activeMeasureIndex + 1]
+      : null;
+
+  // Calcular en qué vuelta dentro del bloque consecutivo actual se encuentra el siguiente compás
+  const consecutiveBlockInfo = useMemo(() => {
+    if (!currentAnalysis) return { nextRunIdx: 1, totalRun: 1 };
+    const fp = currentAnalysis.fingerprint;
+    const code = currentAnalysis.patternCode;
+
+    let startIdx = activeMeasureIndex;
+    while (
+      startIdx > 0 &&
+      analysisList[startIdx - 1]?.fingerprint === fp &&
+      analysisList[startIdx - 1]?.patternCode === code
+    ) {
+      startIdx--;
+    }
+
+    let endIdx = activeMeasureIndex;
+    while (
+      endIdx < analysisList.length - 1 &&
+      analysisList[endIdx + 1]?.fingerprint === fp &&
+      analysisList[endIdx + 1]?.patternCode === code
+    ) {
+      endIdx++;
+    }
+
+    const totalRun = endIdx - startIdx + 1;
+    const nextRunIdx = Math.min(totalRun, activeMeasureIndex + 1 - startIdx + 1);
+    return { nextRunIdx, totalRun };
+  }, [analysisList, activeMeasureIndex, currentAnalysis]);
 
   // Etiquetas de subdivisión por paso dentro de cada compás
   const stepLabels = useMemo(() => {
@@ -197,8 +255,6 @@ export function DrumScoreRenderer({
   }, [stepsPerMeasure, timeSignature]);
 
   // Geometría horizontal continua: cada compás mide exactamente 520px
-  // Al usar stepWidth = MEASURE_WIDTH / stepsPerMeasure, la distancia entre el paso 16
-  // de un compás y el paso 1 del siguiente es idéntica a cualquier otro paso (velocidad constante sin saltos).
   const MEASURE_WIDTH = 520;
   const stepWidth = MEASURE_WIDTH / stepsPerMeasure;
 
@@ -215,7 +271,6 @@ export function DrumScoreRenderer({
     const targetLeft = activeMeasureIndex * MEASURE_WIDTH;
 
     if (activeMeasureIndex === 0 && prevMeasureRef.current > 0) {
-      // Reinicio limpio al volver al Compás 1
       container.scrollTo({ left: 0, behavior: 'smooth' });
     } else {
       container.scrollTo({ left: targetLeft, behavior: 'smooth' });
@@ -223,6 +278,19 @@ export function DrumScoreRenderer({
 
     prevMeasureRef.current = activeMeasureIndex;
   }, [activeMeasureIndex, MEASURE_WIDTH]);
+
+  // Mantener visible la píldora activa en secuencias largas (ej. 40 compases)
+  useEffect(() => {
+    const pillContainer = pillsContainerRef.current;
+    if (!pillContainer) return;
+    const activeBtn = pillContainer.querySelector(
+      `[data-pill-index="${activeMeasureIndex}"]`
+    ) as HTMLElement | null;
+    if (activeBtn) {
+      const offsetLeft = activeBtn.offsetLeft - pillContainer.clientWidth / 3;
+      pillContainer.scrollTo({ left: Math.max(0, offsetLeft), behavior: 'smooth' });
+    }
+  }, [activeMeasureIndex]);
 
   // Posición continua milimétrica del cursor Runway Scanner a través de toda la cinta horizontal
   const scannerX = useMemo(() => {
@@ -256,12 +324,78 @@ export function DrumScoreRenderer({
     [MEASURE_WIDTH, onSelectMeasure]
   );
 
+  const currentPatternStyle = getPatternStyle(currentAnalysis?.patternColor);
+  const nextPatternStyle = getPatternStyle(nextAnalysis?.patternColor);
+
   return (
     <div className="w-full flex flex-col gap-3 relative select-none">
       {/* ============================================================== */}
-      {/* 1. BARRA DE PÍLDORAS DE COMPASES EN LA CABECERA DEL RUNWAY     */}
+      {/* 1. BANNER DINÁMICO DE PATRÓN ACTUAL Y ANTICIPACIÓN DEL SIGUIENTE */}
       {/* ============================================================== */}
-      <div className="w-full flex items-center justify-between gap-2 px-1 pb-2 border-b border-white/5 select-none overflow-x-auto no-scrollbar">
+      {currentAnalysis && (
+        <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-800 shadow-lg">
+          {/* Compás Actual + Badge Grande del Patrón Activo */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="text-xs sm:text-sm font-black font-mono text-white tracking-wide">
+              COMPÁS {activeMeasureIndex + 1} / {totalMeasures}
+            </span>
+
+            <span
+              className={`px-3 py-1 rounded-lg text-xs sm:text-sm font-mono font-black border shadow-sm flex items-center gap-1.5 ${currentPatternStyle.badge}`}
+            >
+              <span>[{currentAnalysis.patternCode}]</span>
+              <span>{currentAnalysis.patternName}</span>
+            </span>
+
+            {currentAnalysis.isDuplicate && (
+              <span className="text-[11px] font-mono text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-md">
+                Rep. {currentAnalysis.occurrenceIndex}/{currentAnalysis.totalOccurrences}
+              </span>
+            )}
+          </div>
+
+          {/* Anticipación del Siguiente Compás */}
+          <div className="flex items-center gap-2">
+            {nextAnalysis ? (
+              !currentAnalysis.isSamePatternAsNext ? (
+                <div className="px-3 py-1 rounded-lg bg-fuchsia-950/80 border border-fuchsia-500/60 text-fuchsia-200 text-xs font-mono font-black flex items-center gap-2 shadow-[0_0_12px_rgba(217,70,239,0.25)] animate-pulse">
+                  <span>⚡ VIENE EN C.{nextAnalysis.measureNumber} ➔</span>
+                  <span className={`px-1.5 py-0.5 rounded border text-[11px] ${nextPatternStyle.badge}`}>
+                    [{nextAnalysis.patternCode}] {nextAnalysis.patternName}
+                  </span>
+                </div>
+              ) : (
+                <div className="px-3 py-1 rounded-lg bg-slate-950/90 border border-slate-800 text-slate-300 text-xs font-mono font-semibold flex items-center gap-1.5">
+                  <span className="text-cyan-400 font-bold">
+                    SIGUIENTE (C.{nextAnalysis.measureNumber}) ➔
+                  </span>
+                  <span>
+                    Continúa [{nextAnalysis.patternCode}] (Vuelta {consecutiveBlockInfo.nextRunIdx}/
+                    {consecutiveBlockInfo.totalRun})
+                  </span>
+                </div>
+              )
+            ) : totalMeasures === 1 ? (
+              <div className="px-3 py-1 rounded-lg bg-cyan-950/60 border border-cyan-500/40 text-cyan-200 text-xs font-mono font-bold">
+                🔁 MODO BUCLE ➔ Repitiendo [{currentAnalysis.patternCode}] {currentAnalysis.patternName}
+              </div>
+            ) : (
+              <div className="px-3 py-1 rounded-lg bg-slate-950/90 border border-slate-800 text-slate-300 text-xs font-mono font-semibold">
+                🔁 FIN DE SECUENCIA ➔ Reinicia en C.1 [{analysisList[0]?.patternCode}]{' '}
+                {analysisList[0]?.patternName}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* 2. BARRA DE PÍLDORAS DE COMPASES (C.1 [P1], C.2 [P1]...)       */}
+      {/* ============================================================== */}
+      <div
+        ref={pillsContainerRef}
+        className="w-full flex items-center justify-between gap-2 px-1 pb-2 border-b border-white/5 select-none overflow-x-auto no-scrollbar"
+      >
         <div className="flex items-center gap-1.5 flex-nowrap">
           <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 mr-1 shrink-0 font-mono">
             COMPASES:
@@ -272,10 +406,12 @@ export function DrumScoreRenderer({
             const isNext = idx === activeMeasureIndex + 1;
             const isDup = analysis?.isDuplicate;
             const isChange = analysis?.isPatternChange;
+            const patStyle = getPatternStyle(analysis?.patternColor);
 
             return (
               <button
                 key={`pill-measure-${idx}`}
+                data-pill-index={idx}
                 type="button"
                 onClick={() => handleMeasurePillClick(idx)}
                 className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 shrink-0 transition-all cursor-pointer border ${
@@ -287,9 +423,17 @@ export function DrumScoreRenderer({
                     ? 'border-slate-700 bg-slate-800/80 text-slate-300 hover:border-slate-600'
                     : 'border-slate-800/80 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:text-slate-300'
                 }`}
-                title={`Ir al Compás ${idx + 1}`}
+                title={`Compás ${idx + 1}: [${analysis?.patternCode}] ${analysis?.patternName}`}
               >
                 <span>C.{idx + 1}</span>
+
+                {analysis?.patternCode && (
+                  <span
+                    className={`text-[10px] px-1 py-0.2 rounded border font-black ${patStyle.badge}`}
+                  >
+                    [{analysis.patternCode}]
+                  </span>
+                )}
 
                 {/* Etiqueta sutil SIGUIENTE */}
                 {isNext && (
@@ -300,10 +444,9 @@ export function DrumScoreRenderer({
 
                 {/* Etiqueta de Compás Duplicado */}
                 {isDup && (
-                  <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded border text-amber-300 border-amber-500/40 bg-amber-500/10 font-semibold flex items-center gap-0.5`}
-                  >
-                    ↻ =C.{analysis.sourceMeasureNumber} ({analysis.occurrenceIndex}/{analysis.totalOccurrences})
+                  <span className="text-[10px] px-1.5 py-0.5 rounded border text-amber-300 border-amber-500/40 bg-amber-500/10 font-semibold flex items-center gap-0.5">
+                    ↻ =C.{analysis.sourceMeasureNumber} ({analysis.occurrenceIndex}/
+                    {analysis.totalOccurrences})
                   </span>
                 )}
 
@@ -317,21 +460,10 @@ export function DrumScoreRenderer({
             );
           })}
         </div>
-
-        <div className="hidden sm:flex items-center gap-2 text-[11px] font-mono text-zinc-400 shrink-0">
-          <span className="text-zinc-500">Vista continua:</span>
-          <span className="font-bold text-cyan-400">
-            Compás {activeMeasureIndex + 1}
-            {activeMeasureIndex + 1 < totalMeasures
-              ? ` + Compás ${activeMeasureIndex + 2}`
-              : ''}{' '}
-            ({totalMeasures} total)
-          </span>
-        </div>
       </div>
 
       {/* ============================================================== */}
-      {/* 2. CINTA HORIZONTAL CONTINUA (RUNWAY CON COMPASES LADO A LADO) */}
+      {/* 3. CINTA HORIZONTAL CONTINUA (RUNWAY CON COMPASES LADO A LADO) */}
       {/* ============================================================== */}
       <div
         ref={scrollContainerRef}
@@ -442,6 +574,7 @@ export function DrumScoreRenderer({
             {/* RENDERIZADO DE CADA COMPÁS (520px CADA UNO EN FILA HORIZONTAL) */}
             {safeMeasures.map((meas, mIdx) => {
               const analysis = analysisList[mIdx];
+              const patStyle = getPatternStyle(analysis?.patternColor);
               const isCurrent = mIdx === activeMeasureIndex;
               const isNext = mIdx === activeMeasureIndex + 1;
               const opacityClass = isCurrent
@@ -480,27 +613,37 @@ export function DrumScoreRenderer({
                   }`}
                 >
                   {/* Encabezado Visual Dentro de Cada Compás en el Pentagrama */}
-                  <div className="h-9 px-3 bg-slate-900/90 border-b border-slate-800/80 flex items-center justify-between gap-1 text-xs select-none">
-                    <div className="flex items-center gap-2 shrink-0">
+                  <div className="h-9 px-2.5 bg-slate-900/90 border-b border-slate-800/80 flex items-center justify-between gap-1 text-xs select-none">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <span className="font-black text-white font-mono tracking-wider">
                         COMPÁS {analysis ? analysis.measureNumber : mIdx + 1}
                       </span>
+
+                      {/* Badge de Patrón [P1] Nombre */}
+                      {analysis?.patternCode && (
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border truncate max-w-[140px] ${patStyle.badge}`}
+                        >
+                          [{analysis.patternCode}] {analysis.patternName}
+                        </span>
+                      )}
+
                       {isCurrent && (
-                        <span className="bg-cyan-500/25 border border-cyan-400 text-cyan-200 text-[10px] font-black px-2 py-0.5 rounded-full shadow-[0_0_8px_rgba(34,211,238,0.4)] animate-pulse flex items-center gap-1">
+                        <span className="bg-cyan-500/25 border border-cyan-400 text-cyan-200 text-[10px] font-black px-1.5 py-0.5 rounded-full shadow-[0_0_8px_rgba(34,211,238,0.4)] animate-pulse flex items-center gap-1">
                           ▶ TOCANDO
                         </span>
                       )}
                       {isNext && (
-                        <span className="bg-slate-800 text-slate-200 border border-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <span className="bg-slate-800 text-slate-200 border border-slate-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1">
                           SIGUIENTE ➔
                         </span>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1.5 overflow-hidden">
+                    <div className="flex items-center gap-1 overflow-hidden">
                       {/* Badge Duplicado */}
                       {analysis?.isDuplicate && (
-                        <span className="text-amber-300 border border-amber-500/50 bg-amber-500/15 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm truncate">
+                        <span className="text-amber-300 border border-amber-500/50 bg-amber-500/15 text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm truncate">
                           ↻ DUPLICADO DE C.{analysis.sourceMeasureNumber} • Rep.{' '}
                           {analysis.occurrenceIndex}/{analysis.totalOccurrences}
                         </span>
@@ -510,14 +653,14 @@ export function DrumScoreRenderer({
                       {analysis &&
                         analysis.totalOccurrences > 1 &&
                         !analysis.isDuplicate && (
-                          <span className="text-cyan-300 border border-cyan-800/50 bg-cyan-950/60 text-[10px] font-semibold px-2 py-0.5 rounded-full truncate">
+                          <span className="text-cyan-300 border border-cyan-800/50 bg-cyan-950/60 text-[10px] font-semibold px-1.5 py-0.5 rounded-full truncate">
                             PATRÓN BASE (1/{analysis.totalOccurrences})
                           </span>
                         )}
 
                       {/* Badge Cambio de Patrón */}
                       {analysis?.isPatternChange && (
-                        <span className="text-fuchsia-300 border border-fuchsia-500/60 bg-fuchsia-950/80 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-[0_0_10px_rgba(217,70,239,0.3)] animate-pulse truncate">
+                        <span className="text-fuchsia-300 border border-fuchsia-500/60 bg-fuchsia-950/80 text-[10px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-[0_0_10px_rgba(217,70,239,0.3)] animate-pulse truncate">
                           ⚡ CAMBIO DE PATRÓN
                         </span>
                       )}

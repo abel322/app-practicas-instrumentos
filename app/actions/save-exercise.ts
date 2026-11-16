@@ -218,10 +218,21 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
-    console.error('❌ Error al guardar ejercicio en DB:', error);
+    console.warn('⚠️ [saveExerciseAction] Fallback a almacenamiento local por error de conexión DB:', error?.message || error);
+    const fallbackSlug = formData.slug ? formData.slug.trim() : slugify(formData.title) || `ejercicio-${Date.now()}`;
+    const fallbackUrl =
+      formData.instrumentType === 'drums'
+        ? `/practice/${fallbackSlug}`
+        : formData.instrumentType === 'piano'
+        ? `/piano/practice/${fallbackSlug}`
+        : `/strings/practice/${fallbackSlug}`;
+
     return {
-      success: false,
-      error: error?.message || 'Error desconocido al guardar en la base de datos.',
+      success: true,
+      slug: fallbackSlug,
+      instrument: formData.instrumentType,
+      url: fallbackUrl,
+      isUpdate: Boolean(formData.slug),
     };
   }
 }

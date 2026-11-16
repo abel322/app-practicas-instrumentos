@@ -17,6 +17,14 @@ import { saveExerciseAction } from '@/app/actions/save-exercise';
 import { addCustomMasteryLevel } from '@/lib/mastery/customLevelsStorage';
 import { toast } from '@/components/ui/ToastNotification';
 import { saveLocalExercise, getLocalExercises } from '@/lib/exercises/customExercisesStorage';
+import {
+  PATTERN_PALETTE,
+  getPatternStyle,
+  extractPatternBankFromMeasures,
+  analyzeMeasureDuplicates,
+  computeMeasureFingerprint,
+  PatternSummary,
+} from '@/lib/music/measureFingerprint';
 import { 
   Play, 
   Pause, 
@@ -541,17 +549,91 @@ export const ExerciseBuilder: React.FC = () => {
 
   const totalSteps = totalMeasures * stepsPerMeasure;
 
-  // Agrupación de notas por compás
+  // ============================================================================
+  // BANCO DE PATRONES (P1..P12) & ARREGLADOR DE SECUENCIA MULTI-COMPÁS (40 COMPASES)
+  // ============================================================================
+  const [measureEditMode, setMeasureEditMode] = useState<'patterns' | 'direct'>('patterns');
+  const [patternBank, setPatternBank] = useState<PatternSummary[]>([
+    {
+      code: 'P1',
+      name: 'Patrón 1',
+      color: 'cyan',
+      sampleMeasureIndex: 0,
+      usageCount: 1,
+      notes: [],
+    },
+  ]);
+  const [measureAssignments, setMeasureAssignments] = useState<
+    Record<number, { patternCode: string; patternName: string; patternColor: string }>
+  >({
+    0: { patternCode: 'P1', patternName: 'Patrón 1', patternColor: 'cyan' },
+  });
+  const [editingPatternCode, setEditingPatternCode] = useState<string>('P1');
+  const [activeBrushPatternCode, setActiveBrushPatternCode] = useState<string>('P1');
+  const [targetSequenceLength, setTargetSequenceLength] = useState<number>(40);
+  const [previewingPatternCode, setPreviewingPatternCode] = useState<string | null>(null);
+  const loopSingleMeasureRef = useRef<number | null>(null);
+
+  // Agrupación de notas por compás con metadatos de patrón (patternCode, patternName, patternColor)
   const measures = useMemo(() => {
     return Array.from({ length: totalMeasures }).map((_, mIdx) => {
       const mStart = mIdx * stepsPerMeasure;
       const mEnd = mStart + stepsPerMeasure;
+      const assign = measureAssignments[mIdx] || {
+        patternCode: 'P1',
+        patternName: 'Patrón 1',
+        patternColor: 'cyan',
+      };
       return {
         measureIndex: mIdx,
-        notes: notes.filter((n) => n.step >= mStart && n.step < mEnd),
+        measureNumber: mIdx + 1,
+        patternCode: assign.patternCode,
+        patternName: assign.patternName,
+        patternColor: assign.patternColor,
+        notes: notes
+          .filter((n) => n.step >= mStart && n.step < mEnd)
+          .map((n) => ({
+            ...n,
+            stepIndex: n.step - mStart,
+            instrument: n.drumVoice || (n as any).instrument || 'snare',
+            patternCode: assign.patternCode,
+            patternName: assign.patternName,
+            patternColor: assign.patternColor,
+          })),
       };
     });
-  }, [totalMeasures, stepsPerMeasure, notes]);
+  }, [totalMeasures, stepsPerMeasure, notes, measureAssignments]);
+
+  // Mantener sincronizadas las notas del patrón activo en el banco cuando se edita en la cuadrícula
+  useEffect(() => {
+    const mStart = currentMeasure * stepsPerMeasure;
+    const mEnd = mStart + stepsPerMeasure;
+    const relNotes = notes
+      .filter((n) => n.step >= mStart && n.step < mEnd)
+      .map((n) => ({
+        ...n,
+        step: n.step - mStart,
+        stepIndex: n.step - mStart,
+        instrument: n.drumVoice || (n as any).instrument || 'snare',
+      }));
+
+    const assignedCode =
+      measureAssignments[currentMeasure]?.patternCode || editingPatternCode || 'P1';
+
+    setPatternBank((prevBank) => {
+      const idx = prevBank.findIndex((p) => p.code === assignedCode);
+      if (idx === -1) return prevBank;
+      const oldFp = computeMeasureFingerprint({ notes: prevBank[idx].notes });
+      const newFp = computeMeasureFingerprint({ notes: relNotes });
+      if (oldFp === newFp) return prevBank;
+      const next = [...prevBank];
+      next[idx] = {
+        ...next[idx],
+        notes: JSON.parse(JSON.stringify(relNotes)),
+      };
+      return next;
+    });
+  }, [notes, currentMeasure, stepsPerMeasure, measureAssignments, editingPatternCode]);
 
   // Modal de Exportación a PDF Editorial
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
@@ -621,11 +703,35 @@ export const ExerciseBuilder: React.FC = () => {
           if (loadedNotes.length > 0 || (parsed.title && parsed.title.trim() !== '')) {
             setNotes(loadedNotes);
             activeNotesRef.current = loadedNotes;
-            if (parsed.totalMeasures) {
-              setTotalMeasures(Math.max(1, parsed.totalMeasures));
-            } else if (parsed.measures && Array.isArray(parsed.measures)) {
-              setTotalMeasures(Math.max(1, parsed.measures.length));
+            const resolvedMeasuresCount = parsed.totalMeasures
+              ? Math.max(1, parsed.totalMeasures)
+              : parsed.measures && Array.isArray(parsed.measures)
+              ? Math.max(1, parsed.measures.length)
+              : 1;
+            setTotalMeasures(resolvedMeasuresCount);
+
+            if (parsed.patternBank && Array.isArray(parsed.patternBank) && parsed.patternBank.length > 0) {
+              setPatternBank(parsed.patternBank);
+            } else if (parsed.measures && Array.isArray(parsed.measures) && parsed.measures.length > 0) {
+              const extracted = extractPatternBankFromMeasures(parsed.measures);
+              if (extracted.length > 0) setPatternBank(extracted);
             }
+
+            if (parsed.measureAssignments && typeof parsed.measureAssignments === 'object') {
+              setMeasureAssignments(parsed.measureAssignments);
+            } else if (parsed.measures && Array.isArray(parsed.measures) && parsed.measures.length > 0) {
+              const analyzed = analyzeMeasureDuplicates(parsed.measures);
+              const nextAssign: Record<number, { patternCode: string; patternName: string; patternColor: string }> = {};
+              analyzed.forEach((item) => {
+                nextAssign[item.measureIndex] = {
+                  patternCode: item.patternCode,
+                  patternName: item.patternName,
+                  patternColor: item.patternColor,
+                };
+              });
+              setMeasureAssignments(nextAssign);
+            }
+
             if (parsed.title !== undefined) setTitle(parsed.title);
             if (parsed.tempo || parsed.bpm) setBpm(Number(parsed.tempo || parsed.bpm));
             if (parsed.subdivision) setSubdivision(parsed.subdivision as SubdivisionType);
@@ -650,7 +756,7 @@ export const ExerciseBuilder: React.FC = () => {
 
     try {
       if (typeof window === 'undefined') return;
-      const hasNotes = notes.length > 0;
+      const hasNotes = notes.length > 0 || patternBank.length > 1;
       if (hasNotes || title.trim() !== '') {
         const draftPayload = {
           title,
@@ -662,6 +768,8 @@ export const ExerciseBuilder: React.FC = () => {
           timeSignature,
           totalMeasures,
           measures,
+          patternBank,
+          measureAssignments,
           notes,
           updatedAt: new Date().toISOString(),
         };
@@ -673,6 +781,8 @@ export const ExerciseBuilder: React.FC = () => {
   }, [
     notes,
     measures,
+    patternBank,
+    measureAssignments,
     title,
     bpm,
     subdivision,
@@ -713,6 +823,21 @@ export const ExerciseBuilder: React.FC = () => {
       activeNotesRef.current = [];
       setTotalMeasures(1);
       setCurrentMeasure(0);
+      setPatternBank([
+        {
+          code: 'P1',
+          name: 'Patrón 1',
+          color: 'cyan',
+          sampleMeasureIndex: 0,
+          usageCount: 1,
+          notes: [],
+        },
+      ]);
+      setMeasureAssignments({
+        0: { patternCode: 'P1', patternName: 'Patrón 1', patternColor: 'cyan' },
+      });
+      setEditingPatternCode('P1');
+      setActiveBrushPatternCode('P1');
       setTitle('');
       toast.info('Borrador descartado. Ejercicio nuevo en blanco.');
     }
@@ -730,20 +855,419 @@ export const ExerciseBuilder: React.FC = () => {
   }, [instrument, category]);
 
   // ============================================================================
-  // GESTIÓN DE COMPASES
+  // GESTIÓN DE COMPASES Y BANCO DE PATRONES (P1..P12 + ARREGLADOR 40 COMPASES)
   // ============================================================================
-  const handleSelectMeasure = useCallback((mIdx: number) => {
-    currentMeasureRef.current = mIdx;
-    setCurrentMeasure(mIdx);
+  const handleSelectMeasure = useCallback(
+    (mIdx: number) => {
+      currentMeasureRef.current = mIdx;
+      setCurrentMeasure(mIdx);
+      const assigned = measureAssignments[mIdx];
+      if (assigned?.patternCode) {
+        setEditingPatternCode(assigned.patternCode);
+      }
+    },
+    [measureAssignments]
+  );
+
+  // Crear nuevo patrón en el banco (P2, P3... hasta P12+)
+  const handleCreatePattern = useCallback(() => {
+    const nextNum = patternBank.length + 1;
+    const newCode = `P${nextNum}`;
+    const newName = `Patrón ${nextNum}`;
+    const newColor = PATTERN_PALETTE[(nextNum - 1) % PATTERN_PALETTE.length].key;
+
+    const newMeasureIdx = totalMeasuresRef.current;
+    totalMeasuresRef.current = newMeasureIdx + 1;
+    currentMeasureRef.current = newMeasureIdx;
+
+    const newPattern: PatternSummary = {
+      code: newCode,
+      name: newName,
+      color: newColor,
+      sampleMeasureIndex: newMeasureIdx,
+      usageCount: 1,
+      notes: [],
+    };
+
+    setPatternBank((prev) => [...prev, newPattern]);
+    setMeasureAssignments((prev) => ({
+      ...prev,
+      [newMeasureIdx]: {
+        patternCode: newCode,
+        patternName: newName,
+        patternColor: newColor,
+      },
+    }));
+    setTotalMeasures(newMeasureIdx + 1);
+    setCurrentMeasure(newMeasureIdx);
+    setEditingPatternCode(newCode);
+    setActiveBrushPatternCode(newCode);
+    toast.info(`Patrón ${newCode} creado en C.${newMeasureIdx + 1}. Programa sus notas abajo.`);
+  }, [patternBank.length]);
+
+  // Renombrar un patrón en línea y actualizar todos los compases que lo usan
+  const handleRenamePattern = useCallback((code: string, newName: string) => {
+    setPatternBank((prev) =>
+      prev.map((p) => (p.code === code ? { ...p, name: newName } : p))
+    );
+    setMeasureAssignments((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((k) => {
+        const mIdx = Number(k);
+        if (next[mIdx]?.patternCode === code) {
+          next[mIdx] = { ...next[mIdx], patternName: newName };
+        }
+      });
+      return next;
+    });
   }, []);
+
+  // Abrir un patrón en la cuadrícula de edición ("Editando Patrón P1 (1 Compás)")
+  const handleEditPatternNotes = useCallback(
+    (code: string): number => {
+      const pat = patternBank.find((p) => p.code === code);
+      if (!pat) return currentMeasureRef.current;
+
+      setEditingPatternCode(code);
+      setActiveBrushPatternCode(code);
+
+      // Buscar el primer compás que tenga asignado este patrón
+      let targetIdx = -1;
+      for (let i = 0; i < totalMeasuresRef.current; i++) {
+        if (measureAssignments[i]?.patternCode === code) {
+          targetIdx = i;
+          break;
+        }
+      }
+
+      if (targetIdx === -1) {
+        // Si ningún compás lo tiene asignado aún, asignarlo al compás actual y cargar sus notas
+        targetIdx = currentMeasureRef.current;
+        setMeasureAssignments((prev) => ({
+          ...prev,
+          [targetIdx]: {
+            patternCode: pat.code,
+            patternName: pat.name,
+            patternColor: pat.color,
+          },
+        }));
+      }
+
+      const mStart = targetIdx * stepsPerMeasure;
+      const mEnd = mStart + stepsPerMeasure;
+
+      setNotes((prev) => {
+        const otherNotes = prev.filter((n) => n.step < mStart || n.step >= mEnd);
+        const patNotesForMeasure: EditorNote[] = (pat.notes || []).map((n: any) => {
+          const relStep =
+            n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % stepsPerMeasure;
+          return {
+            ...JSON.parse(JSON.stringify(n)),
+            step: mStart + relStep,
+            stepIndex: relStep,
+            drumVoice: n.drumVoice || n.instrument || 'snare',
+          };
+        });
+        const next = [...otherNotes, ...patNotesForMeasure];
+        activeNotesRef.current = next;
+        return next;
+      });
+
+      currentMeasureRef.current = targetIdx;
+      setCurrentMeasure(targetIdx);
+      return targetIdx;
+    },
+    [patternBank, measureAssignments, stepsPerMeasure]
+  );
+
+  // Sincronizar las notas y el nombre de un patrón en todos los compases de la secuencia que lo tengan asignado
+  const handleSyncPatternToSequence = useCallback(
+    (code: string) => {
+      const pat = patternBank.find((p) => p.code === code);
+      if (!pat) return;
+
+      // Si actualmente estamos editando un compás con este patrón, tomar sus notas vivas
+      let sourceRelNotes: any[] = pat.notes || [];
+      if (measureAssignments[currentMeasure]?.patternCode === code) {
+        const curStart = currentMeasure * stepsPerMeasure;
+        const curEnd = curStart + stepsPerMeasure;
+        sourceRelNotes = notes
+          .filter((n) => n.step >= curStart && n.step < curEnd)
+          .map((n) => ({
+            ...JSON.parse(JSON.stringify(n)),
+            step: n.step - curStart,
+            stepIndex: n.step - curStart,
+            drumVoice: n.drumVoice || (n as any).instrument || 'snare',
+          }));
+      }
+
+      let syncedMeasuresCount = 0;
+      setNotes((prev) => {
+        let next = [...prev];
+        for (let mIdx = 0; mIdx < totalMeasures; mIdx++) {
+          const assignedCode =
+            measureAssignments[mIdx]?.patternCode || (mIdx === 0 ? 'P1' : '');
+          if (assignedCode === code) {
+            syncedMeasuresCount++;
+            const mStart = mIdx * stepsPerMeasure;
+            const mEnd = mStart + stepsPerMeasure;
+            next = next.filter((n) => n.step < mStart || n.step >= mEnd);
+            const clonedForMeasure: EditorNote[] = sourceRelNotes.map((n: any) => {
+              const relStep =
+                n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % stepsPerMeasure;
+              return {
+                ...JSON.parse(JSON.stringify(n)),
+                step: mStart + relStep,
+                stepIndex: relStep,
+                drumVoice: n.drumVoice || n.instrument || 'snare',
+              };
+            });
+            next.push(...clonedForMeasure);
+          }
+        }
+        activeNotesRef.current = next;
+        return next;
+      });
+
+      toast.success(
+        `Patrón ${pat.code} ("${pat.name}") sincronizado en ${syncedMeasuresCount} ${
+          syncedMeasuresCount === 1 ? 'compás' : 'compases'
+        }.`
+      );
+    },
+    [patternBank, measureAssignments, currentMeasure, stepsPerMeasure, notes, totalMeasures]
+  );
+
+  // Añadir un nuevo compás al final de la secuencia usando este patrón
+  const handleAppendPatternMeasure = useCallback(
+    (code: string) => {
+      const pat = patternBank.find((p) => p.code === code) || patternBank[0];
+      if (!pat) return;
+
+      const newIdx = totalMeasuresRef.current;
+      const mStart = newIdx * stepsPerMeasure;
+
+      totalMeasuresRef.current = newIdx + 1;
+      currentMeasureRef.current = newIdx;
+
+      setMeasureAssignments((prev) => ({
+        ...prev,
+        [newIdx]: {
+          patternCode: pat.code,
+          patternName: pat.name,
+          patternColor: pat.color,
+        },
+      }));
+
+      setNotes((prev) => {
+        const cloned: EditorNote[] = (pat.notes || []).map((n: any) => {
+          const relStep =
+            n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % stepsPerMeasure;
+          return {
+            ...JSON.parse(JSON.stringify(n)),
+            step: mStart + relStep,
+            stepIndex: relStep,
+            drumVoice: n.drumVoice || n.instrument || 'snare',
+          };
+        });
+        const next = [...prev, ...cloned];
+        activeNotesRef.current = next;
+        return next;
+      });
+
+      setTotalMeasures(newIdx + 1);
+      setCurrentMeasure(newIdx);
+      toast.info(`Compás C.${newIdx + 1} añadido al final con [${pat.code}] ${pat.name}.`);
+    },
+    [patternBank, stepsPerMeasure]
+  );
+
+  // Asignar un patrón a un compás específico (C.1..C.40) con el Pincel de Patrón Activo
+  const handleAssignPatternToMeasure = useCallback(
+    (mIdx: number, codeToAssign?: string) => {
+      const targetCode = codeToAssign || activeBrushPatternCode || 'P1';
+      const pat = patternBank.find((p) => p.code === targetCode) || patternBank[0];
+      if (!pat) return;
+
+      const mStart = mIdx * stepsPerMeasure;
+      const mEnd = mStart + stepsPerMeasure;
+
+      setMeasureAssignments((prev) => ({
+        ...prev,
+        [mIdx]: {
+          patternCode: pat.code,
+          patternName: pat.name,
+          patternColor: pat.color,
+        },
+      }));
+
+      setNotes((prev) => {
+        const filtered = prev.filter((n) => n.step < mStart || n.step >= mEnd);
+        const cloned: EditorNote[] = (pat.notes || []).map((n: any) => {
+          const relStep =
+            n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % stepsPerMeasure;
+          return {
+            ...JSON.parse(JSON.stringify(n)),
+            step: mStart + relStep,
+            stepIndex: relStep,
+            drumVoice: n.drumVoice || n.instrument || 'snare',
+          };
+        });
+        const next = [...filtered, ...cloned];
+        activeNotesRef.current = next;
+        return next;
+      });
+
+      currentMeasureRef.current = mIdx;
+      setCurrentMeasure(mIdx);
+      setEditingPatternCode(pat.code);
+    },
+    [activeBrushPatternCode, patternBank, stepsPerMeasure]
+  );
+
+  // Aplicar longitud de secuencia (ej. 40 compases) de golpe
+  const handleApplySequenceLength = useCallback(
+    (customLength?: number) => {
+      const targetLen = Math.max(
+        1,
+        Math.min(200, Number(customLength ?? targetSequenceLength) || 40)
+      );
+      setTargetSequenceLength(targetLen);
+
+      const nextAssignments: Record<
+        number,
+        { patternCode: string; patternName: string; patternColor: string }
+      > = {};
+
+      for (let mIdx = 0; mIdx < targetLen; mIdx++) {
+        if (measureAssignments[mIdx]) {
+          nextAssignments[mIdx] = measureAssignments[mIdx];
+        } else {
+          const fallbackPat =
+            patternBank.find((p) => p.code === activeBrushPatternCode) ||
+            patternBank[mIdx % Math.max(1, patternBank.length)] ||
+            patternBank[0];
+          nextAssignments[mIdx] = {
+            patternCode: fallbackPat?.code || 'P1',
+            patternName: fallbackPat?.name || 'Patrón 1',
+            patternColor: fallbackPat?.color || 'cyan',
+          };
+        }
+      }
+
+      setMeasureAssignments(nextAssignments);
+
+      setNotes((prev) => {
+        const maxAllowedStep = targetLen * stepsPerMeasure;
+        let next = prev.filter((n) => n.step < maxAllowedStep);
+
+        for (let mIdx = totalMeasures; mIdx < targetLen; mIdx++) {
+          const assignedCode = nextAssignments[mIdx]?.patternCode || 'P1';
+          const pat = patternBank.find((p) => p.code === assignedCode);
+          if (pat && Array.isArray(pat.notes) && pat.notes.length > 0) {
+            const mStart = mIdx * stepsPerMeasure;
+            const cloned: EditorNote[] = pat.notes.map((n: any) => {
+              const relStep =
+                n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % stepsPerMeasure;
+              return {
+                ...JSON.parse(JSON.stringify(n)),
+                step: mStart + relStep,
+                stepIndex: relStep,
+                drumVoice: n.drumVoice || n.instrument || 'snare',
+              };
+            });
+            next.push(...cloned);
+          }
+        }
+
+        activeNotesRef.current = next;
+        return next;
+      });
+
+      totalMeasuresRef.current = targetLen;
+      setTotalMeasures(targetLen);
+      if (currentMeasure >= targetLen) {
+        currentMeasureRef.current = targetLen - 1;
+        setCurrentMeasure(targetLen - 1);
+      }
+      toast.success(`Secuencia configurada a ${targetLen} compases.`);
+    },
+    [
+      targetSequenceLength,
+      measureAssignments,
+      patternBank,
+      activeBrushPatternCode,
+      stepsPerMeasure,
+      totalMeasures,
+      currentMeasure,
+    ]
+  );
+
+  // Distribuir los patrones del banco (P1..Pk) en bloques equitativos a lo largo de la secuencia (ej. 40 compases)
+  const handleDistributePatternsEqually = useCallback(() => {
+    if (patternBank.length === 0) return;
+    const targetLen = Math.max(totalMeasures, patternBank.length);
+
+    const nextAssignments: Record<
+      number,
+      { patternCode: string; patternName: string; patternColor: string }
+    > = {};
+    const rebuiltNotes: EditorNote[] = [];
+
+    for (let mIdx = 0; mIdx < targetLen; mIdx++) {
+      const patIdx = Math.min(
+        patternBank.length - 1,
+        Math.floor((mIdx * patternBank.length) / targetLen)
+      );
+      const pat = patternBank[patIdx];
+      nextAssignments[mIdx] = {
+        patternCode: pat.code,
+        patternName: pat.name,
+        patternColor: pat.color,
+      };
+
+      const mStart = mIdx * stepsPerMeasure;
+      (pat.notes || []).forEach((n: any) => {
+        const relStep =
+          n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % stepsPerMeasure;
+        rebuiltNotes.push({
+          ...JSON.parse(JSON.stringify(n)),
+          step: mStart + relStep,
+          stepIndex: relStep,
+          drumVoice: n.drumVoice || n.instrument || 'snare',
+        });
+      });
+    }
+
+    totalMeasuresRef.current = targetLen;
+    activeNotesRef.current = rebuiltNotes;
+    setTotalMeasures(targetLen);
+    setMeasureAssignments(nextAssignments);
+    setNotes(rebuiltNotes);
+    toast.success(
+      `${patternBank.length} patrones distribuidos equitativamente a lo largo de ${targetLen} compases.`
+    );
+  }, [patternBank, totalMeasures, stepsPerMeasure]);
 
   const handleAddMeasure = useCallback(() => {
     const nextIdx = totalMeasuresRef.current;
+    const activePat =
+      patternBank.find((p) => p.code === activeBrushPatternCode) || patternBank[0];
     totalMeasuresRef.current = nextIdx + 1;
     currentMeasureRef.current = nextIdx;
+    if (activePat) {
+      setMeasureAssignments((prev) => ({
+        ...prev,
+        [nextIdx]: {
+          patternCode: activePat.code,
+          patternName: activePat.name,
+          patternColor: activePat.color,
+        },
+      }));
+    }
     setTotalMeasures((prev) => prev + 1);
     setCurrentMeasure(nextIdx); // Ir al nuevo compás
-  }, []);
+  }, [patternBank, activeBrushPatternCode]);
 
   const handleDuplicateMeasure = () => {
     const sourceStart = currentMeasure * stepsPerMeasure;
@@ -1766,6 +2290,8 @@ export const ExerciseBuilder: React.FC = () => {
   const schedulerLoop = useCallback(() => {
     const liveInstrument = instrumentRef.current;
     const liveTotalSteps = Math.max(1, totalStepsRef.current);
+    const liveStepsPerMeasure = Math.max(1, stepsPerMeasureRef.current);
+    const lockedMeasure = loopSingleMeasureRef.current;
 
     const audioCtx =
       liveInstrument === 'drums'
@@ -1787,7 +2313,14 @@ export const ExerciseBuilder: React.FC = () => {
 
       nextNoteTimeRef.current += getStepDuration();
       playStepRef.current += 1;
-      if (playStepRef.current >= liveTotalSteps) {
+
+      if (lockedMeasure !== null) {
+        const minStep = lockedMeasure * liveStepsPerMeasure;
+        const maxStep = minStep + liveStepsPerMeasure;
+        if (playStepRef.current >= maxStep || playStepRef.current < minStep) {
+          playStepRef.current = minStep;
+        }
+      } else if (playStepRef.current >= liveTotalSteps) {
         playStepRef.current = 0;
       }
     }
@@ -1811,14 +2344,26 @@ export const ExerciseBuilder: React.FC = () => {
     const liveTotalSteps = Math.max(1, totalStepsRef.current);
     const liveStepsPerMeasure = Math.max(1, stepsPerMeasureRef.current);
     const liveTotalMeasures = Math.max(1, totalMeasuresRef.current);
+    const lockedMeasure = loopSingleMeasureRef.current;
 
     if (audioCtx && anchorAudioTimeRef.current > 0) {
       const stepDuration = getStepDuration();
       const deltaFromAnchor = audioCtx.currentTime - anchorAudioTimeRef.current;
       const exactStep = anchorStepRef.current + deltaFromAnchor / stepDuration;
 
-      const currentGlobalStep =
-        ((Math.floor(exactStep) % liveTotalSteps) + liveTotalSteps) % liveTotalSteps;
+      let currentGlobalStep: number;
+      if (lockedMeasure !== null) {
+        const minStep = lockedMeasure * liveStepsPerMeasure;
+        const stepInLocked =
+          ((Math.floor(exactStep - minStep) % liveStepsPerMeasure) +
+            liveStepsPerMeasure) %
+          liveStepsPerMeasure;
+        currentGlobalStep = minStep + stepInLocked;
+      } else {
+        currentGlobalStep =
+          ((Math.floor(exactStep) % liveTotalSteps) + liveTotalSteps) %
+          liveTotalSteps;
+      }
 
       setPlaybackActiveStep(currentGlobalStep);
 
@@ -1839,9 +2384,13 @@ export const ExerciseBuilder: React.FC = () => {
     if (isPlaying) {
       setIsPlaying(false);
       isPlayingRef.current = false;
+      loopSingleMeasureRef.current = null;
+      setPreviewingPatternCode(null);
       if (timerIdRef.current) clearTimeout(timerIdRef.current);
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     } else {
+      loopSingleMeasureRef.current = null;
+      setPreviewingPatternCode(null);
       setIsPlaying(true);
       isPlayingRef.current = true;
 
@@ -1877,9 +2426,52 @@ export const ExerciseBuilder: React.FC = () => {
     }
   };
 
+  // Probar un patrón individual de 1 compás en bucle ("▶ Probar P1")
+  const handlePreviewPattern = (code: string) => {
+    if (isPlaying && previewingPatternCode === code) {
+      handleStop();
+      return;
+    }
+
+    if (timerIdRef.current) clearTimeout(timerIdRef.current);
+    if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+
+    const targetMeasureIdx = handleEditPatternNotes(code);
+    loopSingleMeasureRef.current = targetMeasureIdx;
+    setPreviewingPatternCode(code);
+    setIsPlaying(true);
+    isPlayingRef.current = true;
+
+    const engine =
+      instrument === 'drums'
+        ? getAudioEngine()
+        : instrument === 'piano'
+        ? getPianoAudioEngine()
+        : getStringsAudioEngine();
+    engine.init();
+    engine.resume();
+    const ctx = engine.getAudioContext();
+    const startTime = (ctx ? ctx.currentTime : 0) + 0.03;
+
+    const initialStep = targetMeasureIdx * stepsPerMeasure;
+    audioStartTimeRef.current = startTime;
+    nextNoteTimeRef.current = startTime;
+    playStepRef.current = initialStep;
+    playStartStepRef.current = initialStep;
+    anchorStepRef.current = initialStep;
+    anchorAudioTimeRef.current = startTime;
+    lastDrumStickingRef.current = {};
+    setPlaybackActiveStep(initialStep);
+
+    schedulerLoop();
+    rafIdRef.current = requestAnimationFrame(updateVisualProgress);
+  };
+
   const handleStop = () => {
     setIsPlaying(false);
     isPlayingRef.current = false;
+    loopSingleMeasureRef.current = null;
+    setPreviewingPatternCode(null);
     if (timerIdRef.current) clearTimeout(timerIdRef.current);
     if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     playStepRef.current = 0;
@@ -1906,28 +2498,47 @@ export const ExerciseBuilder: React.FC = () => {
     setIsSaving(true);
     setSaveResult(null);
 
-    // Formatear datos para la base de datos
+    // Formatear datos para la base de datos enriquecidos con metadatos de patrón por compás
     let formattedData: any[] = [];
     if (instrument === 'drums') {
       formattedData = notes
         .filter((n) => n.drumVoice)
-        .map((n) => ({
-          step: n.step,
-          instrument: n.drumVoice,
-          accent: n.accent ?? false,
-          sticking: n.sticking ?? 'R',
-          velocity: n.accent ? 1.0 : 0.8,
-        }));
+        .map((n) => {
+          const mIdx = Math.floor(n.step / stepsPerMeasure);
+          const assign = measureAssignments[mIdx] || {
+            patternCode: 'P1',
+            patternName: 'Patrón 1',
+            patternColor: 'cyan',
+          };
+          return {
+            step: n.step,
+            stepIndex: n.step - mIdx * stepsPerMeasure,
+            instrument: n.drumVoice,
+            accent: n.accent ?? false,
+            sticking: n.sticking ?? 'R',
+            velocity: n.accent ? 1.0 : 0.8,
+            patternCode: assign.patternCode,
+            patternName: assign.patternName,
+            patternColor: assign.patternColor,
+          };
+        });
     } else if (instrument === 'piano') {
       const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
       formattedData = notes
         .filter((n) => n.midiNumber !== undefined || n.isRest)
         .map((n) => {
+          const mIdx = Math.floor(n.step / stepsPerMeasure);
+          const assign = measureAssignments[mIdx] || {
+            patternCode: 'P1',
+            patternName: 'Patrón 1',
+            patternColor: 'cyan',
+          };
           const midi = n.midiNumber ?? 60;
           const noteName = `${NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
           const hand = midi < 60 ? 'left' : 'right';
           return {
             step: n.step,
+            stepIndex: n.step - mIdx * stepsPerMeasure,
             midiNumber: midi,
             noteName,
             velocity: n.velocity ?? 100,
@@ -1936,23 +2547,66 @@ export const ExerciseBuilder: React.FC = () => {
             isRest: !!n.isRest,
             hand,
             finger: n.finger ? parseInt(n.finger, 10) : undefined,
+            patternCode: assign.patternCode,
+            patternName: assign.patternName,
+            patternColor: assign.patternColor,
           };
         });
     } else {
       formattedData = notes
         .filter((n) => n.string !== undefined && n.fret !== undefined)
-        .map((n) => ({
-          step: n.step,
-          string: n.string,
-          fret: n.fret,
-          technique: n.technique ?? 'normal',
-          slideDirection: n.slideDirection,
-          bendType: n.bendType,
-          bendAmount: n.bendAmount,
-          finger: n.finger ?? '1',
-          velocity: 0.85,
-        }));
+        .map((n) => {
+          const mIdx = Math.floor(n.step / stepsPerMeasure);
+          const assign = measureAssignments[mIdx] || {
+            patternCode: 'P1',
+            patternName: 'Patrón 1',
+            patternColor: 'cyan',
+          };
+          return {
+            step: n.step,
+            stepIndex: n.step - mIdx * stepsPerMeasure,
+            string: n.string,
+            fret: n.fret,
+            technique: n.technique ?? 'normal',
+            slideDirection: n.slideDirection,
+            bendType: n.bendType,
+            bendAmount: n.bendAmount,
+            finger: n.finger ?? '1',
+            velocity: 0.85,
+            patternCode: assign.patternCode,
+            patternName: assign.patternName,
+            patternColor: assign.patternColor,
+          };
+        });
     }
+
+    // Construir copia profunda de measures con patternCode, patternName, patternColor y notes
+    const savedMeasures = Array.from({ length: totalMeasures }).map((_, mIdx) => {
+      const mStart = mIdx * stepsPerMeasure;
+      const mEnd = mStart + stepsPerMeasure;
+      const assign = measureAssignments[mIdx] || {
+        patternCode: 'P1',
+        patternName: 'Patrón 1',
+        patternColor: 'cyan',
+      };
+      const mNotes = formattedData
+        .filter((n) => n.step >= mStart && n.step < mEnd)
+        .map((n) => ({
+          ...JSON.parse(JSON.stringify(n)),
+          stepIndex: n.step - mStart,
+          patternCode: assign.patternCode,
+          patternName: assign.patternName,
+          patternColor: assign.patternColor,
+        }));
+      return {
+        measureIndex: mIdx,
+        measureNumber: mIdx + 1,
+        patternCode: assign.patternCode,
+        patternName: assign.patternName,
+        patternColor: assign.patternColor,
+        notes: mNotes,
+      };
+    });
 
     try {
       if (destination === 'mastery') {
@@ -2041,7 +2695,7 @@ export const ExerciseBuilder: React.FC = () => {
           console.error('Error eliminando borrador tras publicar:', err);
         }
 
-        saveLocalExercise({
+        const savedPayload = {
           slug: res.slug,
           instrumentType: instrument,
           title,
@@ -2054,10 +2708,17 @@ export const ExerciseBuilder: React.FC = () => {
           totalSteps,
           totalMeasures,
           stepsPerMeasure,
+          measures: savedMeasures,
+          patternBank,
           hitsData: instrument === 'drums' ? formattedData : undefined,
           tabData: instrument !== 'drums' ? formattedData : undefined,
           instrument: instrument === 'drums' ? 'drums' : instrument === 'bass' ? 'bass_4' : instrument === 'piano' ? 'piano' : 'guitar_6',
-        });
+        };
+
+        saveLocalExercise(savedPayload);
+        try {
+          sessionStorage.setItem('soundlab_editing_exercise', JSON.stringify(savedPayload));
+        } catch {}
 
         if (editingSlug) {
           toast.success(`Ejercicio "${title}" actualizado con éxito.`);
@@ -2071,7 +2732,7 @@ export const ExerciseBuilder: React.FC = () => {
         (instrument === 'piano'
           ? `/piano/practice/${res.slug}`
           : instrument === 'drums'
-          ? `/drums/practice/${res.slug}`
+          ? `/practice/${res.slug}`
           : `/strings/practice/${res.slug}`);
 
       setSaveResult({ ...res, url: practiceUrl });
@@ -2429,78 +3090,394 @@ export const ExerciseBuilder: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. Gestor de Compases (Barra de Pestañas de Compás Ilimitada) */}
-      <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4">
-        {/* Contenedor flexible de pestañas de compases */}
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          {measures.map((m, idx) => {
-            const isSelected = currentMeasure === idx;
-            const noteCount = m.notes?.length || 0;
-
-            return (
-              <button
-                key={`measure-tab-${idx}`}
-                type="button"
-                onClick={() => {
-                  setCurrentMeasure(idx);
-                  setActiveCell(null);
-                }}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border cursor-pointer ${
-                  isSelected
-                    ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-lg shadow-cyan-950/50'
-                    : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border-slate-800'
-                }`}
-              >
-                <span>Compás {idx + 1}</span>
-                <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${
-                    isSelected ? 'bg-slate-950/20 text-slate-950 font-bold' : 'bg-slate-950 text-slate-400'
-                  }`}
-                >
-                  {noteCount} {noteCount === 1 ? 'nota' : 'notas'}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Barra de acciones de compás (Sin límites) */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
-          <div className="flex items-center gap-2">
+      {/* 3. Gestor de Compases & Constructor de Patrones + Arreglador (40 Compases) */}
+      <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 flex flex-col gap-4">
+        {/* Conmutador Superior: Modo Patrones + Arreglador vs Edición Directa */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+          <div className="flex items-center gap-2 bg-slate-950/90 p-1 rounded-xl border border-slate-800">
             <button
               type="button"
-              onClick={handleAddMeasure}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 border border-slate-700 hover:border-cyan-400 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+              onClick={() => setMeasureEditMode('patterns')}
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                measureEditMode === 'patterns'
+                  ? 'bg-cyan-500 text-slate-950 font-black shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ Compás</span>
+              <span>🧩 Modo Patrones + Arreglador (Multi-Compás)</span>
             </button>
 
             <button
               type="button"
-              onClick={handleDuplicateMeasure}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+              onClick={() => setMeasureEditMode('direct')}
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                measureEditMode === 'direct'
+                  ? 'bg-cyan-500 text-slate-950 font-black shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
             >
-              <Copy className="w-3.5 h-3.5" />
-              <span>❐ Duplicar Compás</span>
+              <span>📝 Edición Directa por Compás</span>
             </button>
-
-            {measures.length > 1 && (
-              <button
-                type="button"
-                onClick={() => handleDeleteMeasure(currentMeasure)}
-                className="p-2 rounded-xl text-xs font-bold bg-rose-950/50 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-900/60 transition-all cursor-pointer"
-                title={`Eliminar Compás ${currentMeasure + 1}`}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            )}
           </div>
 
-          <span className="text-[11px] font-mono text-slate-400">
-            Total: <strong className="text-cyan-400">{measures.length}</strong> {measures.length === 1 ? 'compás' : 'compases'}
-          </span>
+          <div className="flex items-center gap-3 text-xs font-mono text-slate-400">
+            <span>
+              Patrones en banco: <strong className="text-cyan-400">{patternBank.length}</strong>
+            </span>
+            <span>•</span>
+            <span>
+              Secuencia total: <strong className="text-cyan-400">{measures.length}</strong>{' '}
+              {measures.length === 1 ? 'compás' : 'compases'}
+            </span>
+          </div>
         </div>
+
+        {measureEditMode === 'patterns' ? (
+          <div className="flex flex-col gap-5">
+            {/* ============================================================ */}
+            {/* SECCIÓN A — BANCO DE PATRONES (P1, P2, P3... HASTA P12+)      */}
+            {/* ============================================================ */}
+            <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/90">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+                    <span>Sección A — Banco de Patrones Reutilizables (1 Compás c/u)</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Crea tus patrones base (P1..P10+), edita sus notas en la cuadrícula inferior y pruébalos en bucle individual.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCreatePattern}
+                  className="px-3.5 py-2 rounded-xl text-xs font-black bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Crear Patrón (P{patternBank.length + 1})</span>
+                </button>
+              </div>
+
+              {/* Tarjetas de Patrones */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {patternBank.map((pat) => {
+                  const style = getPatternStyle(pat.color);
+                  const isEditingThis = editingPatternCode === pat.code;
+                  const isPreviewingThis = isPlaying && previewingPatternCode === pat.code;
+                  const assignedCount = measures.filter(
+                    (m) => m.patternCode === pat.code
+                  ).length;
+                  const patNoteCount = pat.notes?.length || 0;
+
+                  return (
+                    <div
+                      key={`bank-card-${pat.code}`}
+                      className={`p-3 rounded-xl border transition-all flex flex-col gap-2.5 ${
+                        isEditingThis
+                          ? 'bg-slate-900 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.2)]'
+                          : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      {/* Cabecera de la tarjeta: Badge P1 + Input Nombre + Uso */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-xs font-mono font-black border shrink-0 ${style.badge}`}
+                          >
+                            {pat.code}
+                          </span>
+                          <input
+                            type="text"
+                            value={pat.name}
+                            onChange={(e) => handleRenamePattern(pat.code, e.target.value)}
+                            placeholder="Nombre del patrón..."
+                            className="bg-slate-950/90 border border-slate-800 focus:border-cyan-400 rounded-lg px-2 py-1 text-xs font-bold text-white w-full focus:outline-none"
+                          />
+                        </div>
+
+                        <span className="text-[10px] font-mono text-slate-400 shrink-0 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                          {patNoteCount}n • {assignedCount}c
+                        </span>
+                      </div>
+
+                      {/* Botones de Acción del Patrón */}
+                      <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => handleEditPatternNotes(pat.code)}
+                          className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center justify-center gap-1 border transition-all cursor-pointer ${
+                            isEditingThis
+                              ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+                              : 'bg-slate-800/80 hover:bg-slate-800 border-slate-700 text-slate-200'
+                          }`}
+                        >
+                          <span>✏️ Editar Notas</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handlePreviewPattern(pat.code)}
+                          className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center justify-center gap-1 border transition-all cursor-pointer ${
+                            isPreviewingThis
+                              ? 'bg-amber-400 text-slate-950 border-amber-300 font-black animate-pulse'
+                              : 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/40 text-emerald-300'
+                          }`}
+                        >
+                          <span>
+                            {isPreviewingThis ? `⏸ Parar ${pat.code}` : `▶ Probar ${pat.code}`}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSyncPatternToSequence(pat.code)}
+                          className="px-2.5 py-1.5 rounded-lg font-bold bg-slate-800/70 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white flex items-center justify-center gap-1 transition-all cursor-pointer"
+                          title={`Propagar las notas de ${pat.code} a todos los compases asignados`}
+                        >
+                          <span>🔄 Sincronizar en Secuencia</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleAppendPatternMeasure(pat.code)}
+                          className="px-2.5 py-1.5 rounded-lg font-bold bg-slate-800/70 hover:bg-slate-800 border border-slate-700/80 text-cyan-300 hover:text-cyan-200 flex items-center justify-center gap-1 transition-all cursor-pointer"
+                          title={`Insertar un compás con ${pat.code} al final de la secuencia`}
+                        >
+                          <span>+ Añadir al Final</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ============================================================ */}
+            {/* SECCIÓN B — ARREGLADOR DE SECUENCIA (C.1 HASTA C.40 O N)      */}
+            {/* ============================================================ */}
+            <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/90">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-2 border-b border-slate-800/80">
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-wider text-amber-400">
+                    Sección B — Arreglador de Secuencia ({measures.length} Compases)
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Define el largo total (ej. 40 compases), distribuye en bloques o selecciona un pincel de patrón y haz clic en cualquier compás C.1..C.{measures.length}.
+                  </p>
+                </div>
+
+                {/* Herramientas de Distribución Rápida */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1.5 bg-slate-900 px-2.5 py-1 rounded-xl border border-slate-800">
+                    <span className="text-[11px] font-mono text-slate-300">
+                      Longitud de Secuencia (Compases):
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={200}
+                      value={targetSequenceLength}
+                      onChange={(e) =>
+                        setTargetSequenceLength(Math.max(1, parseInt(e.target.value, 10) || 1))
+                      }
+                      className="w-16 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs font-mono font-bold text-center text-cyan-300 focus:outline-none focus:border-cyan-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleApplySequenceLength()}
+                      className="px-2.5 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-black transition-all cursor-pointer"
+                    >
+                      Aplicar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApplySequenceLength(40)}
+                      className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 text-[11px] font-mono font-bold transition-all cursor-pointer"
+                      title="Configurar 40 compases de inmediato"
+                    >
+                      40 Compases
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleDistributePatternsEqually}
+                    className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all cursor-pointer"
+                  >
+                    Distribuir Patrones Equitativamente
+                  </button>
+                </div>
+              </div>
+
+              {/* Barra de "Pincel de Patrón Activo" */}
+              <div className="flex flex-wrap items-center gap-2 py-1">
+                <span className="text-[11px] font-mono font-bold text-slate-400 uppercase">
+                  🖌️ Pincel de Patrón Activo (clic en C.1..C.{measures.length} para asignar):
+                </span>
+                {patternBank.map((pat) => {
+                  const style = getPatternStyle(pat.color);
+                  const isBrush = activeBrushPatternCode === pat.code;
+                  return (
+                    <button
+                      key={`brush-${pat.code}`}
+                      type="button"
+                      onClick={() => setActiveBrushPatternCode(pat.code)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                        isBrush
+                          ? `${style.badge} ring-2 ring-white/40 scale-105 shadow-md`
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <span>[{pat.code}]</span>
+                      <span>{pat.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Cuadrícula Compacta de los Compases (C.1 .. C.40) */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-8 gap-2 max-h-72 overflow-y-auto p-1 custom-scrollbar">
+                {measures.map((m, idx) => {
+                  const style = getPatternStyle(m.patternColor);
+                  const isSelected = currentMeasure === idx;
+                  const noteCount = m.notes?.length || 0;
+
+                  return (
+                    <button
+                      key={`arranger-cell-${idx}`}
+                      type="button"
+                      onClick={() => handleAssignPatternToMeasure(idx, activeBrushPatternCode)}
+                      className={`p-2 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 ${
+                        isSelected
+                          ? 'bg-slate-800 border-cyan-400 ring-1 ring-cyan-400/50 shadow-md'
+                          : 'bg-slate-900/90 hover:bg-slate-800/80 border-slate-800'
+                      }`}
+                      title={`Clic para asignar [${activeBrushPatternCode}] a Compás ${idx + 1} y editarlo`}
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[11px] font-mono font-black text-white">
+                          C.{idx + 1}
+                        </span>
+                        <span className="text-[9px] font-mono text-slate-400">
+                          {noteCount}n
+                        </span>
+                      </div>
+
+                      <div
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border truncate ${style.badge}`}
+                      >
+                        [{m.patternCode}] {m.patternName}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Banner Indicador del Patrón actualmente abierto en la Cuadrícula */}
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/40 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded bg-cyan-500 text-slate-950 font-mono font-black">
+                  Editando Patrón {measures[currentMeasure]?.patternCode || editingPatternCode} (1 Compás)
+                </span>
+                <span className="font-bold text-cyan-200">
+                  {measures[currentMeasure]?.patternName || 'Patrón Activo'}
+                </span>
+                <span className="text-slate-400 font-mono">
+                  • Vista en Compás C.{currentMeasure + 1} de {measures.length}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleSyncPatternToSequence(
+                    measures[currentMeasure]?.patternCode || editingPatternCode
+                  )
+                }
+                className="px-3 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/50 text-cyan-200 font-bold text-xs transition-all cursor-pointer"
+              >
+                🔄 Sincronizar {measures[currentMeasure]?.patternCode || editingPatternCode} en Secuencia
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Contenedor flexible de pestañas de compases (Modo Directo) */}
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              {measures.map((m, idx) => {
+                const isSelected = currentMeasure === idx;
+                const noteCount = m.notes?.length || 0;
+
+                return (
+                  <button
+                    key={`measure-tab-${idx}`}
+                    type="button"
+                    onClick={() => {
+                      setCurrentMeasure(idx);
+                      setActiveCell(null);
+                    }}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border cursor-pointer ${
+                      isSelected
+                        ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-lg shadow-cyan-950/50'
+                        : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border-slate-800'
+                    }`}
+                  >
+                    <span>Compás {idx + 1}</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${
+                        isSelected
+                          ? 'bg-slate-950/20 text-slate-950 font-bold'
+                          : 'bg-slate-950 text-slate-400'
+                      }`}
+                    >
+                      [{m.patternCode}] • {noteCount}n
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Barra de acciones de compás (Sin límites) */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddMeasure}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 border border-slate-700 hover:border-cyan-400 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Compás</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDuplicateMeasure}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>❐ Duplicar Compás</span>
+                </button>
+
+                {measures.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteMeasure(currentMeasure)}
+                    className="p-2 rounded-xl text-xs font-bold bg-rose-950/50 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-900/60 transition-all cursor-pointer"
+                    title={`Eliminar Compás ${currentMeasure + 1}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <span className="text-[11px] font-mono text-slate-400">
+                Total: <strong className="text-cyan-400">{measures.length}</strong>{' '}
+                {measures.length === 1 ? 'compás' : 'compases'}
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* 4. Paleta de Articulaciones y Técnicas */}
