@@ -1,6 +1,6 @@
 /**
- * Utilidad de Detección de Compases Duplicados, Banco de Patrones (P1..Pn)
- * y Análisis de Secuencias Multi-Compás.
+ * Utilidad de Detección de Compases Duplicados, Banco de Patrones (P1..Pn),
+ * Subdivisiones Independientes por Patrón/Compás y Análisis de Secuencias Multi-Compás.
  * Ignora campos volátiles (id, createdAt) para generar una huella canónica exacta.
  */
 
@@ -8,6 +8,8 @@ export interface PatternSummary {
   code: string; // "P1", "P2", ...
   name: string; // Ej: "Paradiddle", "Patrón 1"
   color: string; // Clave de color ("cyan", "emerald", "amber", "violet", "rose", "sky", "orange", "fuchsia")
+  subdivision: string; // Ej: '1/16', '1/8T', '1/16T', '1/8', '1/4', '1/32', 'quintillo', 'septillo'
+  stepsPerMeasure: number; // Ej: 16, 12, 24, 8, 4, 32, 20, 28
   sampleMeasureIndex: number;
   usageCount: number;
   notes: any[];
@@ -19,6 +21,8 @@ export interface MeasureAnalysis {
   patternCode: string;
   patternName: string;
   patternColor: string;
+  subdivision: string;
+  stepsPerMeasure: number;
   fingerprint: string;
   isDuplicate: boolean;
   sourceMeasureNumber: number;
@@ -83,8 +87,87 @@ export function getPatternStyle(colorKey?: string) {
   return PATTERN_PALETTE.find((c) => c.key === colorKey) || PATTERN_PALETTE[0];
 }
 
+export function inferSubdivisionFromSteps(
+  steps: number,
+  fallback: string = '1/16'
+): string {
+  switch (steps) {
+    case 4:
+      return '1/4';
+    case 8:
+      return '1/8';
+    case 12:
+      return '1/8T';
+    case 16:
+      return '1/16';
+    case 20:
+      return 'quintillo';
+    case 24:
+      return '1/16T';
+    case 28:
+      return 'septillo';
+    case 32:
+      return '1/32';
+    default:
+      return fallback;
+  }
+}
+
+export function remapNotesToNewSubdivision(
+  notes: any[],
+  oldSteps: number,
+  newSteps: number
+): any[] {
+  if (!Array.isArray(notes) || oldSteps === newSteps || oldSteps <= 0 || newSteps <= 0) {
+    return Array.isArray(notes) ? notes : [];
+  }
+  const seen = new Set<string>();
+  const remapped: any[] = [];
+
+  for (const note of notes) {
+    const rawStep =
+      note.stepIndex !== undefined
+        ? note.stepIndex
+        : note.step !== undefined
+        ? note.step % oldSteps
+        : 0;
+    const newStep = Math.min(
+      newSteps - 1,
+      Math.max(0, Math.round((rawStep / oldSteps) * newSteps))
+    );
+    const voiceKey =
+      note.instrument ||
+      note.drumVoice ||
+      note.string ||
+      note.midiNumber ||
+      'snare';
+    const key = `${voiceKey}::${newStep}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      remapped.push({
+        ...note,
+        stepIndex: newStep,
+        step: newStep,
+      });
+    }
+  }
+  return remapped;
+}
+
 export function computeMeasureFingerprint(measure: any): string {
   const rawNotes = measure?.notes || measure?.hits || [];
+  const firstWithMeta = (Array.isArray(rawNotes) ? rawNotes : []).find(
+    (n: any) => n?.stepsPerMeasure || n?.subdivision
+  );
+  const mSteps = Number(
+    measure?.stepsPerMeasure || firstWithMeta?.stepsPerMeasure || 16
+  );
+  const mSub = String(
+    measure?.subdivision ||
+      firstWithMeta?.subdivision ||
+      inferSubdivisionFromSteps(mSteps)
+  );
+
   const activeNotes = (Array.isArray(rawNotes) ? rawNotes : [])
     .filter((n: any) => !n.isRest)
     .map((n: any) => {
@@ -110,10 +193,14 @@ export function computeMeasureFingerprint(measure: any): string {
         a.s - b.s || a.m - b.m || a.i.localeCompare(b.i)
     );
 
-  return JSON.stringify(activeNotes);
+  return `${mSub}:${mSteps}::${JSON.stringify(activeNotes)}`;
 }
 
-export function analyzeMeasureDuplicates(measures: any[]): MeasureAnalysis[] {
+export function analyzeMeasureDuplicates(
+  measures: any[],
+  defaultSubdivision: string = '1/16',
+  defaultSteps: number = 16
+): MeasureAnalysis[] {
   if (!Array.isArray(measures) || measures.length === 0) return [];
 
   const fingerprints = measures.map((m) => computeMeasureFingerprint(m));
@@ -125,7 +212,13 @@ export function analyzeMeasureDuplicates(measures: any[]): MeasureAnalysis[] {
   const firstSeenMeasure = new Map<string, number>();
   const autoCodeByFp = new Map<
     string,
-    { code: string; name: string; color: string }
+    {
+      code: string;
+      name: string;
+      color: string;
+      subdivision: string;
+      stepsPerMeasure: number;
+    }
   >();
   const seenSoFar = new Map<string, number>();
   let autoCounter = 1;
@@ -134,11 +227,18 @@ export function analyzeMeasureDuplicates(measures: any[]): MeasureAnalysis[] {
   measures.forEach((m, idx) => {
     const fp = fingerprints[idx];
     const firstNoteWithMeta = (m?.notes || m?.hits || []).find(
-      (n: any) => n?.patternCode
+      (n: any) => n?.patternCode || n?.subdivision || n?.stepsPerMeasure
     );
     const explicitCode = m?.patternCode || firstNoteWithMeta?.patternCode;
     const explicitName = m?.patternName || firstNoteWithMeta?.patternName;
     const explicitColor = m?.patternColor || firstNoteWithMeta?.patternColor;
+    const explicitSteps = Number(
+      m?.stepsPerMeasure || firstNoteWithMeta?.stepsPerMeasure || defaultSteps
+    );
+    const explicitSub =
+      m?.subdivision ||
+      firstNoteWithMeta?.subdivision ||
+      inferSubdivisionFromSteps(explicitSteps, defaultSubdivision);
 
     if (!autoCodeByFp.has(fp)) {
       const code = explicitCode || `P${autoCounter}`;
@@ -146,7 +246,13 @@ export function analyzeMeasureDuplicates(measures: any[]): MeasureAnalysis[] {
       const color =
         explicitColor ||
         PATTERN_PALETTE[(autoCounter - 1) % PATTERN_PALETTE.length].key;
-      autoCodeByFp.set(fp, { code, name, color });
+      autoCodeByFp.set(fp, {
+        code,
+        name,
+        color,
+        subdivision: explicitSub,
+        stepsPerMeasure: explicitSteps,
+      });
       autoCounter++;
     }
   });
@@ -161,7 +267,7 @@ export function analyzeMeasureDuplicates(measures: any[]): MeasureAnalysis[] {
     seenSoFar.set(fp, occurrenceIndex);
 
     const firstNoteWithMeta = (m?.notes || m?.hits || []).find(
-      (n: any) => n?.patternCode
+      (n: any) => n?.patternCode || n?.subdivision || n?.stepsPerMeasure
     );
     const autoInfo = autoCodeByFp.get(fp)!;
     const patternCode =
@@ -170,6 +276,19 @@ export function analyzeMeasureDuplicates(measures: any[]): MeasureAnalysis[] {
       m?.patternName || firstNoteWithMeta?.patternName || autoInfo.name;
     const patternColor =
       m?.patternColor || firstNoteWithMeta?.patternColor || autoInfo.color;
+    const stepsPerMeasure = Number(
+      m?.stepsPerMeasure ||
+        firstNoteWithMeta?.stepsPerMeasure ||
+        autoInfo.stepsPerMeasure ||
+        defaultSteps
+    );
+    const subdivision =
+      m?.subdivision ||
+      firstNoteWithMeta?.subdivision ||
+      inferSubdivisionFromSteps(
+        stepsPerMeasure,
+        autoInfo.subdivision || defaultSubdivision
+      );
 
     const sourceMeasureNumber = firstSeenMeasure.get(fp)!;
     const totalOccurrences = totalCounts.get(fp) || 1;
@@ -190,6 +309,8 @@ export function analyzeMeasureDuplicates(measures: any[]): MeasureAnalysis[] {
       patternCode,
       patternName,
       patternColor,
+      subdivision,
+      stepsPerMeasure,
       fingerprint: fp,
       isDuplicate,
       sourceMeasureNumber,
@@ -210,9 +331,15 @@ export function analyzeMeasureDuplicates(measures: any[]): MeasureAnalysis[] {
 }
 
 export function extractPatternBankFromMeasures(
-  measures: any[]
+  measures: any[],
+  defaultSubdivision: string = '1/16',
+  defaultSteps: number = 16
 ): PatternSummary[] {
-  const analysis = analyzeMeasureDuplicates(measures);
+  const analysis = analyzeMeasureDuplicates(
+    measures,
+    defaultSubdivision,
+    defaultSteps
+  );
   const bankMap = new Map<string, PatternSummary>();
 
   analysis.forEach((item, idx) => {
@@ -223,6 +350,8 @@ export function extractPatternBankFromMeasures(
         code: item.patternCode,
         name: item.patternName,
         color: item.patternColor,
+        subdivision: item.subdivision,
+        stepsPerMeasure: item.stepsPerMeasure,
         sampleMeasureIndex: idx,
         usageCount: 1,
         notes: JSON.parse(JSON.stringify(rawNotes)),

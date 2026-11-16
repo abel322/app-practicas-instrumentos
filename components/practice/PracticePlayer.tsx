@@ -13,6 +13,7 @@ import {
   analyzeMeasureDuplicates,
   extractPatternBankFromMeasures,
   getPatternStyle,
+  inferSubdivisionFromSteps,
 } from '@/lib/music/measureFingerprint';
 import {
   normalizeSubdivisionKey,
@@ -115,45 +116,68 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     (activeExercise as any).measures?.length ||
     Math.max(1, Math.ceil((activeExercise?.totalSteps || stepsPerMeasure) / stepsPerMeasure));
 
-  // Compases completos de la secuencia con metadatos de patrón (patternCode, patternName, patternColor)
+  // Compases completos de la secuencia con metadatos de patrón (patternCode, patternName, patternColor, subdivision, stepsPerMeasure)
   const fullMeasures = useMemo(() => {
     if (
       Array.isArray((activeExercise as any).measures) &&
       (activeExercise as any).measures.length > 0
     ) {
+      let runningStep = 0;
       return (activeExercise as any).measures.map((m: any, idx: number) => {
         const rawNotes = m.notes || m.hits || [];
-        const firstNoteWithMeta = rawNotes.find((n: any) => n?.patternCode);
+        const firstNoteWithMeta = rawNotes.find(
+          (n: any) => n?.patternCode || n?.subdivision || n?.stepsPerMeasure
+        );
+        const mSub = normalizeSubdivisionKey(
+          m.subdivision ||
+            firstNoteWithMeta?.subdivision ||
+            inferSubdivisionFromSteps(
+              m.stepsPerMeasure || firstNoteWithMeta?.stepsPerMeasure,
+              normalizedSub
+            )
+        );
+        const mSteps =
+          Number(m.stepsPerMeasure || firstNoteWithMeta?.stepsPerMeasure) ||
+          getStepsForSubdivision(mSub, activeExercise?.timeSignature) ||
+          stepsPerMeasure;
+        const startStep = runningStep;
+        const endStep = startStep + mSteps;
+        runningStep = endStep;
+
         return {
           measureIndex: idx,
           measureNumber: idx + 1,
           patternCode: m.patternCode || firstNoteWithMeta?.patternCode,
           patternName: m.patternName || firstNoteWithMeta?.patternName,
           patternColor: m.patternColor || firstNoteWithMeta?.patternColor,
+          subdivision: mSub,
+          stepsPerMeasure: mSteps,
+          startStep,
+          endStep,
           notes: rawNotes.map((n: any) => {
             const inst =
               n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare';
             const isKick =
               String(inst).toLowerCase().trim() === 'kick' ||
               String(inst).toLowerCase().trim() === 'bombo';
+            const rel =
+              n.stepIndex !== undefined
+                ? n.stepIndex
+                : n.step !== undefined
+                ? n.step % mSteps
+                : 0;
             return {
               ...n,
-              stepIndex:
-                n.stepIndex !== undefined
-                  ? n.stepIndex
-                  : n.step !== undefined
-                  ? n.step % stepsPerMeasure
-                  : 0,
-              step:
-                n.step !== undefined
-                  ? n.step
-                  : idx * stepsPerMeasure + (n.stepIndex || 0),
+              stepIndex: rel,
+              step: startStep + rel,
               instrument: inst,
               accent: Boolean(n.accent && !n.ghost),
               ghost: Boolean(n.ghost),
               syncopated: Boolean(n.syncopated),
               sticking: isKick ? 'K' : (n.sticking || 'R'),
               velocity: n.ghost ? 0.32 : (n.velocity ?? 0.8),
+              subdivision: mSub,
+              stepsPerMeasure: mSteps,
             };
           }),
         };
@@ -161,70 +185,129 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     }
 
     const hits = activeExercise.hitsData || (activeExercise as any).data || [];
+    let runningStep = 0;
     return Array.from({ length: fullTotalMeasures }).map((_, mIdx) => {
-      const mStart = mIdx * stepsPerMeasure;
-      const mEnd = mStart + stepsPerMeasure;
-      const mNotes = hits
-        .filter((h: any) => {
-          const s =
-            h.step !== undefined
-              ? h.step
-              : h.stepIndex !== undefined
-              ? h.stepIndex
-              : 0;
-          return s >= mStart && s < mEnd;
-        })
-        .map((h: any) => {
-          const s =
-            h.step !== undefined
-              ? h.step
-              : h.stepIndex !== undefined
-              ? h.stepIndex
-              : 0;
-          const inst =
-            h.instrument || h.drumVoice || h.drumType || h.instrumentKey || 'snare';
-          const isKick =
-            String(inst).toLowerCase().trim() === 'kick' ||
-            String(inst).toLowerCase().trim() === 'bombo';
-          return {
-            ...h,
-            step: s,
-            stepIndex: s - mStart,
-            instrument: inst,
-            accent: Boolean(h.accent && !h.ghost),
-            ghost: Boolean(h.ghost),
-            syncopated: Boolean(h.syncopated),
-            sticking: isKick ? 'K' : (h.sticking || 'R'),
-            velocity: h.ghost ? 0.32 : (h.velocity ?? 0.8),
-          };
-        });
+      const mStartDefault = mIdx * stepsPerMeasure;
+      const mEndDefault = mStartDefault + stepsPerMeasure;
+      const rawMeasNotes = hits.filter((h: any) => {
+        if (h.measureIndex !== undefined) {
+          return Number(h.measureIndex) === mIdx;
+        }
+        const s =
+          h.step !== undefined
+            ? h.step
+            : h.stepIndex !== undefined
+            ? h.stepIndex
+            : 0;
+        return s >= mStartDefault && s < mEndDefault;
+      });
 
-      const firstWithMeta = mNotes.find((n: any) => n?.patternCode);
+      const firstWithMeta = rawMeasNotes.find(
+        (n: any) => n?.patternCode || n?.subdivision || n?.stepsPerMeasure
+      );
+      const mSub = normalizeSubdivisionKey(
+        firstWithMeta?.subdivision ||
+          inferSubdivisionFromSteps(firstWithMeta?.stepsPerMeasure, normalizedSub)
+      );
+      const mSteps =
+        Number(firstWithMeta?.stepsPerMeasure) ||
+        getStepsForSubdivision(mSub, activeExercise?.timeSignature) ||
+        stepsPerMeasure;
+      const startStep = runningStep;
+      const endStep = startStep + mSteps;
+      runningStep = endStep;
+
+      const mNotes = rawMeasNotes.map((h: any) => {
+        const s =
+          h.step !== undefined
+            ? h.step
+            : h.stepIndex !== undefined
+            ? h.stepIndex
+            : 0;
+        const rel =
+          h.stepIndex !== undefined ? h.stepIndex : (s - mStartDefault + mSteps) % mSteps;
+        const inst =
+          h.instrument || h.drumVoice || h.drumType || h.instrumentKey || 'snare';
+        const isKick =
+          String(inst).toLowerCase().trim() === 'kick' ||
+          String(inst).toLowerCase().trim() === 'bombo';
+        return {
+          ...h,
+          step: startStep + rel,
+          stepIndex: rel,
+          instrument: inst,
+          accent: Boolean(h.accent && !h.ghost),
+          ghost: Boolean(h.ghost),
+          syncopated: Boolean(h.syncopated),
+          sticking: isKick ? 'K' : (h.sticking || 'R'),
+          velocity: h.ghost ? 0.32 : (h.velocity ?? 0.8),
+          subdivision: mSub,
+          stepsPerMeasure: mSteps,
+        };
+      });
+
       return {
         measureIndex: mIdx,
         measureNumber: mIdx + 1,
         patternCode: firstWithMeta?.patternCode,
         patternName: firstWithMeta?.patternName,
         patternColor: firstWithMeta?.patternColor,
+        subdivision: mSub,
+        stepsPerMeasure: mSteps,
+        startStep,
+        endStep,
         notes: mNotes,
       };
     });
-  }, [activeExercise, fullTotalMeasures, stepsPerMeasure]);
+  }, [activeExercise, fullTotalMeasures, stepsPerMeasure, normalizedSub]);
 
-  // Extraer banco de patrones únicos (P1..Pn)
+  // Extraer banco de patrones únicos (P1..Pn) preservando su subdivisión propia
   const patternBank = useMemo(() => {
-    return extractPatternBankFromMeasures(fullMeasures);
-  }, [fullMeasures]);
+    if (
+      Array.isArray((activeExercise as any).patternBank) &&
+      (activeExercise as any).patternBank.length > 0
+    ) {
+      return (activeExercise as any).patternBank.map((p: any) => {
+        const pSub = normalizeSubdivisionKey(
+          p.subdivision ||
+            inferSubdivisionFromSteps(p.stepsPerMeasure, normalizedSub)
+        );
+        const pSteps =
+          Number(p.stepsPerMeasure) ||
+          getStepsForSubdivision(pSub, activeExercise?.timeSignature) ||
+          stepsPerMeasure;
+        return {
+          ...p,
+          subdivision: pSub,
+          stepsPerMeasure: pSteps,
+        };
+      });
+    }
+    return extractPatternBankFromMeasures(
+      fullMeasures,
+      normalizedSub,
+      stepsPerMeasure
+    );
+  }, [activeExercise, fullMeasures, normalizedSub, stepsPerMeasure]);
 
   // Compases activos según si el alumno eligió practicar la secuencia completa o un patrón individual en bucle
   const measures = useMemo(() => {
     if (selectedPatternFilter === 'ALL') {
       return fullMeasures;
     }
-    const targetPat = patternBank.find((p) => p.code === selectedPatternFilter);
+    const targetPat = patternBank.find((p: any) => p.code === selectedPatternFilter);
     if (!targetPat) {
       return fullMeasures;
     }
+    const patSub = normalizeSubdivisionKey(
+      targetPat.subdivision ||
+        inferSubdivisionFromSteps(targetPat.stepsPerMeasure, normalizedSub)
+    );
+    const patSteps =
+      Number(targetPat.stepsPerMeasure) ||
+      getStepsForSubdivision(patSub, activeExercise?.timeSignature) ||
+      stepsPerMeasure;
+
     return [
       {
         measureIndex: 0,
@@ -232,11 +315,15 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
         patternCode: targetPat.code,
         patternName: targetPat.name,
         patternColor: targetPat.color,
+        subdivision: patSub,
+        stepsPerMeasure: patSteps,
+        startStep: 0,
+        endStep: patSteps,
         notes: (targetPat.notes || []).map((n: any) => {
           const relStep =
             n.stepIndex !== undefined
               ? n.stepIndex
-              : (n.step ?? 0) % stepsPerMeasure;
+              : (n.step ?? 0) % patSteps;
           const inst =
             n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare';
           const isKick =
@@ -255,44 +342,105 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
             patternCode: targetPat.code,
             patternName: targetPat.name,
             patternColor: targetPat.color,
+            subdivision: patSub,
+            stepsPerMeasure: patSteps,
           };
         }),
       },
     ];
-  }, [selectedPatternFilter, fullMeasures, patternBank, stepsPerMeasure]);
+  }, [
+    selectedPatternFilter,
+    fullMeasures,
+    patternBank,
+    normalizedSub,
+    activeExercise?.timeSignature,
+    stepsPerMeasure,
+  ]);
+
+  const measuresRef = useRef(measures);
+  useEffect(() => {
+    measuresRef.current = measures;
+  }, [measures]);
 
   const totalMeasures = measures.length;
-  const totalSteps = totalMeasures * stepsPerMeasure;
+  const totalSteps = useMemo(() => {
+    if (measures.length === 0) return stepsPerMeasure;
+    return measures[measures.length - 1].endStep || totalMeasures * stepsPerMeasure;
+  }, [measures, stepsPerMeasure, totalMeasures]);
 
-  const activeMeasureIndex = Math.min(totalMeasures - 1, Math.floor(activeStep / stepsPerMeasure));
-  const stepInMeasure = activeStep % stepsPerMeasure;
-
-  // Pulsos por compás y pasos por pulso según métrica
-  const beatsPerMeasure =
-    activeExercise.timeSignature === '6/8' ? 2 : activeExercise.timeSignature === '3/4' ? 3 : 4;
-  const stepsPerBeat = Math.max(1, Math.round(stepsPerMeasure / beatsPerMeasure));
-
-  // ==============================================================
-  // 2. SINCRONIZACIÓN DE TIEMPO DEL SECUENCIADOR WEB AUDIO
-  // ==============================================================
-  const getSecondsPerStep = useCallback(
-    (currentBpm: number) => {
-      if (activeExercise.timeSignature === '6/8') {
-        const beatDuration = (60 / currentBpm) * 1.5;
-        const stepsInBeat = stepsPerMeasure === 6 ? 3 : 6;
-        return beatDuration / stepsInBeat;
-      }
-      const beatDuration = 60 / currentBpm;
-      return beatDuration / stepsPerBeat;
+  const getMeasureForGlobalStep = useCallback(
+    (globalStep: number) => {
+      const list = measuresRef.current;
+      if (!list || list.length === 0) return null;
+      const found = list.find(
+        (m: any) => globalStep >= m.startStep && globalStep < m.endStep
+      );
+      return found || list[0];
     },
-    [activeExercise.timeSignature, stepsPerMeasure, stepsPerBeat]
+    []
   );
 
+  const activeMeasureObj = useMemo(() => {
+    const found = measures.find(
+      (m: any) => activeStep >= m.startStep && activeStep < m.endStep
+    );
+    return found || measures[0];
+  }, [measures, activeStep]);
+
+  const activeMeasureIndex = activeMeasureObj?.measureIndex ?? 0;
+  const activeMeasureSteps = activeMeasureObj?.stepsPerMeasure || stepsPerMeasure;
+  const activeMeasureSub = activeMeasureObj?.subdivision || normalizedSub;
+  const stepInMeasure = Math.max(
+    0,
+    activeStep - (activeMeasureObj?.startStep || 0)
+  );
+
+  const activeSubConfig = useMemo(() => {
+    return getSubdivisionConfig(
+      activeMeasureSub as any,
+      activeExercise?.timeSignature,
+      activeMeasureSteps
+    );
+  }, [activeMeasureSub, activeExercise?.timeSignature, activeMeasureSteps]);
+
+  // Pulsos por compás según métrica
+  const beatsPerMeasure =
+    activeExercise.timeSignature === '6/8'
+      ? 2
+      : activeExercise.timeSignature === '3/4'
+      ? 3
+      : 4;
+
+  // ==============================================================
+  // 2. SINCRONIZACIÓN DE TIEMPO DEL SECUENCIADOR WEB AUDIO (MULTI-SUBDIVISIÓN)
+  // ==============================================================
   const getMeasureDuration = useCallback(
     (currentBpm: number) => {
-      return getSecondsPerStep(currentBpm) * stepsPerMeasure;
+      if (activeExercise.timeSignature === '6/8') {
+        return (60 / currentBpm) * 3;
+      }
+      if (activeExercise.timeSignature === '3/4') {
+        return (60 / currentBpm) * 3;
+      }
+      return (60 / currentBpm) * 4;
     },
-    [getSecondsPerStep, stepsPerMeasure]
+    [activeExercise.timeSignature]
+  );
+
+  // La duración total del compás se mantiene constante ((60 / bpm) * 4); cada paso dura measureDurationSec / mSteps
+  const getSecondsPerStep = useCallback(
+    (currentBpm: number, forGlobalStep?: number) => {
+      const measureDurationSec = getMeasureDuration(currentBpm);
+      const targetStep =
+        forGlobalStep !== undefined ? forGlobalStep : schedulerStepRef.current;
+      const mObj = getMeasureForGlobalStep(targetStep);
+      const mSteps = Math.max(
+        1,
+        mObj?.stepsPerMeasure || stepsPerMeasure || 16
+      );
+      return measureDurationSec / mSteps;
+    },
+    [getMeasureDuration, getMeasureForGlobalStep, stepsPerMeasure]
   );
 
   // Sincronizar BPM en caliente sin reiniciar el scheduler
@@ -304,7 +452,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       const engine = getAudioEngine();
       const ctx = engine.getAudioContext();
       if (ctx) {
-        const newSecondsPerStep = getSecondsPerStep(bpm);
+        const newSecondsPerStep = getSecondsPerStep(bpm, schedulerStepRef.current);
         if (nextNoteTimeRef.current > ctx.currentTime + newSecondsPerStep) {
           nextNoteTimeRef.current = ctx.currentTime + newSecondsPerStep;
         }
@@ -320,13 +468,14 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       map.set(i, []);
     }
 
-    measures.forEach((m: any, mIdx: number) => {
-      const mStart = mIdx * stepsPerMeasure;
+    measures.forEach((m: any) => {
+      const mStart = m.startStep || 0;
+      const mSteps = m.stepsPerMeasure || stepsPerMeasure;
       (m.notes || []).forEach((hit: any) => {
         const relStep =
           hit.stepIndex !== undefined
             ? hit.stepIndex
-            : (hit.step ?? 0) % stepsPerMeasure;
+            : (hit.step ?? 0) % mSteps;
         const globalStep = mStart + relStep;
         if (globalStep >= 0 && globalStep < totalSteps) {
           map.get(globalStep)?.push({
@@ -350,7 +499,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     hitsByStep.current = map;
   }, [measures, totalSteps, stepsPerMeasure]);
 
-  // Planificador (Scheduler) de notas de Web Audio API con detección de rebote doble y sticking estéreo
+  // Planificador (Scheduler) de notas de Web Audio API con detección de rebote doble, sticking estéreo y metrónomo por compás
   const scheduleNote = useCallback(
     (stepNumber: number, time: number) => {
       const engine = getAudioEngine();
@@ -394,13 +543,25 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
         });
       });
 
-      // 2. Metrónomo sincronizado en los tiempos de negra/pulso fuerte
-      if (metronomeEnabled && stepNumber % stepsPerBeat === 0) {
-        const isDownbeat = stepNumber % stepsPerMeasure === 0;
+      // 2. Metrónomo sincronizado en los tiempos de negra/pulso fuerte usando el stepsPerMeasure propio del compás
+      const mObj = getMeasureForGlobalStep(stepNumber);
+      const mStart = mObj?.startStep || 0;
+      const mSteps = Math.max(1, mObj?.stepsPerMeasure || stepsPerMeasure || 16);
+      const relStep = stepNumber - mStart;
+      const mStepsPerBeat = Math.max(1, Math.round(mSteps / beatsPerMeasure));
+
+      if (metronomeEnabled && relStep % mStepsPerBeat === 0) {
+        const isDownbeat = relStep === 0;
         engine.playMetronome(time, isDownbeat);
       }
     },
-    [metronomeEnabled, stepsPerBeat, stepsPerMeasure, totalSteps]
+    [
+      metronomeEnabled,
+      beatsPerMeasure,
+      stepsPerMeasure,
+      totalSteps,
+      getMeasureForGlobalStep,
+    ]
   );
 
   // Bucle lookahead de Web Audio con ventana de agendado de 80ms y anclaje de fase continua
@@ -421,7 +582,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
 
       scheduleNote(globalStep, hitTime);
 
-      const stepDuration = getSecondsPerStep(bpmRef.current);
+      const stepDuration = getSecondsPerStep(bpmRef.current, globalStep);
       nextNoteTimeRef.current += stepDuration;
 
       schedulerStepRef.current = (schedulerStepRef.current + 1) % totalSteps;
@@ -432,7 +593,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     }
   }, [totalSteps, getSecondsPerStep, scheduleNote]);
 
-  // Bucle visual a 60/120 FPS anclado al último golpe de hardware (fase continua sin desfase al cambiar BPM)
+  // Bucle visual a 60/120 FPS anclado al último golpe de hardware (fase continua sin desfase al cambiar BPM o subdivisión)
   const updateVisualProgress = useCallback(() => {
     if (!isPlayingRef.current) return;
 
@@ -441,7 +602,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
 
     if (ctx && anchorAudioTimeRef.current > 0) {
       const currentBpm = bpmRef.current;
-      const stepDuration = getSecondsPerStep(currentBpm);
+      const stepDuration = getSecondsPerStep(currentBpm, anchorStepRef.current);
 
       // Diferencia de tiempo respecto al golpe de referencia más reciente agendado (< 80ms)
       const deltaFromAnchor = ctx.currentTime - anchorAudioTimeRef.current;
@@ -450,16 +611,20 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       const normalizedStep =
         ((Math.floor(exactStep) % totalSteps) + totalSteps) % totalSteps;
 
-      // Progreso continuo dentro del compás para la animación del cabezal
-      const stepInMeas = exactStep >= 0 ? exactStep % stepsPerMeasure : 0;
-      const normalizedProgress = Math.max(0, Math.min(1, stepInMeas / stepsPerMeasure));
+      const mObj = getMeasureForGlobalStep(normalizedStep);
+      const mStart = mObj?.startStep || 0;
+      const mSteps = Math.max(1, mObj?.stepsPerMeasure || stepsPerMeasure || 16);
+
+      // Progreso continuo dentro del compás activo para la animación del cabezal
+      const stepInMeas = Math.max(0, exactStep - mStart);
+      const normalizedProgress = Math.max(0, Math.min(1, stepInMeas / mSteps));
 
       setProgress(normalizedProgress);
       setActiveStep(normalizedStep);
     }
 
     rafIdRef.current = requestAnimationFrame(updateVisualProgress);
-  }, [totalSteps, stepsPerMeasure, getSecondsPerStep]);
+  }, [totalSteps, stepsPerMeasure, getSecondsPerStep, getMeasureForGlobalStep]);
 
   // Play / Pause con sincronización estricta AudioContext + 30ms lead-in
   const handlePlayPause = useCallback(() => {
@@ -654,18 +819,23 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
   }, []);
 
   const measureAnalysis = useMemo(() => {
-    return analyzeMeasureDuplicates(measures);
-  }, [measures]);
+    return analyzeMeasureDuplicates(
+      measures,
+      normalizedSub,
+      stepsPerMeasure
+    );
+  }, [measures, normalizedSub, stepsPerMeasure]);
 
   const handleSelectMeasure = useCallback(
     (measureIdx: number) => {
-      const newStep = measureIdx * stepsPerMeasure;
+      const targetMeas = measures[measureIdx];
+      const newStep = targetMeas ? targetMeas.startStep || 0 : 0;
       setActiveStep(newStep);
       schedulerStepRef.current = newStep;
       anchorStepRef.current = newStep;
       setProgress(0);
     },
-    [stepsPerMeasure]
+    [measures]
   );
 
   const handleSelectPatternMode = useCallback((mode: string) => {
@@ -681,7 +851,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     }
   }, []);
 
-  // Hits filtrados y normalizados para el compás activo (0 a stepsPerMeasure - 1)
+  // Hits filtrados y normalizados para el compás activo (0 a activeMeasureSteps - 1)
   const activeMeasureHits = useMemo(() => {
     return measures[activeMeasureIndex]?.notes || [];
   }, [measures, activeMeasureIndex]);
@@ -709,7 +879,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
                 {activeExercise.title}
               </span>
               <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono shrink-0">
-                Compás {activeMeasureIndex + 1} de {totalMeasures} • {subConfig.name} ({stepsPerMeasure} pasos)
+                Compás {activeMeasureIndex + 1} de {totalMeasures} • {activeSubConfig.name} ({activeMeasureSteps} pasos)
               </span>
 
               {patternBank.length >= 2 && (
@@ -725,7 +895,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
                   >
                     🔥 Secuencia ({fullMeasures.length}c)
                   </button>
-                  {patternBank.map((pat) => {
+                  {patternBank.map((pat: any) => {
                     const style = getPatternStyle(pat.color);
                     const isSelected = selectedPatternFilter === pat.code;
                     return (
@@ -739,7 +909,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
                             : 'bg-slate-800/80 text-slate-400 border-slate-700'
                         }`}
                       >
-                        [{pat.code} • {pat.name}]
+                        [{pat.code} • {pat.name} • {pat.subdivision || '1/16'}]
                       </button>
                     );
                   })}
@@ -766,7 +936,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
                 hits={activeMeasureHits}
                 totalMeasures={totalMeasures}
                 activeMeasureIndex={activeMeasureIndex}
-                stepsPerMeasure={stepsPerMeasure}
+                stepsPerMeasure={activeMeasureSteps}
                 currentStepInMeasure={stepInMeasure}
                 progress={progress}
                 timeSignature={activeExercise.timeSignature}
@@ -841,7 +1011,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
                   <span className="text-[11px] text-zinc-400 font-mono">{activeExercise.timeSignature}</span>
                   <span className="text-zinc-600">•</span>
                   <span className="text-[11px] text-zinc-400 font-mono">
-                    Compás {activeMeasureIndex + 1} de {totalMeasures} • {subConfig.name} ({stepsPerMeasure} pasos)
+                    Compás {activeMeasureIndex + 1} de {totalMeasures} • {activeSubConfig.name} ({activeMeasureSteps} pasos)
                   </span>
                 </div>
                 <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
@@ -888,7 +1058,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
                   <span>🔥 Secuencia Completa ({fullMeasures.length} Compases)</span>
                 </button>
 
-                {patternBank.map((pat) => {
+                {patternBank.map((pat: any) => {
                   const style = getPatternStyle(pat.color);
                   const isSelected = selectedPatternFilter === pat.code;
                   return (
@@ -901,9 +1071,9 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
                           ? `${style.badge} ring-2 ring-white/40 scale-105 shadow-md font-black`
                           : 'bg-slate-950/80 hover:bg-slate-800 text-slate-300 border-slate-800'
                       }`}
-                      title={`Practicar únicamente ${pat.code} (${pat.name}) en bucle continuo`}
+                      title={`Practicar únicamente ${pat.code} (${pat.name} • ${pat.subdivision || '1/16'}) en bucle continuo`}
                     >
-                      <span>[{pat.code} • {pat.name}]</span>
+                      <span>[{pat.code} • {pat.name} • {pat.subdivision || '1/16'}]</span>
                       <span className="text-[10px] opacity-75">({pat.usageCount}c)</span>
                     </button>
                   );
@@ -913,7 +1083,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
               <span className="text-[11px] font-mono text-cyan-400/90">
                 {selectedPatternFilter === 'ALL'
                   ? `Secuencia completa activa (${fullMeasures.length} compases)`
-                  : `🔁 Bucle individual activo: [${selectedPatternFilter}] (Loop = ON)`}
+                  : `🔁 Bucle individual activo: [${selectedPatternFilter}] (${activeMeasureSub} • Loop = ON)`}
               </span>
             </div>
           )}
@@ -925,7 +1095,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
               hits={activeMeasureHits}
               totalMeasures={totalMeasures}
               activeMeasureIndex={activeMeasureIndex}
-              stepsPerMeasure={stepsPerMeasure}
+              stepsPerMeasure={activeMeasureSteps}
               currentStepInMeasure={stepInMeasure}
               progress={progress}
               timeSignature={activeExercise.timeSignature}
@@ -941,7 +1111,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
                 <span>RUNWAY SCANNER:</span>
                 <span className="text-zinc-300 font-medium">
                   {isPlaying
-                    ? `Paso ${stepInMeasure + 1} / ${stepsPerMeasure} (Compás ${activeMeasureIndex + 1}/${totalMeasures})`
+                    ? `Paso ${stepInMeasure + 1} / ${activeMeasureSteps} (Compás ${activeMeasureIndex + 1}/${totalMeasures})`
                     : `Compás ${activeMeasureIndex + 1}/${totalMeasures} • En pausa`}
                 </span>
                 {measureAnalysis[activeMeasureIndex]?.isDuplicate && (
@@ -959,7 +1129,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
               </div>
 
               <div className="flex items-center gap-3">
-                <span>SUBDIVISIÓN: {subConfig.name}</span>
+                <span>SUBDIVISIÓN: {activeSubConfig.name} ({activeMeasureSteps}p)</span>
                 <span className="text-zinc-400 font-semibold">{bpm} BPM</span>
               </div>
             </div>

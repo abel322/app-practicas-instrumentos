@@ -24,10 +24,10 @@ export function getStepRhythmLabel(stepIndex: number, totalSteps: number = 16): 
   }
 
   if (totalSteps === 12) {
-    // 4/4 en tresillos de corchea (12 pasos: 1 tri ple 2 tri ple...)
+    // 4/4 en tresillos de corchea (12 pasos: 1 2 3 | 2 2 3 | 3 2 3 | 4 2 3)
     const beatNumber = Math.floor(stepIndex / 3) + 1;
     const subIndex = stepIndex % 3;
-    const subLabels = [beatNumber.toString(), 'tri', 'ple'];
+    const subLabels = [beatNumber.toString(), '2', '3'];
     return {
       label: subLabels[subIndex],
       isBeat: subIndex === 0,
@@ -46,21 +46,21 @@ export function getStepRhythmLabel(stepIndex: number, totalSteps: number = 16): 
   }
 
   if (totalSteps === 20) {
-    // Quintillos (5:4 - 20 pasos: 1 • • • • 2 • • • •)
+    // Quintillos (5:4 - 20 pasos: 1 2 3 4 5 por cada pulso)
     const beatNumber = Math.floor(stepIndex / 5) + 1;
     const subIndex = stepIndex % 5;
     return {
-      label: subIndex === 0 ? beatNumber.toString() : '•',
+      label: subIndex === 0 ? beatNumber.toString() : (subIndex + 1).toString(),
       isBeat: subIndex === 0,
     };
   }
 
   if (totalSteps === 24) {
-    // Tresillos de semicorchea (24 pasos: 6 por tiempo)
+    // Tresillos de semicorchea / Seisillos (24 pasos: 1 2 3 4 5 6 por cada pulso)
     const beatNumber = Math.floor(stepIndex / 6) + 1;
     const subIndex = stepIndex % 6;
     return {
-      label: subIndex === 0 ? beatNumber.toString() : '•',
+      label: subIndex === 0 ? beatNumber.toString() : (subIndex + 1).toString(),
       isBeat: subIndex === 0,
     };
   }

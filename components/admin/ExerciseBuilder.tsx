@@ -23,6 +23,8 @@ import {
   extractPatternBankFromMeasures,
   analyzeMeasureDuplicates,
   computeMeasureFingerprint,
+  remapNotesToNewSubdivision,
+  inferSubdivisionFromSteps,
   PatternSummary,
 } from '@/lib/music/measureFingerprint';
 import { 
@@ -451,12 +453,56 @@ export const ExerciseBuilder: React.FC = () => {
               }));
             }
 
+            if (Array.isArray(exerciseData.measures) && exerciseData.measures.length > 0) {
+              const extractedBank =
+                Array.isArray(exerciseData.patternBank) && exerciseData.patternBank.length > 0
+                  ? exerciseData.patternBank
+                  : extractPatternBankFromMeasures(
+                      exerciseData.measures,
+                      loadedSubKey,
+                      stepsInLoadedMeasure
+                    );
+              if (extractedBank.length > 0) setPatternBank(extractedBank);
+
+              const analyzed = analyzeMeasureDuplicates(
+                exerciseData.measures,
+                loadedSubKey,
+                stepsInLoadedMeasure
+              );
+              const nextAssign: Record<
+                number,
+                {
+                  patternCode: string;
+                  patternName: string;
+                  patternColor: string;
+                  subdivision?: string;
+                  stepsPerMeasure?: number;
+                }
+              > = {};
+              analyzed.forEach((item) => {
+                nextAssign[item.measureIndex] = {
+                  patternCode: item.patternCode,
+                  patternName: item.patternName,
+                  patternColor: item.patternColor,
+                  subdivision: item.subdivision,
+                  stepsPerMeasure: item.stepsPerMeasure,
+                };
+              });
+              setMeasureAssignments(nextAssign);
+              setTotalMeasures(Math.max(1, exerciseData.measures.length));
+            }
+
             if (loadedNotes.length > 0) {
               activeNotesRef.current = loadedNotes;
               setNotes(loadedNotes);
-              const maxStep = Math.max(...loadedNotes.map((n) => n.step), 0);
-              const calculatedMeasures = Math.max(1, Math.ceil((maxStep + 1) / stepsInLoadedMeasure));
-              setTotalMeasures(calculatedMeasures);
+              if (!Array.isArray(exerciseData.measures) || exerciseData.measures.length === 0) {
+                const maxStep = Math.max(...loadedNotes.map((n) => n.step), 0);
+                const calculatedMeasures = Math.max(
+                  1,
+                  Math.ceil((maxStep + 1) / stepsInLoadedMeasure)
+                );
+                setTotalMeasures(calculatedMeasures);
+              }
             }
           }
         } catch (err) {
@@ -579,15 +625,9 @@ export const ExerciseBuilder: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<{ success: boolean; url?: string; error?: string } | null>(null);
 
-  // Pasos por compás según compás y subdivisión normalizada
-  const stepsPerMeasure = useMemo(() => {
-    return getStepsForSubdivision(subdivision, timeSignature);
-  }, [timeSignature, subdivision]);
-
-  const totalSteps = totalMeasures * stepsPerMeasure;
-
   // ============================================================================
   // BANCO DE PATRONES (P1..P12) & ARREGLADOR DE SECUENCIA MULTI-COMPÁS (40 COMPASES)
+  // CON SUBDIVISIÓN Y PASOS INDEPENDIENTES POR PATRÓN Y POR COMPÁS
   // ============================================================================
   const [measureEditMode, setMeasureEditMode] = useState<'patterns' | 'direct'>('patterns');
   const [patternBank, setPatternBank] = useState<PatternSummary[]>([
@@ -595,15 +635,32 @@ export const ExerciseBuilder: React.FC = () => {
       code: 'P1',
       name: 'Patrón 1',
       color: 'cyan',
+      subdivision: '1/16',
+      stepsPerMeasure: 16,
       sampleMeasureIndex: 0,
       usageCount: 1,
       notes: [],
     },
   ]);
   const [measureAssignments, setMeasureAssignments] = useState<
-    Record<number, { patternCode: string; patternName: string; patternColor: string }>
+    Record<
+      number,
+      {
+        patternCode: string;
+        patternName: string;
+        patternColor: string;
+        subdivision?: string;
+        stepsPerMeasure?: number;
+      }
+    >
   >({
-    0: { patternCode: 'P1', patternName: 'Patrón 1', patternColor: 'cyan' },
+    0: {
+      patternCode: 'P1',
+      patternName: 'Patrón 1',
+      patternColor: 'cyan',
+      subdivision: '1/16',
+      stepsPerMeasure: 16,
+    },
   });
   const [editingPatternCode, setEditingPatternCode] = useState<string>('P1');
   const [activeBrushPatternCode, setActiveBrushPatternCode] = useState<string>('P1');
@@ -611,45 +668,197 @@ export const ExerciseBuilder: React.FC = () => {
   const [previewingPatternCode, setPreviewingPatternCode] = useState<string | null>(null);
   const loopSingleMeasureRef = useRef<number | null>(null);
 
-  // Agrupación de notas por compás con metadatos de patrón (patternCode, patternName, patternColor)
+  // Construir configuración por compás con subdivisión, stepsPerMeasure, startStep y endStep acumulativos
+  const buildMeasureConfigList = useCallback(
+    (
+      count: number,
+      assignmentsMap: Record<
+        number,
+        {
+          patternCode: string;
+          patternName: string;
+          patternColor: string;
+          subdivision?: string;
+          stepsPerMeasure?: number;
+        }
+      >,
+      bank: PatternSummary[],
+      fallbackSub: string,
+      timeSig: '4/4' | '6/8' | '7/8'
+    ) => {
+      let cursor = 0;
+      return Array.from({ length: Math.max(1, count) }).map((_, mIdx) => {
+        const assign = assignmentsMap[mIdx];
+        const pat =
+          bank.find((p) => p.code === assign?.patternCode) ||
+          (mIdx === 0 ? bank[0] : undefined);
+        const resolvedSub = normalizeSubdivisionKey(
+          assign?.subdivision || pat?.subdivision || fallbackSub || '1/16'
+        );
+        const resolvedSteps =
+          assign?.stepsPerMeasure ||
+          pat?.stepsPerMeasure ||
+          getStepsForSubdivision(resolvedSub, timeSig);
+        const startStep = cursor;
+        const endStep = cursor + resolvedSteps;
+        cursor = endStep;
+        return {
+          measureIndex: mIdx,
+          patternCode: assign?.patternCode || pat?.code || 'P1',
+          patternName: assign?.patternName || pat?.name || 'Patrón 1',
+          patternColor: assign?.patternColor || pat?.color || 'cyan',
+          subdivision: resolvedSub,
+          stepsPerMeasure: resolvedSteps,
+          startStep,
+          endStep,
+        };
+      });
+    },
+    []
+  );
+
+  const extractRelativeNotesByMeasure = useCallback(
+    (
+      flatNotes: EditorNote[],
+      configList: Array<{
+        measureIndex: number;
+        startStep: number;
+        endStep: number;
+        stepsPerMeasure: number;
+      }>
+    ): Record<number, EditorNote[]> => {
+      const byMeasure: Record<number, EditorNote[]> = {};
+      configList.forEach((cfg) => {
+        byMeasure[cfg.measureIndex] = flatNotes
+          .filter((n) => n.step >= cfg.startStep && n.step < cfg.endStep)
+          .map((n) => {
+            const rel = n.step - cfg.startStep;
+            return {
+              ...n,
+              step: rel,
+              stepIndex: rel,
+            };
+          });
+      });
+      return byMeasure;
+    },
+    []
+  );
+
+  const flattenMeasureNotes = useCallback(
+    (
+      byMeasure: Record<number, EditorNote[]>,
+      configList: Array<{
+        measureIndex: number;
+        startStep: number;
+        endStep: number;
+        stepsPerMeasure: number;
+      }>
+    ): EditorNote[] => {
+      const flat: EditorNote[] = [];
+      configList.forEach((cfg) => {
+        const mNotes = byMeasure[cfg.measureIndex] || [];
+        mNotes.forEach((n) => {
+          const rel = n.stepIndex !== undefined ? n.stepIndex : n.step ?? 0;
+          if (rel >= 0 && rel < cfg.stepsPerMeasure) {
+            flat.push({
+              ...n,
+              step: cfg.startStep + rel,
+              stepIndex: rel,
+            });
+          }
+        });
+      });
+      return flat;
+    },
+    []
+  );
+
+  const measureConfigList = useMemo(() => {
+    return buildMeasureConfigList(
+      totalMeasures,
+      measureAssignments,
+      patternBank,
+      subdivision,
+      timeSignature
+    );
+  }, [
+    buildMeasureConfigList,
+    totalMeasures,
+    measureAssignments,
+    patternBank,
+    subdivision,
+    timeSignature,
+  ]);
+
+  const measureConfigListRef = useRef(measureConfigList);
+  useEffect(() => {
+    measureConfigListRef.current = measureConfigList;
+  }, [measureConfigList]);
+
+  const activeMeasureConfig =
+    measureConfigList[currentMeasure] ||
+    measureConfigList[0] || {
+      measureIndex: 0,
+      patternCode: 'P1',
+      patternName: 'Patrón 1',
+      patternColor: 'cyan',
+      subdivision: normalizeSubdivisionKey(subdivision),
+      stepsPerMeasure: getStepsForSubdivision(subdivision, timeSignature),
+      startStep: 0,
+      endStep: getStepsForSubdivision(subdivision, timeSignature),
+    };
+
+  // Pasos y subdivisión propios del compás/patrón actualmente activo
+  const stepsPerMeasure = activeMeasureConfig.stepsPerMeasure;
+  const activeMeasureSubdivision = activeMeasureConfig.subdivision;
+  const activeMeasureStart = activeMeasureConfig.startStep;
+
+  const totalSteps = useMemo(() => {
+    if (measureConfigList.length === 0) return stepsPerMeasure;
+    return measureConfigList[measureConfigList.length - 1].endStep;
+  }, [measureConfigList, stepsPerMeasure]);
+
+  // Agrupación de notas por compás con metadatos de patrón (patternCode, patternName, patternColor, subdivision, stepsPerMeasure)
   const measures = useMemo(() => {
-    return Array.from({ length: totalMeasures }).map((_, mIdx) => {
-      const mStart = mIdx * stepsPerMeasure;
-      const mEnd = mStart + stepsPerMeasure;
-      const assign = measureAssignments[mIdx] || {
-        patternCode: 'P1',
-        patternName: 'Patrón 1',
-        patternColor: 'cyan',
-      };
+    return measureConfigList.map((cfg) => {
       return {
-        measureIndex: mIdx,
-        measureNumber: mIdx + 1,
-        patternCode: assign.patternCode,
-        patternName: assign.patternName,
-        patternColor: assign.patternColor,
+        measureIndex: cfg.measureIndex,
+        measureNumber: cfg.measureIndex + 1,
+        patternCode: cfg.patternCode,
+        patternName: cfg.patternName,
+        patternColor: cfg.patternColor,
+        subdivision: cfg.subdivision,
+        stepsPerMeasure: cfg.stepsPerMeasure,
+        startStep: cfg.startStep,
+        endStep: cfg.endStep,
         notes: notes
-          .filter((n) => n.step >= mStart && n.step < mEnd)
+          .filter((n) => n.step >= cfg.startStep && n.step < cfg.endStep)
           .map((n) => {
             const inst = n.drumVoice || (n as any).instrument || 'snare';
             const isKick = inst === 'kick' || (inst as string) === 'bombo';
             return {
               ...n,
-              stepIndex: n.step - mStart,
+              stepIndex: n.step - cfg.startStep,
               instrument: inst,
               sticking: isKick ? ('K' as StickingType) : n.sticking,
-              patternCode: assign.patternCode,
-              patternName: assign.patternName,
-              patternColor: assign.patternColor,
+              patternCode: cfg.patternCode,
+              patternName: cfg.patternName,
+              patternColor: cfg.patternColor,
+              subdivision: cfg.subdivision,
+              stepsPerMeasure: cfg.stepsPerMeasure,
             };
           }),
       };
     });
-  }, [totalMeasures, stepsPerMeasure, notes, measureAssignments]);
+  }, [measureConfigList, notes]);
 
   // Mantener sincronizadas las notas del patrón activo en el banco cuando se edita en la cuadrícula
   useEffect(() => {
-    const mStart = currentMeasure * stepsPerMeasure;
-    const mEnd = mStart + stepsPerMeasure;
+    const mStart = activeMeasureConfig.startStep;
+    const mEnd = activeMeasureConfig.endStep;
+    const mSteps = activeMeasureConfig.stepsPerMeasure;
+    const mSub = activeMeasureConfig.subdivision;
     const relNotes = notes
       .filter((n) => n.step >= mStart && n.step < mEnd)
       .map((n) => {
@@ -665,22 +874,32 @@ export const ExerciseBuilder: React.FC = () => {
       });
 
     const assignedCode =
-      measureAssignments[currentMeasure]?.patternCode || editingPatternCode || 'P1';
+      activeMeasureConfig.patternCode || editingPatternCode || 'P1';
 
     setPatternBank((prevBank) => {
       const idx = prevBank.findIndex((p) => p.code === assignedCode);
       if (idx === -1) return prevBank;
-      const oldFp = computeMeasureFingerprint({ notes: prevBank[idx].notes });
-      const newFp = computeMeasureFingerprint({ notes: relNotes });
+      const oldFp = computeMeasureFingerprint({
+        subdivision: prevBank[idx].subdivision,
+        stepsPerMeasure: prevBank[idx].stepsPerMeasure,
+        notes: prevBank[idx].notes,
+      });
+      const newFp = computeMeasureFingerprint({
+        subdivision: mSub,
+        stepsPerMeasure: mSteps,
+        notes: relNotes,
+      });
       if (oldFp === newFp) return prevBank;
       const next = [...prevBank];
       next[idx] = {
         ...next[idx],
+        subdivision: mSub,
+        stepsPerMeasure: mSteps,
         notes: JSON.parse(JSON.stringify(relNotes)),
       };
       return next;
     });
-  }, [notes, currentMeasure, stepsPerMeasure, measureAssignments, editingPatternCode]);
+  }, [notes, activeMeasureConfig, editingPatternCode]);
 
   // Modal de Exportación a PDF Editorial
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
@@ -698,7 +917,7 @@ export const ExerciseBuilder: React.FC = () => {
           }
         }
         return {
-          stepIndex: n.step - m.measureIndex * stepsPerMeasure,
+          stepIndex: n.stepIndex !== undefined ? n.stepIndex : n.step - m.startStep,
           midiNumber: midi ?? 60,
           duration: n.duration,
           velocity: n.velocity,
@@ -710,7 +929,7 @@ export const ExerciseBuilder: React.FC = () => {
         notes: measureNotes,
       };
     });
-  }, [measures, stepsPerMeasure, instrument]);
+  }, [measures, instrument]);
 
   // ============================================================================
   // AUTO-GUARDADO Y RESTAURACIÓN DE BORRADOR (LOCALSTORAGE)
@@ -734,6 +953,9 @@ export const ExerciseBuilder: React.FC = () => {
         if (savedDraft) {
           const parsed = JSON.parse(savedDraft);
           let loadedNotes: EditorNote[] = [];
+          const defaultSub = normalizeSubdivisionKey(parsed.subdivision || '1/16');
+          const defaultTimeSig = parsed.timeSignature || '4/4';
+          const defaultSteps = getStepsForSubdivision(defaultSub, defaultTimeSig);
 
           if (parsed.notes && Array.isArray(parsed.notes)) {
             loadedNotes = parsed.notes.map((n: any) => {
@@ -742,14 +964,20 @@ export const ExerciseBuilder: React.FC = () => {
               return isKick ? { ...n, sticking: 'K' } : n;
             });
           } else if (parsed.measures && Array.isArray(parsed.measures) && parsed.measures.length > 0) {
-            loadedNotes = parsed.measures.flatMap((m: any, mIdx: number) => {
-              const mStart = (m.measureIndex ?? mIdx) * stepsPerMeasure;
+            let runningStep = 0;
+            loadedNotes = parsed.measures.flatMap((m: any) => {
+              const mSub = normalizeSubdivisionKey(m.subdivision || defaultSub);
+              const mSteps = Number(m.stepsPerMeasure) || getStepsForSubdivision(mSub, defaultTimeSig);
+              const mStart = runningStep;
+              runningStep += mSteps;
               return (m.notes || []).map((n: any) => {
                 const voice = n.drumVoice || n.instrument;
                 const isKick = voice === 'kick' || voice === 'bombo';
+                const rel = n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % mSteps;
                 return {
                   ...n,
-                  step: n.step !== undefined ? n.step : mStart + (n.stepIndex ?? 0),
+                  step: mStart + rel,
+                  stepIndex: rel,
                   sticking: isKick ? 'K' : n.sticking,
                 };
               });
@@ -767,22 +995,54 @@ export const ExerciseBuilder: React.FC = () => {
             setTotalMeasures(resolvedMeasuresCount);
 
             if (parsed.patternBank && Array.isArray(parsed.patternBank) && parsed.patternBank.length > 0) {
-              setPatternBank(parsed.patternBank);
+              setPatternBank(
+                parsed.patternBank.map((p: any) => {
+                  const pSub = normalizeSubdivisionKey(
+                    p.subdivision || inferSubdivisionFromSteps(p.stepsPerMeasure, defaultSub)
+                  );
+                  const pSteps =
+                    Number(p.stepsPerMeasure) || getStepsForSubdivision(pSub, defaultTimeSig);
+                  return {
+                    ...p,
+                    subdivision: pSub,
+                    stepsPerMeasure: pSteps,
+                  };
+                })
+              );
             } else if (parsed.measures && Array.isArray(parsed.measures) && parsed.measures.length > 0) {
-              const extracted = extractPatternBankFromMeasures(parsed.measures);
+              const extracted = extractPatternBankFromMeasures(
+                parsed.measures,
+                defaultSub,
+                defaultSteps
+              );
               if (extracted.length > 0) setPatternBank(extracted);
             }
 
             if (parsed.measureAssignments && typeof parsed.measureAssignments === 'object') {
               setMeasureAssignments(parsed.measureAssignments);
             } else if (parsed.measures && Array.isArray(parsed.measures) && parsed.measures.length > 0) {
-              const analyzed = analyzeMeasureDuplicates(parsed.measures);
-              const nextAssign: Record<number, { patternCode: string; patternName: string; patternColor: string }> = {};
+              const analyzed = analyzeMeasureDuplicates(
+                parsed.measures,
+                defaultSub,
+                defaultSteps
+              );
+              const nextAssign: Record<
+                number,
+                {
+                  patternCode: string;
+                  patternName: string;
+                  patternColor: string;
+                  subdivision?: string;
+                  stepsPerMeasure?: number;
+                }
+              > = {};
               analyzed.forEach((item) => {
                 nextAssign[item.measureIndex] = {
                   patternCode: item.patternCode,
                   patternName: item.patternName,
                   patternColor: item.patternColor,
+                  subdivision: item.subdivision,
+                  stepsPerMeasure: item.stepsPerMeasure,
                 };
               });
               setMeasureAssignments(nextAssign);
@@ -879,18 +1139,27 @@ export const ExerciseBuilder: React.FC = () => {
       activeNotesRef.current = [];
       setTotalMeasures(1);
       setCurrentMeasure(0);
+      setSubdivision('1/16');
       setPatternBank([
         {
           code: 'P1',
           name: 'Patrón 1',
           color: 'cyan',
+          subdivision: '1/16',
+          stepsPerMeasure: 16,
           sampleMeasureIndex: 0,
           usageCount: 1,
           notes: [],
         },
       ]);
       setMeasureAssignments({
-        0: { patternCode: 'P1', patternName: 'Patrón 1', patternColor: 'cyan' },
+        0: {
+          patternCode: 'P1',
+          patternName: 'Patrón 1',
+          patternColor: 'cyan',
+          subdivision: '1/16',
+          stepsPerMeasure: 16,
+        },
       });
       setEditingPatternCode('P1');
       setActiveBrushPatternCode('P1');
@@ -925,12 +1194,158 @@ export const ExerciseBuilder: React.FC = () => {
     [measureAssignments]
   );
 
-  // Crear nuevo patrón en el banco (P2, P3... hasta P12+)
+  // Cambiar subdivisión de forma INDEPENDIENTE para el patrón/compás objetivo sin afectar otros patrones
+  const handleChangeSubdivision = useCallback(
+    (rawSubdivision: string, targetPatternCode?: string) => {
+      const normalizedSub = normalizeSubdivisionKey(rawSubdivision);
+      const newSteps = getStepsForSubdivision(normalizedSub, timeSignature);
+
+      const byMeasure = extractRelativeNotesByMeasure(notes, measureConfigList);
+      const targetCode =
+        targetPatternCode ||
+        activeMeasureConfig.patternCode ||
+        editingPatternCode ||
+        'P1';
+
+      if (measureEditMode === 'direct' && !targetPatternCode) {
+        // En modo directo por compás, cambiar la subdivisión del compás actual (y su patrón asociado si aplica)
+        const oldSteps = activeMeasureConfig.stepsPerMeasure;
+        byMeasure[currentMeasure] = remapNotesToNewSubdivision(
+          byMeasure[currentMeasure] || [],
+          oldSteps,
+          newSteps
+        );
+        const nextAssignments = {
+          ...measureAssignments,
+          [currentMeasure]: {
+            ...(measureAssignments[currentMeasure] || {
+              patternCode: targetCode,
+              patternName: activeMeasureConfig.patternName,
+              patternColor: activeMeasureConfig.patternColor,
+            }),
+            subdivision: normalizedSub,
+            stepsPerMeasure: newSteps,
+          },
+        };
+        const nextBank = patternBank.map((p) =>
+          p.code === targetCode
+            ? {
+                ...p,
+                subdivision: normalizedSub,
+                stepsPerMeasure: newSteps,
+                notes: remapNotesToNewSubdivision(
+                  p.notes || [],
+                  p.stepsPerMeasure || oldSteps,
+                  newSteps
+                ),
+              }
+            : p
+        );
+        const newConfigList = buildMeasureConfigList(
+          totalMeasures,
+          nextAssignments,
+          nextBank,
+          normalizedSub,
+          timeSignature
+        );
+        const rebuiltNotes = flattenMeasureNotes(byMeasure, newConfigList);
+        activeNotesRef.current = rebuiltNotes;
+        setPatternBank(nextBank);
+        setMeasureAssignments(nextAssignments);
+        setNotes(rebuiltNotes);
+        setSubdivision(normalizedSub as SubdivisionType);
+        return;
+      }
+
+      // En Modo Patrones + Arreglador: actualizar únicamente el patrón objetivo y los compases asignados a ese patrón
+      const nextBank = patternBank.map((p) => {
+        if (p.code !== targetCode) return p;
+        const oldPatSteps =
+          p.stepsPerMeasure ||
+          getStepsForSubdivision(p.subdivision || '1/16', timeSignature);
+        return {
+          ...p,
+          subdivision: normalizedSub,
+          stepsPerMeasure: newSteps,
+          notes: remapNotesToNewSubdivision(p.notes || [], oldPatSteps, newSteps),
+        };
+      });
+
+      const nextAssignments = { ...measureAssignments };
+      measureConfigList.forEach((cfg) => {
+        if (cfg.patternCode === targetCode) {
+          byMeasure[cfg.measureIndex] = remapNotesToNewSubdivision(
+            byMeasure[cfg.measureIndex] || [],
+            cfg.stepsPerMeasure,
+            newSteps
+          );
+          nextAssignments[cfg.measureIndex] = {
+            patternCode: cfg.patternCode,
+            patternName: cfg.patternName,
+            patternColor: cfg.patternColor,
+            subdivision: normalizedSub,
+            stepsPerMeasure: newSteps,
+          };
+        } else if (!nextAssignments[cfg.measureIndex]) {
+          nextAssignments[cfg.measureIndex] = {
+            patternCode: cfg.patternCode,
+            patternName: cfg.patternName,
+            patternColor: cfg.patternColor,
+            subdivision: cfg.subdivision,
+            stepsPerMeasure: cfg.stepsPerMeasure,
+          };
+        }
+      });
+
+      const newConfigList = buildMeasureConfigList(
+        totalMeasures,
+        nextAssignments,
+        nextBank,
+        subdivision,
+        timeSignature
+      );
+      const rebuiltNotes = flattenMeasureNotes(byMeasure, newConfigList);
+
+      activeNotesRef.current = rebuiltNotes;
+      setPatternBank(nextBank);
+      setMeasureAssignments(nextAssignments);
+      setNotes(rebuiltNotes);
+      if (activeMeasureConfig.patternCode === targetCode) {
+        setSubdivision(normalizedSub as SubdivisionType);
+      }
+      toast.info(
+        `Subdivisión de ${targetCode} ajustada a ${normalizedSub} (${newSteps} pasos).`
+      );
+    },
+    [
+      timeSignature,
+      extractRelativeNotesByMeasure,
+      notes,
+      measureConfigList,
+      activeMeasureConfig,
+      editingPatternCode,
+      measureEditMode,
+      currentMeasure,
+      measureAssignments,
+      patternBank,
+      buildMeasureConfigList,
+      totalMeasures,
+      flattenMeasureNotes,
+      subdivision,
+    ]
+  );
+
+  // Crear nuevo patrón en el banco (P2, P3... hasta P12+) con su propia subdivisión independiente (por defecto 1/16 = 16 pasos)
   const handleCreatePattern = useCallback(() => {
-    const nextNum = patternBank.length + 1;
+    const usedNums = patternBank
+      .map((p) => parseInt(p.code.replace(/\D/g, ''), 10))
+      .filter((n) => !isNaN(n));
+    const nextNum = usedNums.length > 0 ? Math.max(...usedNums) + 1 : patternBank.length + 1;
     const newCode = `P${nextNum}`;
     const newName = `Patrón ${nextNum}`;
     const newColor = PATTERN_PALETTE[(nextNum - 1) % PATTERN_PALETTE.length].key;
+    const newPatSub = '1/16';
+    const newPatSteps = getStepsForSubdivision(newPatSub, timeSignature);
 
     const newMeasureIdx = totalMeasuresRef.current;
     totalMeasuresRef.current = newMeasureIdx + 1;
@@ -940,6 +1355,8 @@ export const ExerciseBuilder: React.FC = () => {
       code: newCode,
       name: newName,
       color: newColor,
+      subdivision: newPatSub,
+      stepsPerMeasure: newPatSteps,
       sampleMeasureIndex: newMeasureIdx,
       usageCount: 1,
       notes: [],
@@ -952,14 +1369,18 @@ export const ExerciseBuilder: React.FC = () => {
         patternCode: newCode,
         patternName: newName,
         patternColor: newColor,
+        subdivision: newPatSub,
+        stepsPerMeasure: newPatSteps,
       },
     }));
     setTotalMeasures(newMeasureIdx + 1);
     setCurrentMeasure(newMeasureIdx);
     setEditingPatternCode(newCode);
     setActiveBrushPatternCode(newCode);
-    toast.info(`Patrón ${newCode} creado en C.${newMeasureIdx + 1}. Programa sus notas abajo.`);
-  }, [patternBank.length]);
+    toast.info(
+      `Patrón ${newCode} (${newPatSub} • ${newPatSteps} pasos) creado en C.${newMeasureIdx + 1}.`
+    );
+  }, [patternBank, timeSignature]);
 
   // Renombrar un patrón en línea y actualizar todos los compases que lo usan
   const handleRenamePattern = useCallback((code: string, newName: string) => {
@@ -987,6 +1408,10 @@ export const ExerciseBuilder: React.FC = () => {
       setEditingPatternCode(code);
       setActiveBrushPatternCode(code);
 
+      const patSub = normalizeSubdivisionKey(pat.subdivision || '1/16');
+      const patSteps =
+        pat.stepsPerMeasure || getStepsForSubdivision(patSub, timeSignature);
+
       // Buscar el primer compás que tenga asignado este patrón
       let targetIdx = -1;
       for (let i = 0; i < totalMeasuresRef.current; i++) {
@@ -996,112 +1421,180 @@ export const ExerciseBuilder: React.FC = () => {
         }
       }
 
+      const byMeasure = extractRelativeNotesByMeasure(notes, measureConfigList);
+      const nextAssignments = { ...measureAssignments };
+
       if (targetIdx === -1) {
         // Si ningún compás lo tiene asignado aún, asignarlo al compás actual y cargar sus notas
         targetIdx = currentMeasureRef.current;
-        setMeasureAssignments((prev) => ({
-          ...prev,
-          [targetIdx]: {
-            patternCode: pat.code,
-            patternName: pat.name,
-            patternColor: pat.color,
-          },
-        }));
+        nextAssignments[targetIdx] = {
+          patternCode: pat.code,
+          patternName: pat.name,
+          patternColor: pat.color,
+          subdivision: patSub,
+          stepsPerMeasure: patSteps,
+        };
+        setMeasureAssignments(nextAssignments);
+      } else {
+        nextAssignments[targetIdx] = {
+          ...nextAssignments[targetIdx],
+          patternCode: pat.code,
+          patternName: pat.name,
+          patternColor: pat.color,
+          subdivision: patSub,
+          stepsPerMeasure: patSteps,
+        };
+        setMeasureAssignments(nextAssignments);
       }
 
-      const mStart = targetIdx * stepsPerMeasure;
-      const mEnd = mStart + stepsPerMeasure;
-
-      setNotes((prev) => {
-        const otherNotes = prev.filter((n) => n.step < mStart || n.step >= mEnd);
-        const patNotesForMeasure: EditorNote[] = (pat.notes || []).map((n: any) => {
+      if (
+        (!byMeasure[targetIdx] || byMeasure[targetIdx].length === 0) &&
+        pat.notes &&
+        pat.notes.length > 0
+      ) {
+        byMeasure[targetIdx] = pat.notes.map((n: any) => {
           const relStep =
-            n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % stepsPerMeasure;
+            n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % patSteps;
           return {
             ...JSON.parse(JSON.stringify(n)),
-            step: mStart + relStep,
+            step: relStep,
             stepIndex: relStep,
             drumVoice: n.drumVoice || n.instrument || 'snare',
           };
         });
-        const next = [...otherNotes, ...patNotesForMeasure];
-        activeNotesRef.current = next;
-        return next;
-      });
+      }
+
+      const newConfigList = buildMeasureConfigList(
+        totalMeasuresRef.current,
+        nextAssignments,
+        patternBank,
+        subdivision,
+        timeSignature
+      );
+      const rebuiltNotes = flattenMeasureNotes(byMeasure, newConfigList);
+      activeNotesRef.current = rebuiltNotes;
+      setNotes(rebuiltNotes);
 
       currentMeasureRef.current = targetIdx;
       setCurrentMeasure(targetIdx);
       return targetIdx;
     },
-    [patternBank, measureAssignments, stepsPerMeasure]
+    [
+      patternBank,
+      timeSignature,
+      measureAssignments,
+      extractRelativeNotesByMeasure,
+      notes,
+      measureConfigList,
+      buildMeasureConfigList,
+      subdivision,
+      flattenMeasureNotes,
+    ]
   );
 
-  // Sincronizar las notas y el nombre de un patrón en todos los compases de la secuencia que lo tengan asignado
+  // Sincronizar las notas, nombre y subdivisión de un patrón en todos los compases de la secuencia que lo tengan asignado
   const handleSyncPatternToSequence = useCallback(
     (code: string) => {
       const pat = patternBank.find((p) => p.code === code);
       if (!pat) return;
 
+      const patSub = normalizeSubdivisionKey(
+        activeMeasureConfig.patternCode === code
+          ? activeMeasureConfig.subdivision
+          : pat.subdivision || '1/16'
+      );
+      const patSteps =
+        activeMeasureConfig.patternCode === code
+          ? activeMeasureConfig.stepsPerMeasure
+          : pat.stepsPerMeasure || getStepsForSubdivision(patSub, timeSignature);
+
+      const byMeasure = extractRelativeNotesByMeasure(notes, measureConfigList);
+
       // Si actualmente estamos editando un compás con este patrón, tomar sus notas vivas
       let sourceRelNotes: any[] = pat.notes || [];
-      if (measureAssignments[currentMeasure]?.patternCode === code) {
-        const curStart = currentMeasure * stepsPerMeasure;
-        const curEnd = curStart + stepsPerMeasure;
-        sourceRelNotes = notes
-          .filter((n) => n.step >= curStart && n.step < curEnd)
-          .map((n) => ({
-            ...JSON.parse(JSON.stringify(n)),
-            step: n.step - curStart,
-            stepIndex: n.step - curStart,
-            drumVoice: n.drumVoice || (n as any).instrument || 'snare',
-          }));
+      if (activeMeasureConfig.patternCode === code) {
+        sourceRelNotes = (byMeasure[currentMeasure] || []).map((n) => ({
+          ...JSON.parse(JSON.stringify(n)),
+          step: n.stepIndex ?? n.step,
+          stepIndex: n.stepIndex ?? n.step,
+          drumVoice: n.drumVoice || (n as any).instrument || 'snare',
+        }));
       }
 
       let syncedMeasuresCount = 0;
-      setNotes((prev) => {
-        let next = [...prev];
-        for (let mIdx = 0; mIdx < totalMeasures; mIdx++) {
-          const assignedCode =
-            measureAssignments[mIdx]?.patternCode || (mIdx === 0 ? 'P1' : '');
-          if (assignedCode === code) {
-            syncedMeasuresCount++;
-            const mStart = mIdx * stepsPerMeasure;
-            const mEnd = mStart + stepsPerMeasure;
-            next = next.filter((n) => n.step < mStart || n.step >= mEnd);
-            const clonedForMeasure: EditorNote[] = sourceRelNotes.map((n: any) => {
-              const relStep =
-                n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % stepsPerMeasure;
-              return {
-                ...JSON.parse(JSON.stringify(n)),
-                step: mStart + relStep,
-                stepIndex: relStep,
-                drumVoice: n.drumVoice || n.instrument || 'snare',
-              };
-            });
-            next.push(...clonedForMeasure);
-          }
+      const nextAssignments = { ...measureAssignments };
+
+      for (let mIdx = 0; mIdx < totalMeasures; mIdx++) {
+        const assignedCode =
+          measureAssignments[mIdx]?.patternCode || (mIdx === 0 ? 'P1' : '');
+        if (assignedCode === code) {
+          syncedMeasuresCount++;
+          nextAssignments[mIdx] = {
+            patternCode: pat.code,
+            patternName: pat.name,
+            patternColor: pat.color,
+            subdivision: patSub,
+            stepsPerMeasure: patSteps,
+          };
+          byMeasure[mIdx] = sourceRelNotes.map((n: any) => {
+            const relStep =
+              n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % patSteps;
+            return {
+              ...JSON.parse(JSON.stringify(n)),
+              step: relStep,
+              stepIndex: relStep,
+              drumVoice: n.drumVoice || n.instrument || 'snare',
+            };
+          });
         }
-        activeNotesRef.current = next;
-        return next;
-      });
+      }
+
+      const newConfigList = buildMeasureConfigList(
+        totalMeasures,
+        nextAssignments,
+        patternBank,
+        subdivision,
+        timeSignature
+      );
+      const rebuiltNotes = flattenMeasureNotes(byMeasure, newConfigList);
+      activeNotesRef.current = rebuiltNotes;
+      setMeasureAssignments(nextAssignments);
+      setNotes(rebuiltNotes);
 
       toast.success(
-        `Patrón ${pat.code} ("${pat.name}") sincronizado en ${syncedMeasuresCount} ${
+        `Patrón ${pat.code} ("${pat.name}" • ${patSub}) sincronizado en ${syncedMeasuresCount} ${
           syncedMeasuresCount === 1 ? 'compás' : 'compases'
         }.`
       );
     },
-    [patternBank, measureAssignments, currentMeasure, stepsPerMeasure, notes, totalMeasures]
+    [
+      patternBank,
+      activeMeasureConfig,
+      timeSignature,
+      extractRelativeNotesByMeasure,
+      notes,
+      measureConfigList,
+      currentMeasure,
+      measureAssignments,
+      totalMeasures,
+      buildMeasureConfigList,
+      subdivision,
+      flattenMeasureNotes,
+    ]
   );
 
-  // Añadir un nuevo compás al final de la secuencia usando este patrón
+  // Añadir un nuevo compás al final de la secuencia usando este patrón (con su subdivisión propia)
   const handleAppendPatternMeasure = useCallback(
     (code: string) => {
       const pat = patternBank.find((p) => p.code === code) || patternBank[0];
       if (!pat) return;
 
+      const patSub = normalizeSubdivisionKey(pat.subdivision || '1/16');
+      const patSteps =
+        pat.stepsPerMeasure || getStepsForSubdivision(patSub, timeSignature);
+
       const newIdx = totalMeasuresRef.current;
-      const mStart = newIdx * stepsPerMeasure;
+      const mStart = totalSteps;
 
       totalMeasuresRef.current = newIdx + 1;
       currentMeasureRef.current = newIdx;
@@ -1112,13 +1605,15 @@ export const ExerciseBuilder: React.FC = () => {
           patternCode: pat.code,
           patternName: pat.name,
           patternColor: pat.color,
+          subdivision: patSub,
+          stepsPerMeasure: patSteps,
         },
       }));
 
       setNotes((prev) => {
         const cloned: EditorNote[] = (pat.notes || []).map((n: any) => {
           const relStep =
-            n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % stepsPerMeasure;
+            n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % patSteps;
           return {
             ...JSON.parse(JSON.stringify(n)),
             step: mStart + relStep,
@@ -1133,52 +1628,77 @@ export const ExerciseBuilder: React.FC = () => {
 
       setTotalMeasures(newIdx + 1);
       setCurrentMeasure(newIdx);
-      toast.info(`Compás C.${newIdx + 1} añadido al final con [${pat.code}] ${pat.name}.`);
+      toast.info(
+        `Compás C.${newIdx + 1} añadido al final con [${pat.code}] ${pat.name} (${patSub}).`
+      );
     },
-    [patternBank, stepsPerMeasure]
+    [patternBank, timeSignature, totalSteps]
   );
 
-  // Asignar un patrón a un compás específico (C.1..C.40) con el Pincel de Patrón Activo
+  // Asignar un patrón a un compás específico (C.1..C.40) con el Pincel de Patrón Activo (preservando su subdivisión independiente)
   const handleAssignPatternToMeasure = useCallback(
     (mIdx: number, codeToAssign?: string) => {
       const targetCode = codeToAssign || activeBrushPatternCode || 'P1';
       const pat = patternBank.find((p) => p.code === targetCode) || patternBank[0];
       if (!pat) return;
 
-      const mStart = mIdx * stepsPerMeasure;
-      const mEnd = mStart + stepsPerMeasure;
+      const patSub = normalizeSubdivisionKey(pat.subdivision || '1/16');
+      const patSteps =
+        pat.stepsPerMeasure || getStepsForSubdivision(patSub, timeSignature);
 
-      setMeasureAssignments((prev) => ({
-        ...prev,
+      const byMeasure = extractRelativeNotesByMeasure(notes, measureConfigList);
+      byMeasure[mIdx] = (pat.notes || []).map((n: any) => {
+        const relStep =
+          n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % patSteps;
+        return {
+          ...JSON.parse(JSON.stringify(n)),
+          step: relStep,
+          stepIndex: relStep,
+          drumVoice: n.drumVoice || n.instrument || 'snare',
+        };
+      });
+
+      const nextAssignments = {
+        ...measureAssignments,
         [mIdx]: {
           patternCode: pat.code,
           patternName: pat.name,
           patternColor: pat.color,
+          subdivision: patSub,
+          stepsPerMeasure: patSteps,
         },
-      }));
+      };
 
-      setNotes((prev) => {
-        const filtered = prev.filter((n) => n.step < mStart || n.step >= mEnd);
-        const cloned: EditorNote[] = (pat.notes || []).map((n: any) => {
-          const relStep =
-            n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % stepsPerMeasure;
-          return {
-            ...JSON.parse(JSON.stringify(n)),
-            step: mStart + relStep,
-            stepIndex: relStep,
-            drumVoice: n.drumVoice || n.instrument || 'snare',
-          };
-        });
-        const next = [...filtered, ...cloned];
-        activeNotesRef.current = next;
-        return next;
-      });
+      const newConfigList = buildMeasureConfigList(
+        totalMeasures,
+        nextAssignments,
+        patternBank,
+        subdivision,
+        timeSignature
+      );
+      const rebuiltNotes = flattenMeasureNotes(byMeasure, newConfigList);
+
+      activeNotesRef.current = rebuiltNotes;
+      setMeasureAssignments(nextAssignments);
+      setNotes(rebuiltNotes);
 
       currentMeasureRef.current = mIdx;
       setCurrentMeasure(mIdx);
       setEditingPatternCode(pat.code);
     },
-    [activeBrushPatternCode, patternBank, stepsPerMeasure]
+    [
+      activeBrushPatternCode,
+      patternBank,
+      timeSignature,
+      extractRelativeNotesByMeasure,
+      notes,
+      measureConfigList,
+      measureAssignments,
+      buildMeasureConfigList,
+      totalMeasures,
+      subdivision,
+      flattenMeasureNotes,
+    ]
   );
 
   // Aplicar longitud de secuencia (ej. 40 compases) de golpe
@@ -1190,9 +1710,16 @@ export const ExerciseBuilder: React.FC = () => {
       );
       setTargetSequenceLength(targetLen);
 
+      const byMeasure = extractRelativeNotesByMeasure(notes, measureConfigList);
       const nextAssignments: Record<
         number,
-        { patternCode: string; patternName: string; patternColor: string }
+        {
+          patternCode: string;
+          patternName: string;
+          patternColor: string;
+          subdivision?: string;
+          stepsPerMeasure?: number;
+        }
       > = {};
 
       for (let mIdx = 0; mIdx < targetLen; mIdx++) {
@@ -1203,44 +1730,43 @@ export const ExerciseBuilder: React.FC = () => {
             patternBank.find((p) => p.code === activeBrushPatternCode) ||
             patternBank[mIdx % Math.max(1, patternBank.length)] ||
             patternBank[0];
+          const pSub = normalizeSubdivisionKey(fallbackPat?.subdivision || '1/16');
+          const pSteps =
+            fallbackPat?.stepsPerMeasure ||
+            getStepsForSubdivision(pSub, timeSignature);
           nextAssignments[mIdx] = {
             patternCode: fallbackPat?.code || 'P1',
             patternName: fallbackPat?.name || 'Patrón 1',
             patternColor: fallbackPat?.color || 'cyan',
+            subdivision: pSub,
+            stepsPerMeasure: pSteps,
           };
+          byMeasure[mIdx] = (fallbackPat?.notes || []).map((n: any) => {
+            const relStep =
+              n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % pSteps;
+            return {
+              ...JSON.parse(JSON.stringify(n)),
+              step: relStep,
+              stepIndex: relStep,
+              drumVoice: n.drumVoice || n.instrument || 'snare',
+            };
+          });
         }
       }
 
-      setMeasureAssignments(nextAssignments);
-
-      setNotes((prev) => {
-        const maxAllowedStep = targetLen * stepsPerMeasure;
-        let next = prev.filter((n) => n.step < maxAllowedStep);
-
-        for (let mIdx = totalMeasures; mIdx < targetLen; mIdx++) {
-          const assignedCode = nextAssignments[mIdx]?.patternCode || 'P1';
-          const pat = patternBank.find((p) => p.code === assignedCode);
-          if (pat && Array.isArray(pat.notes) && pat.notes.length > 0) {
-            const mStart = mIdx * stepsPerMeasure;
-            const cloned: EditorNote[] = pat.notes.map((n: any) => {
-              const relStep =
-                n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % stepsPerMeasure;
-              return {
-                ...JSON.parse(JSON.stringify(n)),
-                step: mStart + relStep,
-                stepIndex: relStep,
-                drumVoice: n.drumVoice || n.instrument || 'snare',
-              };
-            });
-            next.push(...cloned);
-          }
-        }
-
-        activeNotesRef.current = next;
-        return next;
-      });
+      const newConfigList = buildMeasureConfigList(
+        targetLen,
+        nextAssignments,
+        patternBank,
+        subdivision,
+        timeSignature
+      );
+      const rebuiltNotes = flattenMeasureNotes(byMeasure, newConfigList);
 
       totalMeasuresRef.current = targetLen;
+      activeNotesRef.current = rebuiltNotes;
+      setMeasureAssignments(nextAssignments);
+      setNotes(rebuiltNotes);
       setTotalMeasures(targetLen);
       if (currentMeasure >= targetLen) {
         currentMeasureRef.current = targetLen - 1;
@@ -1250,11 +1776,16 @@ export const ExerciseBuilder: React.FC = () => {
     },
     [
       targetSequenceLength,
+      extractRelativeNotesByMeasure,
+      notes,
+      measureConfigList,
       measureAssignments,
       patternBank,
       activeBrushPatternCode,
-      stepsPerMeasure,
-      totalMeasures,
+      timeSignature,
+      buildMeasureConfigList,
+      subdivision,
+      flattenMeasureNotes,
       currentMeasure,
     ]
   );
@@ -1266,9 +1797,15 @@ export const ExerciseBuilder: React.FC = () => {
 
     const nextAssignments: Record<
       number,
-      { patternCode: string; patternName: string; patternColor: string }
+      {
+        patternCode: string;
+        patternName: string;
+        patternColor: string;
+        subdivision?: string;
+        stepsPerMeasure?: number;
+      }
     > = {};
-    const rebuiltNotes: EditorNote[] = [];
+    const byMeasure: Record<number, EditorNote[]> = {};
 
     for (let mIdx = 0; mIdx < targetLen; mIdx++) {
       const patIdx = Math.min(
@@ -1276,24 +1813,38 @@ export const ExerciseBuilder: React.FC = () => {
         Math.floor((mIdx * patternBank.length) / targetLen)
       );
       const pat = patternBank[patIdx];
+      const pSub = normalizeSubdivisionKey(pat.subdivision || '1/16');
+      const pSteps =
+        pat.stepsPerMeasure || getStepsForSubdivision(pSub, timeSignature);
+
       nextAssignments[mIdx] = {
         patternCode: pat.code,
         patternName: pat.name,
         patternColor: pat.color,
+        subdivision: pSub,
+        stepsPerMeasure: pSteps,
       };
 
-      const mStart = mIdx * stepsPerMeasure;
-      (pat.notes || []).forEach((n: any) => {
+      byMeasure[mIdx] = (pat.notes || []).map((n: any) => {
         const relStep =
-          n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % stepsPerMeasure;
-        rebuiltNotes.push({
+          n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % pSteps;
+        return {
           ...JSON.parse(JSON.stringify(n)),
-          step: mStart + relStep,
+          step: relStep,
           stepIndex: relStep,
           drumVoice: n.drumVoice || n.instrument || 'snare',
-        });
+        };
       });
     }
+
+    const newConfigList = buildMeasureConfigList(
+      targetLen,
+      nextAssignments,
+      patternBank,
+      subdivision,
+      timeSignature
+    );
+    const rebuiltNotes = flattenMeasureNotes(byMeasure, newConfigList);
 
     totalMeasuresRef.current = targetLen;
     activeNotesRef.current = rebuiltNotes;
@@ -1303,7 +1854,14 @@ export const ExerciseBuilder: React.FC = () => {
     toast.success(
       `${patternBank.length} patrones distribuidos equitativamente a lo largo de ${targetLen} compases.`
     );
-  }, [patternBank, totalMeasures, stepsPerMeasure]);
+  }, [
+    patternBank,
+    totalMeasures,
+    timeSignature,
+    buildMeasureConfigList,
+    subdivision,
+    flattenMeasureNotes,
+  ]);
 
   // Eliminar un patrón del Banco de Patrones Reutilizables (P1, P2, P3, P4...) y limpiar la secuencia
   const handleDeletePattern = useCallback(
@@ -1321,12 +1879,14 @@ export const ExerciseBuilder: React.FC = () => {
 
       const remainingBank = patternBank.filter((p) => p.code !== codeToDelete);
       const fallbackPat = remainingBank[0];
+      const oldByMeasure = extractRelativeNotesByMeasure(notes, measureConfigList);
 
       // Identificar qué compases de la secuencia NO usaban el patrón eliminado
       const keptMeasureIndices: number[] = [];
       for (let mIdx = 0; mIdx < totalMeasures; mIdx++) {
         const assignedCode =
-          measureAssignments[mIdx]?.patternCode || (mIdx === 0 ? remainingBank[0].code : '');
+          measureAssignments[mIdx]?.patternCode ||
+          (mIdx === 0 ? remainingBank[0].code : '');
         if (assignedCode !== codeToDelete) {
           keptMeasureIndices.push(mIdx);
         }
@@ -1334,59 +1894,68 @@ export const ExerciseBuilder: React.FC = () => {
 
       const nextAssignments: Record<
         number,
-        { patternCode: string; patternName: string; patternColor: string }
+        {
+          patternCode: string;
+          patternName: string;
+          patternColor: string;
+          subdivision?: string;
+          stepsPerMeasure?: number;
+        }
       > = {};
-      const rebuiltNotes: EditorNote[] = [];
+      const nextByMeasure: Record<number, EditorNote[]> = {};
       let nextTotalMeasures = 1;
 
       if (keptMeasureIndices.length > 0) {
         nextTotalMeasures = keptMeasureIndices.length;
         keptMeasureIndices.forEach((oldIdx, newIdx) => {
-          const oldAssign = measureAssignments[oldIdx] || {
-            patternCode: fallbackPat.code,
-            patternName: fallbackPat.name,
-            patternColor: fallbackPat.color,
+          const oldCfg = measureConfigList[oldIdx];
+          nextAssignments[newIdx] = measureAssignments[oldIdx] || {
+            patternCode: oldCfg?.patternCode || fallbackPat.code,
+            patternName: oldCfg?.patternName || fallbackPat.name,
+            patternColor: oldCfg?.patternColor || fallbackPat.color,
+            subdivision: oldCfg?.subdivision || fallbackPat.subdivision || '1/16',
+            stepsPerMeasure:
+              oldCfg?.stepsPerMeasure || fallbackPat.stepsPerMeasure || 16,
           };
-          nextAssignments[newIdx] = oldAssign;
-
-          const oldStart = oldIdx * stepsPerMeasure;
-          const oldEnd = oldStart + stepsPerMeasure;
-          const newStart = newIdx * stepsPerMeasure;
-
-          notes
-            .filter((n) => n.step >= oldStart && n.step < oldEnd)
-            .forEach((n) => {
-              const relStep = n.step - oldStart;
-              rebuiltNotes.push({
-                ...n,
-                step: newStart + relStep,
-                stepIndex: relStep,
-              });
-            });
+          nextByMeasure[newIdx] = oldByMeasure[oldIdx] || [];
         });
       } else {
         // Si todos los compases usaban el patrón eliminado, dejar 1 compás con el primer patrón restante
+        const fbSub = normalizeSubdivisionKey(fallbackPat.subdivision || '1/16');
+        const fbSteps =
+          fallbackPat.stepsPerMeasure || getStepsForSubdivision(fbSub, timeSignature);
         nextTotalMeasures = 1;
         nextAssignments[0] = {
           patternCode: fallbackPat.code,
           patternName: fallbackPat.name,
           patternColor: fallbackPat.color,
+          subdivision: fbSub,
+          stepsPerMeasure: fbSteps,
         };
-        (fallbackPat.notes || []).forEach((n: any) => {
+        nextByMeasure[0] = (fallbackPat.notes || []).map((n: any) => {
           const relStep =
-            n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % stepsPerMeasure;
-          rebuiltNotes.push({
+            n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % fbSteps;
+          return {
             ...JSON.parse(JSON.stringify(n)),
             step: relStep,
             stepIndex: relStep,
             drumVoice: n.drumVoice || n.instrument || 'snare',
-          });
+          };
         });
       }
 
       if (isPlaying && previewingPatternCode === codeToDelete) {
         handleStop();
       }
+
+      const newConfigList = buildMeasureConfigList(
+        nextTotalMeasures,
+        nextAssignments,
+        remainingBank,
+        subdivision,
+        timeSignature
+      );
+      const rebuiltNotes = flattenMeasureNotes(nextByMeasure, newConfigList);
 
       totalMeasuresRef.current = nextTotalMeasures;
       const nextCurrentMeasure = Math.max(
@@ -1413,21 +1982,26 @@ export const ExerciseBuilder: React.FC = () => {
     },
     [
       patternBank,
+      extractRelativeNotesByMeasure,
+      notes,
+      measureConfigList,
       totalMeasures,
       measureAssignments,
-      stepsPerMeasure,
-      notes,
+      timeSignature,
+      isPlaying,
+      previewingPatternCode,
+      buildMeasureConfigList,
+      subdivision,
+      flattenMeasureNotes,
       currentMeasure,
       editingPatternCode,
       activeBrushPatternCode,
-      isPlaying,
-      previewingPatternCode,
     ]
   );
 
   // Aplicar síncopa automática con Ghost Notes en los contratiempos débiles ("e" y "a") del compás actual
   const handleApplySyncopation = useCallback(() => {
-    const mStart = currentMeasure * stepsPerMeasure;
+    const mStart = activeMeasureStart;
     const mEnd = mStart + stepsPerMeasure;
 
     setNotes((prev) => {
@@ -1502,7 +2076,7 @@ export const ExerciseBuilder: React.FC = () => {
     });
 
     toast.success('⚡ Síncopa y Ghost Notes aplicadas en los contratiempos del compás.');
-  }, [currentMeasure, stepsPerMeasure]);
+  }, [activeMeasureStart, stepsPerMeasure]);
 
   const handleAddMeasure = useCallback(() => {
     const nextIdx = totalMeasuresRef.current;
@@ -1511,39 +2085,49 @@ export const ExerciseBuilder: React.FC = () => {
     totalMeasuresRef.current = nextIdx + 1;
     currentMeasureRef.current = nextIdx;
     if (activePat) {
+      const pSub = normalizeSubdivisionKey(activePat.subdivision || '1/16');
+      const pSteps =
+        activePat.stepsPerMeasure || getStepsForSubdivision(pSub, timeSignature);
       setMeasureAssignments((prev) => ({
         ...prev,
         [nextIdx]: {
           patternCode: activePat.code,
           patternName: activePat.name,
           patternColor: activePat.color,
+          subdivision: pSub,
+          stepsPerMeasure: pSteps,
         },
       }));
     }
     setTotalMeasures((prev) => prev + 1);
     setCurrentMeasure(nextIdx); // Ir al nuevo compás
-  }, [patternBank, activeBrushPatternCode]);
+  }, [patternBank, activeBrushPatternCode, timeSignature]);
 
   const handleDuplicateMeasure = () => {
-    const sourceStart = currentMeasure * stepsPerMeasure;
+    const sourceStart = activeMeasureStart;
     const sourceEnd = sourceStart + stepsPerMeasure;
     const currentNotes = notes.filter((n) => n.step >= sourceStart && n.step < sourceEnd);
 
     const newMeasureIdx = totalMeasures;
-    const targetStart = newMeasureIdx * stepsPerMeasure;
+    const targetStart = totalSteps;
 
     const duplicatedNotes: EditorNote[] = currentNotes.map((n) => ({
       ...n,
       step: targetStart + (n.step - sourceStart),
+      stepIndex: n.step - sourceStart,
     }));
 
-    const sourceAssign = measureAssignments[currentMeasure];
-    if (sourceAssign) {
-      setMeasureAssignments((prev) => ({
-        ...prev,
-        [newMeasureIdx]: { ...sourceAssign },
-      }));
-    }
+    const sourceAssign = measureAssignments[currentMeasure] || {
+      patternCode: activeMeasureConfig.patternCode,
+      patternName: activeMeasureConfig.patternName,
+      patternColor: activeMeasureConfig.patternColor,
+      subdivision: activeMeasureConfig.subdivision,
+      stepsPerMeasure: activeMeasureConfig.stepsPerMeasure,
+    };
+    setMeasureAssignments((prev) => ({
+      ...prev,
+      [newMeasureIdx]: { ...sourceAssign },
+    }));
 
     totalMeasuresRef.current = newMeasureIdx + 1;
     currentMeasureRef.current = newMeasureIdx;
@@ -1559,39 +2143,44 @@ export const ExerciseBuilder: React.FC = () => {
   const handleDeleteMeasure = (measureIdxToDelete: number) => {
     if (totalMeasures <= 1) return;
 
-    const startStep = measureIdxToDelete * stepsPerMeasure;
-    const endStep = startStep + stepsPerMeasure;
-
-    // Eliminar notas del compás y desplazar hacia atrás las notas posteriores
-    const updatedNotes = notes
-      .filter((n) => n.step < startStep || n.step >= endStep)
-      .map((n) => {
-        if (n.step >= endStep) {
-          return { ...n, step: n.step - stepsPerMeasure };
-        }
-        return n;
-      });
-
-    // Desplazar asignaciones de patrones para que no queden desfasadas
-    setMeasureAssignments((prev) => {
-      const next: Record<
-        number,
-        { patternCode: string; patternName: string; patternColor: string }
-      > = {};
-      for (let i = 0; i < totalMeasures; i++) {
-        if (i < measureIdxToDelete && prev[i]) {
-          next[i] = prev[i];
-        } else if (i > measureIdxToDelete && prev[i]) {
-          next[i - 1] = prev[i];
-        }
+    const oldByMeasure = extractRelativeNotesByMeasure(notes, measureConfigList);
+    const nextAssignments: Record<
+      number,
+      {
+        patternCode: string;
+        patternName: string;
+        patternColor: string;
+        subdivision?: string;
+        stepsPerMeasure?: number;
       }
-      return next;
-    });
+    > = {};
+    const nextByMeasure: Record<number, EditorNote[]> = {};
 
-    totalMeasuresRef.current = Math.max(1, totalMeasures - 1);
+    for (let i = 0; i < totalMeasures; i++) {
+      if (i < measureIdxToDelete) {
+        if (measureAssignments[i]) nextAssignments[i] = measureAssignments[i];
+        nextByMeasure[i] = oldByMeasure[i] || [];
+      } else if (i > measureIdxToDelete) {
+        if (measureAssignments[i]) nextAssignments[i - 1] = measureAssignments[i];
+        nextByMeasure[i - 1] = oldByMeasure[i] || [];
+      }
+    }
+
+    const nextTotalMeasures = Math.max(1, totalMeasures - 1);
+    const newConfigList = buildMeasureConfigList(
+      nextTotalMeasures,
+      nextAssignments,
+      patternBank,
+      subdivision,
+      timeSignature
+    );
+    const updatedNotes = flattenMeasureNotes(nextByMeasure, newConfigList);
+
+    totalMeasuresRef.current = nextTotalMeasures;
     activeNotesRef.current = updatedNotes;
+    setMeasureAssignments(nextAssignments);
     setNotes(updatedNotes);
-    setTotalMeasures((prev) => prev - 1);
+    setTotalMeasures(nextTotalMeasures);
     setCurrentMeasure((prev) => Math.max(0, Math.min(prev, totalMeasures - 2)));
   };
 
@@ -1599,7 +2188,7 @@ export const ExerciseBuilder: React.FC = () => {
   // MANIPULACIÓN DE NOTAS EN LA REJILLA
   // ============================================================================
   const handleCellClick = (stepInMeasure: number, stringNum?: number, drumVoice?: DrumVoice) => {
-    const globalStep = currentMeasure * stepsPerMeasure + stepInMeasure;
+    const globalStep = activeMeasureStart + stepInMeasure;
 
     if (instrument === 'drums') {
       const isKickTrack = drumVoice === 'kick' || (drumVoice as string) === 'bombo';
@@ -2178,7 +2767,10 @@ export const ExerciseBuilder: React.FC = () => {
       velocity: number = 100,
       duration: NoteDuration = 'quarter'
     ) => {
-      const globalStep = currentMeasureRef.current * stepsPerMeasureRef.current + stepInMeasure;
+      const mStart =
+        measureConfigListRef.current[currentMeasureRef.current]?.startStep ??
+        currentMeasureRef.current * stepsPerMeasureRef.current;
+      const globalStep = mStart + stepInMeasure;
       const durationStepsMap: Record<NoteDuration, number> = {
         whole: 16,
         half: 8,
@@ -2219,7 +2811,10 @@ export const ExerciseBuilder: React.FC = () => {
       velocity: number = 100,
       duration: NoteDuration = 'quarter'
     ) => {
-      const globalStep = currentMeasureRef.current * stepsPerMeasureRef.current + stepInMeasure;
+      const mStart =
+        measureConfigListRef.current[currentMeasureRef.current]?.startStep ??
+        currentMeasureRef.current * stepsPerMeasureRef.current;
+      const globalStep = mStart + stepInMeasure;
       const durationStepsMap: Record<NoteDuration, number> = {
         whole: 16,
         half: 8,
@@ -2254,7 +2849,10 @@ export const ExerciseBuilder: React.FC = () => {
 
   const handleTogglePianoRest = useCallback(
     (stepInMeasure: number, duration: NoteDuration = 'quarter') => {
-      const globalStep = currentMeasureRef.current * stepsPerMeasureRef.current + stepInMeasure;
+      const mStart =
+        measureConfigListRef.current[currentMeasureRef.current]?.startStep ??
+        currentMeasureRef.current * stepsPerMeasureRef.current;
+      const globalStep = mStart + stepInMeasure;
       setNotes((prev) => {
         const existingRestIdx = prev.findIndex((n) => n.step === globalStep && n.isRest);
         const next =
@@ -2282,7 +2880,10 @@ export const ExerciseBuilder: React.FC = () => {
       velocity: number = 100,
       duration: NoteDuration = 'quarter'
     ) => {
-      const globalStep = currentMeasureRef.current * stepsPerMeasureRef.current + stepInMeasure;
+      const mStart =
+        measureConfigListRef.current[currentMeasureRef.current]?.startStep ??
+        currentMeasureRef.current * stepsPerMeasureRef.current;
+      const globalStep = mStart + stepInMeasure;
       const durationStepsMap: Record<NoteDuration, number> = {
         whole: 16,
         half: 8,
@@ -2314,8 +2915,10 @@ export const ExerciseBuilder: React.FC = () => {
     (quantizeVal: QuantizeValue) => {
       const quantizeConfig =
         QUANTIZE_OPTIONS.find((q) => q.id === quantizeVal) || QUANTIZE_OPTIONS[4];
-      const liveStepsPerMeasure = stepsPerMeasureRef.current;
-      const liveMeasureStart = currentMeasureRef.current * liveStepsPerMeasure;
+      const liveCfg = measureConfigListRef.current[currentMeasureRef.current];
+      const liveStepsPerMeasure = liveCfg?.stepsPerMeasure ?? stepsPerMeasureRef.current;
+      const liveMeasureStart =
+        liveCfg?.startStep ?? currentMeasureRef.current * liveStepsPerMeasure;
       const stepRatio = liveStepsPerMeasure / quantizeConfig.subdivisions;
 
       setNotes((prev) => {
@@ -2349,6 +2952,7 @@ export const ExerciseBuilder: React.FC = () => {
 
   // ============================================================================
   // PREVISUALIZACIÓN DE AUDIO & RUNWAY EN TIEMPO REAL (HOT-UPDATING SEQUENCER)
+  // SOPORTE MULTI-SUBDIVISIÓN POR COMPÁS (1/8T + 1/16 + 1/16T + 1/8...)
   // ============================================================================
   const isPlayingRef = useRef(false);
   const nextNoteTimeRef = useRef(0);
@@ -2362,65 +2966,76 @@ export const ExerciseBuilder: React.FC = () => {
   const rafIdRef = useRef<number | null>(null);
   const bpmRef = useRef(bpm);
 
-  const isBeatStep = useCallback((stepNumber: number) => {
-    const liveStepsPerMeasure = stepsPerMeasureRef.current;
-    const liveTimeSig = timeSignatureRef.current;
-    const stepInMeasure = stepNumber % liveStepsPerMeasure;
-    if (liveTimeSig === '6/8') {
-      const stepsPerDottedQuarter = liveStepsPerMeasure / 2;
-      return stepInMeasure % stepsPerDottedQuarter === 0;
+  // Obtener la configuración del compás que contiene un globalStep dado
+  const getMeasureCfgForGlobalStep = useCallback((stepNumber: number) => {
+    const list = measureConfigListRef.current;
+    if (!list || list.length === 0) {
+      const fallbackSteps = Math.max(1, stepsPerMeasureRef.current);
+      const mIdx = Math.floor(stepNumber / fallbackSteps);
+      return {
+        measureIndex: mIdx,
+        subdivision: subdivisionRef.current,
+        stepsPerMeasure: fallbackSteps,
+        startStep: mIdx * fallbackSteps,
+        endStep: (mIdx + 1) * fallbackSteps,
+      };
     }
-    if (liveTimeSig === '7/8') {
-      return stepInMeasure === 0;
-    }
-    const stepsPerBeat = Math.max(1, Math.round(liveStepsPerMeasure / 4));
-    return stepInMeasure % stepsPerBeat === 0;
+    const found = list.find(
+      (cfg) => stepNumber >= cfg.startStep && stepNumber < cfg.endStep
+    );
+    return found || list[0];
   }, []);
 
-  const getStepDuration = useCallback(() => {
-    const beatDuration = 60 / bpmRef.current;
-    const liveTimeSig = timeSignatureRef.current;
-    const liveSub = subdivisionRef.current;
+  const isBeatStep = useCallback(
+    (stepNumber: number) => {
+      const cfg = getMeasureCfgForGlobalStep(stepNumber);
+      const mSteps = Math.max(1, cfg.stepsPerMeasure);
+      const stepInMeasure = stepNumber - cfg.startStep;
+      const liveTimeSig = timeSignatureRef.current;
+      if (liveTimeSig === '6/8') {
+        const stepsPerDottedQuarter = Math.max(1, Math.round(mSteps / 2));
+        return stepInMeasure % stepsPerDottedQuarter === 0;
+      }
+      if (liveTimeSig === '7/8') {
+        return stepInMeasure === 0;
+      }
+      const stepsPerBeat = Math.max(1, Math.round(mSteps / 4));
+      return stepInMeasure % stepsPerBeat === 0;
+    },
+    [getMeasureCfgForGlobalStep]
+  );
 
-    if (liveTimeSig === '6/8') {
-      if (liveSub === '1/8') return beatDuration / 2;
-      if (liveSub === '1/32') return beatDuration / 8;
-      return beatDuration / 4;
-    }
-    if (liveTimeSig === '7/8') {
-      if (liveSub === '1/8') return beatDuration / 2;
-      return beatDuration / 4;
-    }
+  const isDownbeatStep = useCallback(
+    (stepNumber: number) => {
+      const cfg = getMeasureCfgForGlobalStep(stepNumber);
+      return stepNumber === cfg.startStep;
+    },
+    [getMeasureCfgForGlobalStep]
+  );
 
-    switch (liveSub) {
-      case '1/4':
-        return beatDuration;
-      case '1/8':
-        return beatDuration / 2;
-      case '1/8T':
-        return beatDuration / 3;
-      case '1/16':
-        return beatDuration / 4;
-      case '1/16T':
-        return beatDuration / 6;
-      case 'quintillo':
-        return beatDuration / 5;
-      case 'septillo':
-        return beatDuration / 7;
-      case '1/32':
-        return beatDuration / 8;
-      default:
-        return beatDuration / 4;
-    }
-  }, []);
+  // Duración del paso en segundos según el stepsPerMeasure propio del compás actual (manteniendo constante la duración del compás = (60 / bpm) * beats)
+  const getStepDuration = useCallback(
+    (forGlobalStep?: number) => {
+      const beatDuration = 60 / bpmRef.current;
+      const liveTimeSig = timeSignatureRef.current;
+      const targetStep =
+        forGlobalStep !== undefined ? forGlobalStep : playStepRef.current;
+      const cfg = getMeasureCfgForGlobalStep(targetStep);
+      const mSteps = Math.max(1, cfg.stepsPerMeasure);
+
+      const beatsInMeasure =
+        liveTimeSig === '6/8' ? 3 : liveTimeSig === '7/8' ? 3.5 : 4;
+      const measureDurationSec = beatDuration * beatsInMeasure;
+      return measureDurationSec / mSteps;
+    },
+    [getMeasureCfgForGlobalStep]
+  );
 
   // Sincronizar BPM en caliente sin reiniciar el scheduler
   useEffect(() => {
     const prevBpm = bpmRef.current;
     bpmRef.current = bpm;
 
-    // Si el usuario acelera los BPM en vivo y el próximo golpe estaba agendado muy lejos (tempo lento),
-    // acercar el próximo golpe al intervalo del nuevo tempo para respuesta acústica inmediata
     if (isPlaying && bpm > prevBpm) {
       const liveInstrument = instrumentRef.current;
       const audioCtx =
@@ -2431,7 +3046,7 @@ export const ExerciseBuilder: React.FC = () => {
           : getStringsAudioEngine().getAudioContext();
 
       if (audioCtx) {
-        const newStepDuration = getStepDuration();
+        const newStepDuration = getStepDuration(playStepRef.current);
         if (nextNoteTimeRef.current > audioCtx.currentTime + newStepDuration) {
           nextNoteTimeRef.current = audioCtx.currentTime + newStepDuration;
         }
@@ -2440,103 +3055,109 @@ export const ExerciseBuilder: React.FC = () => {
   }, [bpm, isPlaying, getStepDuration]);
 
   const playStepAudio = useCallback((stepIdx: number) => {
-    // Obtener las notas en tiempo real sin importar si fueron añadidas durante la reproducción
     const notesNow = activeNotesRef.current || [];
-
-    // Filtrar notas pertenecientes a este paso rítmico
     const notesToPlay = notesNow
       .filter(
         (n: any) =>
-          (n.step === stepIdx || n.stepIndex === stepIdx) &&
-          !n.isRest &&
-          n.midiNumber !== undefined
+          n.step === stepIdx && !n.isRest && n.midiNumber !== undefined
       )
       .map((n: any) => n.midiNumber as number);
 
     if (notesToPlay.length > 0) {
-      // Si es un acorde o nota individual, disparar con el sintetizador acústico
       pianoPreviewSynth.playChord(notesToPlay, 1.2, 90);
     }
   }, []);
 
-  const playBassStep = useCallback((stepIndex: number, hitTime?: number) => {
-    const currentStepNotes =
-      activeNotesRef.current?.filter(
-        (n: any) =>
-          (n.step === stepIndex || n.stepIndex === stepIndex) &&
-          (n.string !== undefined || n.stringIndex !== undefined) &&
-          n.fret !== undefined
-      ) || [];
+  const playBassStep = useCallback(
+    (stepIndex: number, hitTime?: number) => {
+      const currentStepNotes =
+        activeNotesRef.current?.filter(
+          (n: any) =>
+            n.step === stepIndex &&
+            (n.string !== undefined || n.stringIndex !== undefined) &&
+            n.fret !== undefined
+        ) || [];
 
-    currentStepNotes.forEach((note: any) => {
-      // Convertir cuerda y traste a número MIDI (para bajo estándar de 4 cuerdas: E1, A1, D2, G2)
-      const baseMidiByString: Record<number, number> = {
-        0: 43, // 1ª cuerda: G2 (0-indexed)
-        1: 43, // 1ª cuerda: G2 (1-indexed)
-        2: 38, // 2ª cuerda: D2
-        3: 33, // 3ª cuerda: A1
-        4: 28, // 4ª cuerda: E1
-      };
+      currentStepNotes.forEach((note: any) => {
+        const baseMidiByString: Record<number, number> = {
+          0: 43,
+          1: 43,
+          2: 38,
+          3: 33,
+          4: 28,
+        };
 
-      const isZeroIndexed = note.string === undefined && note.stringIndex !== undefined;
-      const resolvedStringIndex = isZeroIndexed
-        ? note.stringIndex
-        : Math.max(0, (note.string || 4) - 1); // 0 = G, 1 = D, 2 = A, 3 = E
-      const stringBase = isZeroIndexed
-        ? getBassMidiFromString(note.stringIndex, 0, true)
-        : baseMidiByString[note.string] ?? 28;
-      const calculatedMidi = stringBase + (note.fret || 0);
-      const tech = ((note.technique || 'normal').toLowerCase()) as BassTechnique;
-      const stepDuration = getStepDuration();
+        const isZeroIndexed =
+          note.string === undefined && note.stringIndex !== undefined;
+        const resolvedStringIndex = isZeroIndexed
+          ? note.stringIndex
+          : Math.max(0, (note.string || 4) - 1);
+        const stringBase = isZeroIndexed
+          ? getBassMidiFromString(note.stringIndex, 0, true)
+          : baseMidiByString[note.string] ?? 28;
+        const calculatedMidi = stringBase + (note.fret || 0);
+        const tech = (note.technique || 'normal').toLowerCase() as BassTechnique;
+        const stepDuration = getStepDuration(stepIndex);
 
-      bassPreviewSynth.playNote({
-        midi: calculatedMidi,
-        technique: tech,
-        slideDirection: note.slideDirection,
-        stringIndex: resolvedStringIndex,
-        duration: stepDuration * 3.8, // Permitir que las notas con espacio resuenen
-        velocity: tech === 'pop' || tech === 'slap' ? 120 : 105,
-        scheduleTime: hitTime,
+        bassPreviewSynth.playNote({
+          midi: calculatedMidi,
+          technique: tech,
+          slideDirection: note.slideDirection,
+          stringIndex: resolvedStringIndex,
+          duration: stepDuration * 3.8,
+          velocity: tech === 'pop' || tech === 'slap' ? 120 : 105,
+          scheduleTime: hitTime,
+        });
       });
-    });
-  }, [getStepDuration]);
+    },
+    [getStepDuration]
+  );
 
-  const playGuitarStep = useCallback((stepIndex: number, hitTime?: number) => {
-    const currentStepNotes =
-      activeNotesRef.current?.filter(
-        (n: any) =>
-          (n.step === stepIndex || n.stepIndex === stepIndex) &&
-          (n.string !== undefined || n.stringIndex !== undefined) &&
-          n.fret !== undefined
-      ) || [];
+  const playGuitarStep = useCallback(
+    (stepIndex: number, hitTime?: number) => {
+      const currentStepNotes =
+        activeNotesRef.current?.filter(
+          (n: any) =>
+            n.step === stepIndex &&
+            (n.string !== undefined || n.stringIndex !== undefined) &&
+            n.fret !== undefined
+        ) || [];
 
-    currentStepNotes.forEach((note: any) => {
-      const isZeroIndexed = note.string === undefined && note.stringIndex !== undefined;
-      const strVal = isZeroIndexed ? note.stringIndex : note.string;
-      const calculatedMidi = getGuitarMidiFromString(strVal, note.fret || 0, isZeroIndexed);
-      const rawTech = (note.technique || 'normal').toLowerCase();
-      const tech = (rawTech === 'pull' ? 'pulloff' : rawTech) as GuitarTechnique;
-      const stepDuration = getStepDuration();
+      currentStepNotes.forEach((note: any) => {
+        const isZeroIndexed =
+          note.string === undefined && note.stringIndex !== undefined;
+        const strVal = isZeroIndexed ? note.stringIndex : note.string;
+        const calculatedMidi = getGuitarMidiFromString(
+          strVal,
+          note.fret || 0,
+          isZeroIndexed
+        );
+        const rawTech = (note.technique || 'normal').toLowerCase();
+        const tech = (rawTech === 'pull' ? 'pulloff' : rawTech) as GuitarTechnique;
+        const stepDuration = getStepDuration(stepIndex);
 
-      guitarPreviewSynth.playNote({
-        midi: calculatedMidi,
-        technique: tech,
-        slideDirection: note.slideDirection,
-        bendType: note.bendType,
-        bendAmount: note.bendAmount,
-        duration: stepDuration * 3.5,
-        velocity: tech === 'natural_harmonic' || tech === 'pinch_harmonic' ? 115 : 100,
-        time: hitTime,
-        scheduleTime: hitTime,
+        guitarPreviewSynth.playNote({
+          midi: calculatedMidi,
+          technique: tech,
+          slideDirection: note.slideDirection,
+          bendType: note.bendType,
+          bendAmount: note.bendAmount,
+          duration: stepDuration * 3.5,
+          velocity:
+            tech === 'natural_harmonic' || tech === 'pinch_harmonic' ? 115 : 100,
+          time: hitTime,
+          scheduleTime: hitTime,
+        });
       });
-    });
-  }, [getStepDuration]);
+    },
+    [getStepDuration]
+  );
 
   const scheduleStep = useCallback(
     (stepNumber: number, time: number) => {
       const liveInstrument = instrumentRef.current;
-      const liveStepsPerMeasure = stepsPerMeasureRef.current;
       const notesNow = activeNotesRef.current || [];
+      const downbeat = isDownbeatStep(stepNumber);
 
       if (liveInstrument === 'drums') {
         const engine = getAudioEngine();
@@ -2545,7 +3166,9 @@ export const ExerciseBuilder: React.FC = () => {
         hits.forEach((h) => {
           const isFoot = h.drumVoice === 'kick';
           const lastInfo = lastDrumStickingRef.current[h.drumVoice!];
-          const stepDiff = lastInfo ? (stepNumber - lastInfo.step + liveTotalSteps) % liveTotalSteps : 999;
+          const stepDiff = lastInfo
+            ? (stepNumber - lastInfo.step + liveTotalSteps) % liveTotalSteps
+            : 999;
           const isDoubleRebound =
             !isFoot &&
             Boolean(h.sticking) &&
@@ -2559,7 +3182,8 @@ export const ExerciseBuilder: React.FC = () => {
             accent: !!h.accent,
           };
 
-          const targetInstrument = h.drumVoice === 'hihat' ? 'hihat_closed' : h.drumVoice!;
+          const targetInstrument =
+            h.drumVoice === 'hihat' ? 'hihat_closed' : h.drumVoice!;
           playDrumHit({
             instrument: targetInstrument,
             time,
@@ -2572,7 +3196,7 @@ export const ExerciseBuilder: React.FC = () => {
           });
         });
         if (isBeatStep(stepNumber)) {
-          engine.playMetronome(time, stepNumber % liveStepsPerMeasure === 0);
+          engine.playMetronome(time, downbeat);
         }
       } else if (liveInstrument === 'piano') {
         const engine = getPianoAudioEngine();
@@ -2590,26 +3214,29 @@ export const ExerciseBuilder: React.FC = () => {
         }
 
         if (isBeatStep(stepNumber)) {
-          engine.playMetronome(time, stepNumber % liveStepsPerMeasure === 0);
+          engine.playMetronome(time, downbeat);
         }
       } else if (liveInstrument === 'bass') {
         const engine = getStringsAudioEngine();
         playBassStep(stepNumber, time);
 
         if (isBeatStep(stepNumber)) {
-          engine.playMetronome(time, stepNumber % liveStepsPerMeasure === 0);
+          engine.playMetronome(time, downbeat);
         }
       } else if (liveInstrument === 'guitar') {
         const engine = getStringsAudioEngine();
         playGuitarStep(stepNumber, time);
 
         if (isBeatStep(stepNumber)) {
-          engine.playMetronome(time, stepNumber % liveStepsPerMeasure === 0);
+          engine.playMetronome(time, downbeat);
         }
       } else {
         const engine = getStringsAudioEngine();
         const stringNotes = notesNow.filter(
-          (n) => n.step === stepNumber && n.string !== undefined && n.fret !== undefined
+          (n) =>
+            n.step === stepNumber &&
+            n.string !== undefined &&
+            n.fret !== undefined
         );
         stringNotes.forEach((n) => {
           engine.triggerNote(
@@ -2622,17 +3249,16 @@ export const ExerciseBuilder: React.FC = () => {
           );
         });
         if (isBeatStep(stepNumber)) {
-          engine.playMetronome(time, stepNumber % liveStepsPerMeasure === 0);
+          engine.playMetronome(time, downbeat);
         }
       }
     },
-    [isBeatStep, playBassStep, playGuitarStep, playStepAudio]
+    [isBeatStep, isDownbeatStep, playBassStep, playGuitarStep, playStepAudio]
   );
 
   const schedulerLoop = useCallback(() => {
     const liveInstrument = instrumentRef.current;
     const liveTotalSteps = Math.max(1, totalStepsRef.current);
-    const liveStepsPerMeasure = Math.max(1, stepsPerMeasureRef.current);
     const lockedMeasure = loopSingleMeasureRef.current;
 
     const audioCtx =
@@ -2653,12 +3279,15 @@ export const ExerciseBuilder: React.FC = () => {
 
       scheduleStep(currentStep, hitTime);
 
-      nextNoteTimeRef.current += getStepDuration();
+      nextNoteTimeRef.current += getStepDuration(currentStep);
       playStepRef.current += 1;
 
       if (lockedMeasure !== null) {
-        const minStep = lockedMeasure * liveStepsPerMeasure;
-        const maxStep = minStep + liveStepsPerMeasure;
+        const lockedCfg = measureConfigListRef.current[lockedMeasure];
+        const minStep = lockedCfg ? lockedCfg.startStep : 0;
+        const maxStep = lockedCfg
+          ? lockedCfg.endStep
+          : minStep + Math.max(1, stepsPerMeasureRef.current);
         if (playStepRef.current >= maxStep || playStepRef.current < minStep) {
           playStepRef.current = minStep;
         }
@@ -2684,22 +3313,23 @@ export const ExerciseBuilder: React.FC = () => {
         : getStringsAudioEngine().getAudioContext();
 
     const liveTotalSteps = Math.max(1, totalStepsRef.current);
-    const liveStepsPerMeasure = Math.max(1, stepsPerMeasureRef.current);
     const liveTotalMeasures = Math.max(1, totalMeasuresRef.current);
     const lockedMeasure = loopSingleMeasureRef.current;
 
     if (audioCtx && anchorAudioTimeRef.current > 0) {
-      const stepDuration = getStepDuration();
+      const stepDuration = getStepDuration(anchorStepRef.current);
       const deltaFromAnchor = audioCtx.currentTime - anchorAudioTimeRef.current;
       const exactStep = anchorStepRef.current + deltaFromAnchor / stepDuration;
 
       let currentGlobalStep: number;
       if (lockedMeasure !== null) {
-        const minStep = lockedMeasure * liveStepsPerMeasure;
+        const lockedCfg = measureConfigListRef.current[lockedMeasure];
+        const minStep = lockedCfg ? lockedCfg.startStep : 0;
+        const mSteps = lockedCfg
+          ? Math.max(1, lockedCfg.stepsPerMeasure)
+          : Math.max(1, stepsPerMeasureRef.current);
         const stepInLocked =
-          ((Math.floor(exactStep - minStep) % liveStepsPerMeasure) +
-            liveStepsPerMeasure) %
-          liveStepsPerMeasure;
+          ((Math.floor(exactStep - minStep) % mSteps) + mSteps) % mSteps;
         currentGlobalStep = minStep + stepInLocked;
       } else {
         currentGlobalStep =
@@ -2709,7 +3339,8 @@ export const ExerciseBuilder: React.FC = () => {
 
       setPlaybackActiveStep(currentGlobalStep);
 
-      const currentPlayingMeasure = Math.floor(currentGlobalStep / liveStepsPerMeasure);
+      const currentPlayingCfg = getMeasureCfgForGlobalStep(currentGlobalStep);
+      const currentPlayingMeasure = currentPlayingCfg.measureIndex;
       if (
         currentPlayingMeasure !== currentMeasureRef.current &&
         currentPlayingMeasure < liveTotalMeasures
@@ -2720,7 +3351,7 @@ export const ExerciseBuilder: React.FC = () => {
     }
 
     rafIdRef.current = requestAnimationFrame(updateVisualProgress);
-  }, [getStepDuration]);
+  }, [getStepDuration, getMeasureCfgForGlobalStep]);
 
   const handleTogglePlay = () => {
     if (isPlaying) {
@@ -2755,7 +3386,7 @@ export const ExerciseBuilder: React.FC = () => {
 
       audioStartTimeRef.current = startTime;
       nextNoteTimeRef.current = startTime;
-      const initialStep = currentMeasure * stepsPerMeasure;
+      const initialStep = activeMeasureStart;
       playStepRef.current = initialStep;
       playStartStepRef.current = initialStep;
       anchorStepRef.current = initialStep;
@@ -2795,7 +3426,8 @@ export const ExerciseBuilder: React.FC = () => {
     const ctx = engine.getAudioContext();
     const startTime = (ctx ? ctx.currentTime : 0) + 0.03;
 
-    const initialStep = targetMeasureIdx * stepsPerMeasure;
+    const targetCfg = measureConfigListRef.current[targetMeasureIdx];
+    const initialStep = targetCfg ? targetCfg.startStep : 0;
     audioStartTimeRef.current = startTime;
     nextNoteTimeRef.current = startTime;
     playStepRef.current = initialStep;
@@ -2840,31 +3472,29 @@ export const ExerciseBuilder: React.FC = () => {
     setIsSaving(true);
     setSaveResult(null);
 
-    // Formatear datos para la base de datos enriquecidos con metadatos de patrón por compás
+    // Formatear datos para la base de datos enriquecidos con metadatos de patrón y subdivisión por compás
     let formattedData: any[] = [];
     if (instrument === 'drums') {
       formattedData = notes
         .filter((n) => n.drumVoice)
         .map((n) => {
-          const mIdx = Math.floor(n.step / stepsPerMeasure);
-          const assign = measureAssignments[mIdx] || {
-            patternCode: 'P1',
-            patternName: 'Patrón 1',
-            patternColor: 'cyan',
-          };
+          const cfg = getMeasureCfgForGlobalStep(n.step);
           const isKick = n.drumVoice === 'kick' || (n.drumVoice as string) === 'bombo';
           return {
             step: n.step,
-            stepIndex: n.step - mIdx * stepsPerMeasure,
+            stepIndex: n.step - cfg.startStep,
+            measureIndex: cfg.measureIndex,
             instrument: n.drumVoice,
             accent: Boolean(n.accent && !n.ghost),
             ghost: Boolean(n.ghost),
             syncopated: Boolean(n.syncopated),
             sticking: isKick ? 'K' : (n.sticking ?? 'R'),
             velocity: n.ghost ? 0.32 : n.accent ? 1.0 : 0.8,
-            patternCode: assign.patternCode,
-            patternName: assign.patternName,
-            patternColor: assign.patternColor,
+            patternCode: cfg.patternCode,
+            patternName: cfg.patternName,
+            patternColor: cfg.patternColor,
+            subdivision: cfg.subdivision,
+            stepsPerMeasure: cfg.stepsPerMeasure,
           };
         });
     } else if (instrument === 'piano') {
@@ -2872,18 +3502,14 @@ export const ExerciseBuilder: React.FC = () => {
       formattedData = notes
         .filter((n) => n.midiNumber !== undefined || n.isRest)
         .map((n) => {
-          const mIdx = Math.floor(n.step / stepsPerMeasure);
-          const assign = measureAssignments[mIdx] || {
-            patternCode: 'P1',
-            patternName: 'Patrón 1',
-            patternColor: 'cyan',
-          };
+          const cfg = getMeasureCfgForGlobalStep(n.step);
           const midi = n.midiNumber ?? 60;
           const noteName = `${NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
           const hand = midi < 60 ? 'left' : 'right';
           return {
             step: n.step,
-            stepIndex: n.step - mIdx * stepsPerMeasure,
+            stepIndex: n.step - cfg.startStep,
+            measureIndex: cfg.measureIndex,
             midiNumber: midi,
             noteName,
             velocity: n.velocity ?? 100,
@@ -2892,24 +3518,22 @@ export const ExerciseBuilder: React.FC = () => {
             isRest: !!n.isRest,
             hand,
             finger: n.finger ? parseInt(n.finger, 10) : undefined,
-            patternCode: assign.patternCode,
-            patternName: assign.patternName,
-            patternColor: assign.patternColor,
+            patternCode: cfg.patternCode,
+            patternName: cfg.patternName,
+            patternColor: cfg.patternColor,
+            subdivision: cfg.subdivision,
+            stepsPerMeasure: cfg.stepsPerMeasure,
           };
         });
     } else {
       formattedData = notes
         .filter((n) => n.string !== undefined && n.fret !== undefined)
         .map((n) => {
-          const mIdx = Math.floor(n.step / stepsPerMeasure);
-          const assign = measureAssignments[mIdx] || {
-            patternCode: 'P1',
-            patternName: 'Patrón 1',
-            patternColor: 'cyan',
-          };
+          const cfg = getMeasureCfgForGlobalStep(n.step);
           return {
             step: n.step,
-            stepIndex: n.step - mIdx * stepsPerMeasure,
+            stepIndex: n.step - cfg.startStep,
+            measureIndex: cfg.measureIndex,
             string: n.string,
             fret: n.fret,
             technique: n.technique ?? 'normal',
@@ -2918,37 +3542,37 @@ export const ExerciseBuilder: React.FC = () => {
             bendAmount: n.bendAmount,
             finger: n.finger ?? '1',
             velocity: 0.85,
-            patternCode: assign.patternCode,
-            patternName: assign.patternName,
-            patternColor: assign.patternColor,
+            patternCode: cfg.patternCode,
+            patternName: cfg.patternName,
+            patternColor: cfg.patternColor,
+            subdivision: cfg.subdivision,
+            stepsPerMeasure: cfg.stepsPerMeasure,
           };
         });
     }
 
-    // Construir copia profunda de measures con patternCode, patternName, patternColor y notes
-    const savedMeasures = Array.from({ length: totalMeasures }).map((_, mIdx) => {
-      const mStart = mIdx * stepsPerMeasure;
-      const mEnd = mStart + stepsPerMeasure;
-      const assign = measureAssignments[mIdx] || {
-        patternCode: 'P1',
-        patternName: 'Patrón 1',
-        patternColor: 'cyan',
-      };
+    // Construir copia profunda de measures con patternCode, patternName, patternColor, subdivision, stepsPerMeasure y notes
+    const savedMeasures = measureConfigList.map((cfg) => {
       const mNotes = formattedData
-        .filter((n) => n.step >= mStart && n.step < mEnd)
+        .filter((n) => n.step >= cfg.startStep && n.step < cfg.endStep)
         .map((n) => ({
           ...JSON.parse(JSON.stringify(n)),
-          stepIndex: n.step - mStart,
-          patternCode: assign.patternCode,
-          patternName: assign.patternName,
-          patternColor: assign.patternColor,
+          stepIndex: n.step - cfg.startStep,
+          measureIndex: cfg.measureIndex,
+          patternCode: cfg.patternCode,
+          patternName: cfg.patternName,
+          patternColor: cfg.patternColor,
+          subdivision: cfg.subdivision,
+          stepsPerMeasure: cfg.stepsPerMeasure,
         }));
       return {
-        measureIndex: mIdx,
-        measureNumber: mIdx + 1,
-        patternCode: assign.patternCode,
-        patternName: assign.patternName,
-        patternColor: assign.patternColor,
+        measureIndex: cfg.measureIndex,
+        measureNumber: cfg.measureIndex + 1,
+        patternCode: cfg.patternCode,
+        patternName: cfg.patternName,
+        patternColor: cfg.patternColor,
+        subdivision: cfg.subdivision,
+        stepsPerMeasure: cfg.stepsPerMeasure,
         notes: mNotes,
       };
     });
@@ -2983,7 +3607,7 @@ export const ExerciseBuilder: React.FC = () => {
           initialBpm: Math.round(bpm * 0.75),
           targetBpm: bpm,
           targetReps: 3,
-          subdivision,
+          subdivision: activeMeasureSubdivision,
           tabOrNotation: tabString,
           level: masteryLevel,
           description: `Ejercicio compuesto en Studio Builder: ${title}`,
@@ -2991,7 +3615,7 @@ export const ExerciseBuilder: React.FC = () => {
         });
 
         // Intentar guardar también en BD
-        const normalizedSub = normalizeSubdivisionKey(subdivision);
+        const normalizedSub = normalizeSubdivisionKey(activeMeasureSubdivision);
         saveExerciseAction({
           instrumentType: instrument,
           title,
@@ -3004,7 +3628,7 @@ export const ExerciseBuilder: React.FC = () => {
           subdivision: normalizedSub,
           data: formattedData,
         }).catch(() => {});
- 
+
         try {
           localStorage.removeItem(DRAFT_STORAGE_KEY);
         } catch (err) {
@@ -3018,7 +3642,7 @@ export const ExerciseBuilder: React.FC = () => {
         return;
       }
 
-      const normalizedSub = normalizeSubdivisionKey(subdivision);
+      const normalizedSub = normalizeSubdivisionKey(activeMeasureSubdivision);
       const res = await saveExerciseAction({
         slug: editingSlug || undefined,
         instrumentType: instrument,
@@ -3091,8 +3715,6 @@ export const ExerciseBuilder: React.FC = () => {
   // ============================================================================
   // RENDERIZADO
   // ============================================================================
-  const activeMeasureStart = currentMeasure * stepsPerMeasure;
-
   return (
     <div className="w-full flex flex-col gap-6 max-w-7xl mx-auto py-8 px-4 sm:px-6 select-none">
       {/* 1. Header Superior & Selector de Instrumento */}
@@ -3280,12 +3902,14 @@ export const ExerciseBuilder: React.FC = () => {
           </select>
         </div>
 
-        {/* Subdivisión */}
+        {/* Subdivisión (del patrón/compás activo en edición) */}
         <div>
-          <label className="text-[10px] text-slate-500 dark:text-zinc-400 uppercase font-semibold block mb-1">Subdivisión</label>
+          <label className="text-[10px] text-slate-500 dark:text-zinc-400 uppercase font-semibold block mb-1">
+            Subdivisión ({activeMeasureConfig.patternCode})
+          </label>
           <select
-            value={normalizeSubdivisionKey(subdivision)}
-            onChange={(e) => setSubdivision(normalizeSubdivisionKey(e.target.value) as any)}
+            value={normalizeSubdivisionKey(activeMeasureSubdivision)}
+            onChange={(e) => handleChangeSubdivision(e.target.value)}
             className="w-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-white/10 rounded-xl px-2.5 py-1.5 text-slate-900 dark:text-white font-mono focus:border-cyan-500 focus:outline-none"
           >
             <optgroup label="── SUBDIVISIONES REGULARES ──" className="bg-slate-950 text-slate-400 font-bold">
@@ -3489,7 +4113,7 @@ export const ExerciseBuilder: React.FC = () => {
                     <span>Sección A — Banco de Patrones Reutilizables (1 Compás c/u)</span>
                   </h3>
                   <p className="text-[11px] text-slate-400">
-                    Crea tus patrones base (P1..P10+), edita sus notas en la cuadrícula inferior y pruébalos en bucle individual.
+                    Cada patrón tiene su propia subdivisión independiente (ej. P1 en 1/8T = 12 pasos, P2 en 1/16 = 16 pasos).
                   </p>
                 </div>
 
@@ -3513,6 +4137,9 @@ export const ExerciseBuilder: React.FC = () => {
                     (m) => m.patternCode === pat.code
                   ).length;
                   const patNoteCount = pat.notes?.length || 0;
+                  const patSubKey = normalizeSubdivisionKey(pat.subdivision || '1/16');
+                  const patSteps =
+                    pat.stepsPerMeasure || getStepsForSubdivision(patSubKey, timeSignature);
 
                   return (
                     <div
@@ -3559,6 +4186,31 @@ export const ExerciseBuilder: React.FC = () => {
                             <span>{patternBank.length > 1 ? '🗑️ Eliminar' : 'Limpiar'}</span>
                           </button>
                         </div>
+                      </div>
+
+                      {/* Mini-selector de Subdivisión Propia del Patrón */}
+                      <div className="flex items-center justify-between gap-2 bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800/80">
+                        <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">
+                          Subdivisión {pat.code}:
+                        </span>
+                        <select
+                          value={patSubKey}
+                          onChange={(e) => handleChangeSubdivision(e.target.value, pat.code)}
+                          className="bg-slate-900 border border-slate-700 hover:border-cyan-500/50 focus:border-cyan-400 rounded-md px-2 py-0.5 text-[11px] font-mono font-bold text-cyan-300 focus:outline-none cursor-pointer"
+                          title={`Cambiar subdivisión independiente de ${pat.code}`}
+                        >
+                          <option value="1/4">1/4 ({getStepsForSubdivision('1/4', timeSignature)} pasos)</option>
+                          <option value="1/8">1/8 ({getStepsForSubdivision('1/8', timeSignature)} pasos)</option>
+                          <option value="1/8T">1/8T ({getStepsForSubdivision('1/8T', timeSignature)} pasos - Tresillos)</option>
+                          <option value="1/16">1/16 ({getStepsForSubdivision('1/16', timeSignature)} pasos)</option>
+                          <option value="1/16T">1/16T ({getStepsForSubdivision('1/16T', timeSignature)} pasos - Seisillos)</option>
+                          <option value="quintillo">5:4 ({getStepsForSubdivision('quintillo', timeSignature)} pasos)</option>
+                          <option value="septillo">7:4 ({getStepsForSubdivision('septillo', timeSignature)} pasos)</option>
+                          <option value="1/32">1/32 ({getStepsForSubdivision('1/32', timeSignature)} pasos)</option>
+                        </select>
+                        <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded">
+                          {patSteps}p
+                        </span>
                       </div>
 
                       {/* Botones de Acción del Patrón */}
@@ -3678,6 +4330,7 @@ export const ExerciseBuilder: React.FC = () => {
                 {patternBank.map((pat) => {
                   const style = getPatternStyle(pat.color);
                   const isBrush = activeBrushPatternCode === pat.code;
+                  const patSub = normalizeSubdivisionKey(pat.subdivision || '1/16');
                   return (
                     <button
                       key={`brush-${pat.code}`}
@@ -3691,6 +4344,7 @@ export const ExerciseBuilder: React.FC = () => {
                     >
                       <span>[{pat.code}]</span>
                       <span>{pat.name}</span>
+                      <span className="text-[10px] opacity-80">• {patSub}</span>
                     </button>
                   );
                 })}
@@ -3719,6 +4373,9 @@ export const ExerciseBuilder: React.FC = () => {
                           C.{idx + 1}
                         </span>
                         <div className="flex items-center gap-1">
+                          <span className="text-[9px] font-mono text-amber-300/90 bg-slate-950 px-1 rounded">
+                            {m.subdivision} ({m.stepsPerMeasure}p)
+                          </span>
                           <span className="text-[9px] font-mono text-slate-400">
                             {noteCount}n
                           </span>
@@ -3753,7 +4410,7 @@ export const ExerciseBuilder: React.FC = () => {
             <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/40 text-xs">
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 rounded bg-cyan-500 text-slate-950 font-mono font-black">
-                  Editando Patrón {measures[currentMeasure]?.patternCode || editingPatternCode} (1 Compás)
+                  Editando Patrón {measures[currentMeasure]?.patternCode || editingPatternCode} ({activeMeasureSubdivision} • {stepsPerMeasure} pasos)
                 </span>
                 <span className="font-bold text-cyan-200">
                   {measures[currentMeasure]?.patternName || 'Patrón Activo'}

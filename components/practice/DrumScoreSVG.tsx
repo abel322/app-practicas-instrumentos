@@ -6,6 +6,7 @@ import {
   analyzeMeasureDuplicates,
   MeasureAnalysis,
   getPatternStyle,
+  inferSubdivisionFromSteps,
 } from '@/lib/music/measureFingerprint';
 
 export interface DrumScoreProps {
@@ -72,18 +73,30 @@ export function DrumScoreRenderer({
   // Métrica
   const [numerator, denominator] = timeSignature ? timeSignature.split('/') : ['4', '4'];
 
-  // Normalizar los compases en una estructura unificada preservando patternCode, patternName y patternColor
+  // Normalizar los compases en una estructura unificada preservando patternCode, patternName, patternColor, subdivision y stepsPerMeasure
   const safeMeasures = useMemo(() => {
     if (Array.isArray(measures) && measures.length > 0) {
       return measures.map((m: any, idx: number) => {
         const rawNotes = m.notes || m.hits || [];
-        const firstNoteWithMeta = rawNotes.find((n: any) => n?.patternCode);
+        const firstNoteWithMeta = rawNotes.find(
+          (n: any) => n?.patternCode || n?.subdivision || n?.stepsPerMeasure
+        );
+        const mSteps =
+          Number(m.stepsPerMeasure || firstNoteWithMeta?.stepsPerMeasure) ||
+          stepsPerMeasure ||
+          16;
+        const mSub =
+          m.subdivision ||
+          firstNoteWithMeta?.subdivision ||
+          inferSubdivisionFromSteps(mSteps, '1/16');
         return {
           measureIndex: idx,
           measureNumber: idx + 1,
           patternCode: m.patternCode || firstNoteWithMeta?.patternCode,
           patternName: m.patternName || firstNoteWithMeta?.patternName,
           patternColor: m.patternColor || firstNoteWithMeta?.patternColor,
+          subdivision: mSub,
+          stepsPerMeasure: mSteps,
           notes: rawNotes.map((n: any) => {
             const inst =
               n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare';
@@ -96,12 +109,12 @@ export function DrumScoreRenderer({
                 n.stepIndex !== undefined
                   ? n.stepIndex
                   : n.step !== undefined
-                  ? n.step % stepsPerMeasure
+                  ? n.step % mSteps
                   : 0,
               step:
                 n.step !== undefined
                   ? n.step
-                  : idx * stepsPerMeasure + (n.stepIndex || 0),
+                  : idx * mSteps + (n.stepIndex || 0),
               instrument: inst,
               accent: Boolean(n.accent && !n.ghost),
               ghost: Boolean(n.ghost),
@@ -118,7 +131,17 @@ export function DrumScoreRenderer({
       const rawNotes = Array.isArray(measure)
         ? measure
         : measure.notes || measure.hits || [];
-      const firstNoteWithMeta = rawNotes.find((n: any) => n?.patternCode);
+      const firstNoteWithMeta = rawNotes.find(
+        (n: any) => n?.patternCode || n?.subdivision || n?.stepsPerMeasure
+      );
+      const mSteps =
+        Number(measure.stepsPerMeasure || firstNoteWithMeta?.stepsPerMeasure) ||
+        stepsPerMeasure ||
+        16;
+      const mSub =
+        measure.subdivision ||
+        firstNoteWithMeta?.subdivision ||
+        inferSubdivisionFromSteps(mSteps, '1/16');
       return [
         {
           measureIndex: 0,
@@ -126,6 +149,8 @@ export function DrumScoreRenderer({
           patternCode: measure.patternCode || firstNoteWithMeta?.patternCode,
           patternName: measure.patternName || firstNoteWithMeta?.patternName,
           patternColor: measure.patternColor || firstNoteWithMeta?.patternColor,
+          subdivision: mSub,
+          stepsPerMeasure: mSteps,
           notes: rawNotes.map((n: any) => {
             const inst =
               n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare';
@@ -138,7 +163,7 @@ export function DrumScoreRenderer({
                 n.stepIndex !== undefined
                   ? n.stepIndex
                   : n.step !== undefined
-                  ? n.step % stepsPerMeasure
+                  ? n.step % mSteps
                   : 0,
               instrument: inst,
               accent: Boolean(n.accent && !n.ghost),
@@ -170,6 +195,9 @@ export function DrumScoreRenderer({
       const mEnd = mStart + stepsPerMeasure;
       const mNotes = allHits
         .filter((h: any) => {
+          if (h.measureIndex !== undefined) {
+            return Number(h.measureIndex) === mIdx;
+          }
           const s =
             h.step !== undefined
               ? h.step
@@ -193,7 +221,7 @@ export function DrumScoreRenderer({
           return {
             ...h,
             step: s,
-            stepIndex: s - mStart,
+            stepIndex: h.stepIndex !== undefined ? h.stepIndex : s - mStart,
             instrument: inst,
             accent: Boolean(h.accent && !h.ghost),
             ghost: Boolean(h.ghost),
@@ -203,13 +231,20 @@ export function DrumScoreRenderer({
           };
         });
 
-      const firstWithMeta = mNotes.find((n: any) => n?.patternCode);
+      const firstWithMeta = mNotes.find(
+        (n: any) => n?.patternCode || n?.subdivision || n?.stepsPerMeasure
+      );
+      const mSteps = Number(firstWithMeta?.stepsPerMeasure) || stepsPerMeasure || 16;
+      const mSub =
+        firstWithMeta?.subdivision || inferSubdivisionFromSteps(mSteps, '1/16');
       return {
         measureIndex: mIdx,
         measureNumber: mIdx + 1,
         patternCode: firstWithMeta?.patternCode,
         patternName: firstWithMeta?.patternName,
         patternColor: firstWithMeta?.patternColor,
+        subdivision: mSub,
+        stepsPerMeasure: mSteps,
         notes: mNotes,
       };
     });
@@ -217,10 +252,14 @@ export function DrumScoreRenderer({
 
   const totalMeasures = safeMeasures.length;
 
-  // Análisis automático de huellas digitales de compases duplicados y patrones P1..Pn
+  // Análisis automático de huellas digitales de compases duplicados y patrones P1..Pn con subdivisión propia
   const analysisList = useMemo<MeasureAnalysis[]>(() => {
-    return analyzeMeasureDuplicates(safeMeasures);
-  }, [safeMeasures]);
+    return analyzeMeasureDuplicates(
+      safeMeasures,
+      inferSubdivisionFromSteps(stepsPerMeasure, '1/16'),
+      stepsPerMeasure
+    );
+  }, [safeMeasures, stepsPerMeasure]);
 
   const currentAnalysis = analysisList[activeMeasureIndex] || analysisList[0];
   const nextAnalysis =
@@ -257,33 +296,112 @@ export function DrumScoreRenderer({
     return { nextRunIdx, totalRun };
   }, [analysisList, activeMeasureIndex, currentAnalysis]);
 
-  // Etiquetas de subdivisión por paso dentro de cada compás
-  const stepLabels = useMemo(() => {
-    if (stepsPerMeasure === 8) {
-      return ['1', 'y', '2', 'y', '3', 'y', '4', 'y'];
-    }
-    if (stepsPerMeasure === 4) {
-      return ['1', '2', '3', '4'];
-    }
-    if (stepsPerMeasure === 12 && timeSignature === '4/4') {
-      return ['1', 'ti', 'ta', '2', 'ti', 'ta', '3', 'ti', 'ta', '4', 'ti', 'ta'];
-    }
-    if (timeSignature === '6/8') {
-      return stepsPerMeasure === 6
-        ? ['1', '2', '3', '4', '5', '6']
-        : ['1', '·', '2', '·', '3', '·', '4', '·', '5', '·', '6', '·'];
-    }
-    return ['1', 'e', '&', 'a', '2', 'e', '&', 'a', '3', 'e', '&', 'a', '4', 'e', '&', 'a'];
-  }, [stepsPerMeasure, timeSignature]);
+  // Generar etiquetas de pasos dinámicas según el stepsPerMeasure propio de cada compás
+  const getStepLabelsForMeasure = useCallback(
+    (mSteps: number) => {
+      if (mSteps === 12 && timeSignature === '4/4') {
+        // 1/8T (Tresillos de corchea): 1 2 3 | 2 2 3 | 3 2 3 | 4 2 3
+        return [
+          { label: '1', isMainBeat: true },
+          { label: '2', isMainBeat: false },
+          { label: '3', isMainBeat: false },
+          { label: '2', isMainBeat: true },
+          { label: '2', isMainBeat: false },
+          { label: '3', isMainBeat: false },
+          { label: '3', isMainBeat: true },
+          { label: '2', isMainBeat: false },
+          { label: '3', isMainBeat: false },
+          { label: '4', isMainBeat: true },
+          { label: '2', isMainBeat: false },
+          { label: '3', isMainBeat: false },
+        ];
+      }
+      if (mSteps === 24 && timeSignature === '4/4') {
+        // 1/16T (Seisillos): 6 notas por tiempo
+        return Array.from({ length: 24 }).map((_, sIdx) => ({
+          label:
+            sIdx % 6 === 0
+              ? String(Math.floor(sIdx / 6) + 1)
+              : String((sIdx % 6) + 1),
+          isMainBeat: sIdx % 6 === 0,
+        }));
+      }
+      if (mSteps === 8) {
+        return ['1', 'y', '2', 'y', '3', 'y', '4', 'y'].map((l, sIdx) => ({
+          label: l,
+          isMainBeat: sIdx % 2 === 0,
+        }));
+      }
+      if (mSteps === 4) {
+        return ['1', '2', '3', '4'].map((l) => ({
+          label: l,
+          isMainBeat: true,
+        }));
+      }
+      if (timeSignature === '6/8') {
+        return (
+          mSteps === 6
+            ? ['1', '2', '3', '4', '5', '6']
+            : ['1', '·', '2', '·', '3', '·', '4', '·', '5', '·', '6', '·']
+        ).map((l, sIdx) => ({
+          label: l,
+          isMainBeat: mSteps === 6 ? sIdx % 3 === 0 : sIdx % 6 === 0,
+        }));
+      }
+      if (mSteps === 16) {
+        return [
+          '1',
+          'e',
+          '&',
+          'a',
+          '2',
+          'e',
+          '&',
+          'a',
+          '3',
+          'e',
+          '&',
+          'a',
+          '4',
+          'e',
+          '&',
+          'a',
+        ].map((l, sIdx) => ({
+          label: l,
+          isMainBeat: sIdx % 4 === 0,
+        }));
+      }
+      const stepsPerBeat = Math.max(1, Math.round(mSteps / 4));
+      return Array.from({ length: mSteps }).map((_, sIdx) => ({
+        label:
+          sIdx % stepsPerBeat === 0
+            ? String(Math.floor(sIdx / stepsPerBeat) + 1)
+            : String((sIdx % stepsPerBeat) + 1),
+        isMainBeat: sIdx % stepsPerBeat === 0,
+      }));
+    },
+    [timeSignature]
+  );
+
+  const formatSubdivisionLabel = useCallback((sub?: string, mSteps?: number) => {
+    const s = sub || inferSubdivisionFromSteps(mSteps, '1/16');
+    if (s === '1/8T') return '1/8T (Tresillos)';
+    if (s === '1/16') return '1/16 (Semicorcheas)';
+    if (s === '1/16T') return '1/16T (Seisillos)';
+    if (s === '1/8') return '1/8 (Corcheas)';
+    if (s === '1/4') return '1/4 (Negras)';
+    if (s === '1/32') return '1/32 (Fusas)';
+    return `${s} (${mSteps || 16}p)`;
+  }, []);
 
   // Geometría horizontal continua: cada compás mide exactamente 520px
   const MEASURE_WIDTH = 520;
-  const stepWidth = MEASURE_WIDTH / stepsPerMeasure;
-
-  const getXForStep = useCallback(
-    (stepIdx: number) => (stepIdx + 0.5) * stepWidth,
-    [stepWidth]
-  );
+  const activeMeasureSteps =
+    safeMeasures[activeMeasureIndex]?.stepsPerMeasure ||
+    currentAnalysis?.stepsPerMeasure ||
+    stepsPerMeasure ||
+    16;
+  const activeStepWidth = MEASURE_WIDTH / activeMeasureSteps;
 
   // Desplazamiento horizontal suave manteniendo el compás activo a la izquierda y el siguiente a la derecha
   useEffect(() => {
@@ -314,23 +432,23 @@ export function DrumScoreRenderer({
     }
   }, [activeMeasureIndex]);
 
-  // Posición continua milimétrica del cursor Runway Scanner a través de toda la cinta horizontal
+  // Posición continua milimétrica del cursor Runway Scanner a través de toda la cinta horizontal (según el mSteps del compás activo)
   const scannerX = useMemo(() => {
     const currentStepContinuous = isPlaying
-      ? progress * stepsPerMeasure
+      ? progress * activeMeasureSteps
       : currentStepInMeasure;
     return (
       activeMeasureIndex * MEASURE_WIDTH +
-      (currentStepContinuous + 0.5) * stepWidth
+      (currentStepContinuous + 0.5) * activeStepWidth
     );
   }, [
     isPlaying,
     progress,
-    stepsPerMeasure,
+    activeMeasureSteps,
     currentStepInMeasure,
     activeMeasureIndex,
     MEASURE_WIDTH,
-    stepWidth,
+    activeStepWidth,
   ]);
 
   const handleMeasurePillClick = useCallback(
@@ -356,7 +474,7 @@ export function DrumScoreRenderer({
       {/* ============================================================== */}
       {currentAnalysis && (
         <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-800 shadow-lg">
-          {/* Compás Actual + Badge Grande del Patrón Activo */}
+          {/* Compás Actual + Badge Grande del Patrón Activo + Subdivisión */}
           <div className="flex flex-wrap items-center gap-2.5">
             <span className="text-xs sm:text-sm font-black font-mono text-white tracking-wide">
               COMPÁS {activeMeasureIndex + 1} / {totalMeasures}
@@ -367,6 +485,13 @@ export function DrumScoreRenderer({
             >
               <span>[{currentAnalysis.patternCode}]</span>
               <span>{currentAnalysis.patternName}</span>
+            </span>
+
+            <span className="text-[11px] font-mono font-bold text-cyan-300 bg-cyan-950/70 border border-cyan-500/40 px-2 py-0.5 rounded-md">
+              {formatSubdivisionLabel(
+                currentAnalysis.subdivision,
+                currentAnalysis.stepsPerMeasure
+              )}
             </span>
 
             {currentAnalysis.isDuplicate && (
@@ -383,7 +508,8 @@ export function DrumScoreRenderer({
                 <div className="px-3 py-1 rounded-lg bg-fuchsia-950/80 border border-fuchsia-500/60 text-fuchsia-200 text-xs font-mono font-black flex items-center gap-2 shadow-[0_0_12px_rgba(217,70,239,0.25)] animate-pulse">
                   <span>⚡ VIENE EN C.{nextAnalysis.measureNumber} ➔</span>
                   <span className={`px-1.5 py-0.5 rounded border text-[11px] ${nextPatternStyle.badge}`}>
-                    [{nextAnalysis.patternCode}] {nextAnalysis.patternName}
+                    [{nextAnalysis.patternCode}] {nextAnalysis.patternName} •{' '}
+                    {nextAnalysis.subdivision}
                   </span>
                 </div>
               ) : (
@@ -392,19 +518,19 @@ export function DrumScoreRenderer({
                     SIGUIENTE (C.{nextAnalysis.measureNumber}) ➔
                   </span>
                   <span>
-                    Continúa [{nextAnalysis.patternCode}] (Vuelta {consecutiveBlockInfo.nextRunIdx}/
-                    {consecutiveBlockInfo.totalRun})
+                    Continúa [{nextAnalysis.patternCode}] ({nextAnalysis.subdivision} • Vuelta{' '}
+                    {consecutiveBlockInfo.nextRunIdx}/{consecutiveBlockInfo.totalRun})
                   </span>
                 </div>
               )
             ) : totalMeasures === 1 ? (
               <div className="px-3 py-1 rounded-lg bg-cyan-950/60 border border-cyan-500/40 text-cyan-200 text-xs font-mono font-bold">
-                🔁 MODO BUCLE ➔ Repitiendo [{currentAnalysis.patternCode}] {currentAnalysis.patternName}
+                🔁 MODO BUCLE ➔ Repitiendo [{currentAnalysis.patternCode}] {currentAnalysis.patternName} ({currentAnalysis.subdivision})
               </div>
             ) : (
               <div className="px-3 py-1 rounded-lg bg-slate-950/90 border border-slate-800 text-slate-300 text-xs font-mono font-semibold">
                 🔁 FIN DE SECUENCIA ➔ Reinicia en C.1 [{analysisList[0]?.patternCode}]{' '}
-                {analysisList[0]?.patternName}
+                {analysisList[0]?.patternName} ({analysisList[0]?.subdivision})
               </div>
             )}
           </div>
@@ -422,13 +548,14 @@ export function DrumScoreRenderer({
           <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 mr-1 shrink-0 font-mono">
             COMPASES:
           </span>
-          {safeMeasures.map((_, idx) => {
+          {safeMeasures.map((mItem, idx) => {
             const analysis = analysisList[idx];
             const isCurrent = idx === activeMeasureIndex;
             const isNext = idx === activeMeasureIndex + 1;
             const isDup = analysis?.isDuplicate;
             const isChange = analysis?.isPatternChange;
             const patStyle = getPatternStyle(analysis?.patternColor);
+            const pillSub = analysis?.subdivision || mItem.subdivision || '1/16';
 
             return (
               <button
@@ -445,7 +572,7 @@ export function DrumScoreRenderer({
                     ? 'border-slate-700 bg-slate-800/80 text-slate-300 hover:border-slate-600'
                     : 'border-slate-800/80 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:text-slate-300'
                 }`}
-                title={`Compás ${idx + 1}: [${analysis?.patternCode}] ${analysis?.patternName}`}
+                title={`Compás ${idx + 1}: [${analysis?.patternCode}] ${analysis?.patternName} (${pillSub})`}
               >
                 <span>C.{idx + 1}</span>
 
@@ -456,6 +583,10 @@ export function DrumScoreRenderer({
                     [{analysis.patternCode}]
                   </span>
                 )}
+
+                <span className="text-[9px] text-slate-400 font-mono">
+                  {pillSub}
+                </span>
 
                 {/* Etiqueta sutil SIGUIENTE */}
                 {isNext && (
@@ -605,9 +736,23 @@ export function DrumScoreRenderer({
                 ? 'opacity-90'
                 : 'opacity-65';
 
-              // Agrupar notas de este compás por paso (0 a stepsPerMeasure - 1)
+              // Pasos y subdivisión propios de ESTE compás
+              const mSteps =
+                meas.stepsPerMeasure ||
+                analysis?.stepsPerMeasure ||
+                stepsPerMeasure ||
+                16;
+              const mSub =
+                meas.subdivision ||
+                analysis?.subdivision ||
+                inferSubdivisionFromSteps(mSteps, '1/16');
+              const mStepLabels = getStepLabelsForMeasure(mSteps);
+              const getXForMeasureStep = (sIdx: number) =>
+                ((sIdx + 0.5) / mSteps) * MEASURE_WIDTH;
+
+              // Agrupar notas de este compás por paso (0 a mSteps - 1)
               const notesByStep = new Map<number, any[]>();
-              for (let s = 0; s < stepsPerMeasure; s++) {
+              for (let s = 0; s < mSteps; s++) {
                 notesByStep.set(s, []);
               }
               (meas.notes || []).forEach((n: any) => {
@@ -615,9 +760,9 @@ export function DrumScoreRenderer({
                   n.stepIndex !== undefined
                     ? n.stepIndex
                     : n.step !== undefined
-                    ? n.step % stepsPerMeasure
+                    ? n.step % mSteps
                     : 0;
-                if (s >= 0 && s < stepsPerMeasure) {
+                if (s >= 0 && s < mSteps) {
                   notesByStep.get(s)?.push(n);
                 }
               });
@@ -649,6 +794,11 @@ export function DrumScoreRenderer({
                           [{analysis.patternCode}] {analysis.patternName}
                         </span>
                       )}
+
+                      {/* Etiqueta de Subdivisión Propia del Compás (ej. 1/8T (Tresillos) o 1/16 (Semicorcheas)) */}
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-950 text-cyan-300 border border-slate-700/80">
+                        {formatSubdivisionLabel(mSub, mSteps)}
+                      </span>
 
                       {isCurrent && (
                         <span className="bg-cyan-500/25 border border-cyan-400 text-cyan-200 text-[10px] font-black px-1.5 py-0.5 rounded-full shadow-[0_0_8px_rgba(34,211,238,0.4)] animate-pulse flex items-center gap-1">
@@ -710,10 +860,10 @@ export function DrumScoreRenderer({
                       </filter>
                     </defs>
 
-                    {/* Guías y números de tiempo (1, 2, 3, 4 y subdivisiones) */}
-                    {stepLabels.map((lbl, sIdx) => {
-                      const cx = getXForStep(sIdx);
-                      const isMainBeat = !isNaN(Number(lbl));
+                    {/* Guías y números de tiempo dinámicos según mSteps (1 2 3 para 1/8T, 1 e & a para 1/16, etc.) */}
+                    {mStepLabels.map((item, sIdx) => {
+                      const cx = getXForMeasureStep(sIdx);
+                      const isMainBeat = item.isMainBeat;
                       const isStepActive =
                         isPlaying && isCurrent && currentStepInMeasure === sIdx;
 
@@ -748,7 +898,7 @@ export function DrumScoreRenderer({
                                 : '#64748b'
                             }
                           >
-                            {lbl}
+                            {item.label}
                           </text>
                         </g>
                       );
@@ -814,11 +964,10 @@ export function DrumScoreRenderer({
                       </>
                     )}
 
-                    {/* Guías verticales punteadas entre pasos */}
-                    {Array.from({ length: stepsPerMeasure }).map((_, sIdx) => {
-                      const cx = getXForStep(sIdx);
-                      const isMainBeat =
-                        sIdx % (stepsPerMeasure === 8 ? 2 : 4) === 0;
+                    {/* Guías verticales punteadas entre pasos según mSteps */}
+                    {mStepLabels.map((item, sIdx) => {
+                      const cx = getXForMeasureStep(sIdx);
+                      const isMainBeat = item.isMainBeat;
                       return (
                         <line
                           key={`grid-${mIdx}-${sIdx}`}
@@ -837,11 +986,11 @@ export function DrumScoreRenderer({
                       );
                     })}
 
-                    {/* Notas, Plicas, Sticking (R en rojo, L en azul) y Acentos (>) */}
+                    {/* Notas, Plicas, Sticking (R en rojo, L en azul, K en esmeralda) y Acentos (>) */}
                     {Array.from(notesByStep.entries()).map(
                       ([sIdx, stepNotes]) => {
                         if (!stepNotes || stepNotes.length === 0) return null;
-                        const cx = getXForStep(sIdx);
+                        const cx = getXForMeasureStep(sIdx);
                         const isStepActive =
                           isPlaying &&
                           isCurrent &&
