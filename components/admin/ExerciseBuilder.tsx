@@ -91,7 +91,7 @@ export type { QuantizeValue };
 
 
 type InstrumentCategory = 'drums' | 'bass' | 'guitar' | 'piano';
-type SubdivisionType = '1/4' | '1/8' | '1/16' | '1/32' | '1/8T' | '1/16T' | 'quintillo' | 'septillo';
+type SubdivisionType = '1/4' | '1/8' | '1/16' | '1/32' | '1/8T' | '1/16T' | '6-tuplet' | 'quintillo' | 'septillo';
 
 export interface MeasureConfigItem {
   measureIndex: number;
@@ -4246,7 +4246,8 @@ export const ExerciseBuilder: React.FC = () => {
             </optgroup>
             <optgroup label="── SUBDIVISIONES IRREGULARES (TRESILLOS / POLIRRITMIA) ──" className="bg-slate-950 text-amber-400 font-bold">
               <option value="1/8T">1/8T (Tresillos de Corchea - {calculateStepsForMeasure(activeMeasureConfig.timeSignature || timeSignature, '1/8T')} pasos)</option>
-              <option value="1/16T">1/16T (Tresillos de Semicorchea - {calculateStepsForMeasure(activeMeasureConfig.timeSignature || timeSignature, '1/16T')} pasos)</option>
+              <option value="1/16T">1/16T (Tresillos de Semicorchea 3+3 - {calculateStepsForMeasure(activeMeasureConfig.timeSignature || timeSignature, '1/16T')} pasos)</option>
+              <option value="6-tuplet">6-tuplet (Seisillos 2+2+2 - {calculateStepsForMeasure(activeMeasureConfig.timeSignature || timeSignature, '6-tuplet')} pasos)</option>
               <option value="quintillo">Quintillo (5:4 - {calculateStepsForMeasure(activeMeasureConfig.timeSignature || timeSignature, 'quintillo')} pasos)</option>
               <option value="septillo">Septillo (7:4 - {calculateStepsForMeasure(activeMeasureConfig.timeSignature || timeSignature, 'septillo')} pasos)</option>
             </optgroup>
@@ -4557,14 +4558,15 @@ export const ExerciseBuilder: React.FC = () => {
                           className="bg-slate-900 border border-slate-700 hover:border-cyan-500/50 focus:border-cyan-400 rounded-md px-2 py-0.5 text-[11px] font-mono font-bold text-cyan-300 focus:outline-none cursor-pointer"
                           title={`Cambiar subdivisión independiente de ${pat.code}`}
                         >
-                          <option value="1/4">1/4 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/4')} pasos)</option>
-                          <option value="1/8">1/8 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/8')} pasos)</option>
-                          <option value="1/8T">1/8T ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/8T')} pasos - Tresillos)</option>
-                          <option value="1/16">1/16 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/16')} pasos)</option>
-                          <option value="1/16T">1/16T ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/16T')} pasos - Seisillos)</option>
-                          <option value="quintillo">5:4 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, 'quintillo')} pasos)</option>
-                          <option value="septillo">7:4 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, 'septillo')} pasos)</option>
-                          <option value="1/32">1/32 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/32')} pasos)</option>
+                          <option value="1/4">1/4 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/4')} pasos - Negras)</option>
+                          <option value="1/8">1/8 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/8')} pasos - Corcheas)</option>
+                          <option value="1/8T">1/8T ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/8T')} pasos - Tresillos Corchea)</option>
+                          <option value="1/16">1/16 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/16')} pasos - Semicorcheas)</option>
+                          <option value="1/16T">1/16T ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/16T')} pasos - Tresillos 3+3)</option>
+                          <option value="6-tuplet">6-tuplet ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '6-tuplet')} pasos - Seisillos 2+2+2)</option>
+                          <option value="quintillo">5:4 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, 'quintillo')} pasos - Quintillos)</option>
+                          <option value="septillo">7:4 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, 'septillo')} pasos - Septillos)</option>
+                          <option value="1/32">1/32 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/32')} pasos - Fusas)</option>
                         </select>
                         <span className="text-[10px] font-mono font-bold text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 px-1.5 py-0.5 rounded">
                           {patSteps}p
@@ -5261,23 +5263,31 @@ export const ExerciseBuilder: React.FC = () => {
                 {Array.from({ length: stepsPerMeasure }).map((_, stepIdx) => {
                   const globalStep = activeMeasureStart + stepIdx;
                   const isPlayback = isPlaying && playbackActiveStep === globalStep;
-                  const { label, isBeatStart } = getStepCountLabel(
+                  const { label, isBeatStart, isSubGroupStart } = getStepCountLabel(
                     stepIdx,
                     stepsPerMeasure,
                     activeMeasureSubdivision,
                     timeSignature
                   );
 
+                  const borderClass =
+                    stepIdx === 0
+                      ? ''
+                      : isBeatStart
+                        ? instrument === 'drums'
+                          ? 'border-l-2 border-cyan-500/50'
+                          : 'border-l-2 border-amber-500/50'
+                        : isSubGroupStart
+                          ? instrument === 'drums'
+                            ? 'border-l border-slate-600/60'
+                            : 'border-l border-amber-500/25'
+                          : '';
+
                   return (
                     <div
                       key={`step-head-${stepIdx}`}
                       className={`flex-1 flex flex-col items-center justify-center py-1 transition-colors relative ${isPlayback ? 'scale-110' : ''
-                        } ${isBeatStart && stepIdx > 0
-                          ? instrument === 'drums'
-                            ? 'border-l border-white/20'
-                            : 'border-l border-amber-500/25'
-                          : ''
-                        }`}
+                        } ${borderClass}`}
                     >
                       <span
                         className={`font-mono transition-colors ${isPlayback
@@ -5286,9 +5296,13 @@ export const ExerciseBuilder: React.FC = () => {
                             ? instrument === 'drums'
                               ? 'text-cyan-400 font-bold text-xs'
                               : 'text-amber-300 font-black text-xs'
-                            : instrument === 'drums'
-                              ? 'text-slate-400 dark:text-slate-400 font-semibold text-[11px]'
-                              : 'text-amber-200/50 font-semibold text-[11px]'
+                            : isSubGroupStart
+                              ? instrument === 'drums'
+                                ? 'text-cyan-200/80 font-bold text-[11px]'
+                                : 'text-amber-200/80 font-bold text-[11px]'
+                              : instrument === 'drums'
+                                ? 'text-slate-400 dark:text-slate-400 font-semibold text-[11px]'
+                                : 'text-amber-200/50 font-semibold text-[11px]'
                           }`}
                       >
                         {label}
@@ -5344,7 +5358,7 @@ export const ExerciseBuilder: React.FC = () => {
                     {Array.from({ length: stepsPerMeasure }).map((_, stepIdx) => {
                       const globalStep = activeMeasureStart + stepIdx;
                       const isPlayback = isPlaying && playbackActiveStep === globalStep;
-                      const { isBeatStart } = getStepCountLabel(
+                      const { isBeatStart, isSubGroupStart } = getStepCountLabel(
                         stepIdx,
                         stepsPerMeasure,
                         activeMeasureSubdivision,
@@ -5361,13 +5375,21 @@ export const ExerciseBuilder: React.FC = () => {
                         ? 'K'
                         : hit?.sticking || (row.voice === 'hihat' ? '×' : '•');
 
+                      const cellBorder =
+                        stepIdx === 0
+                          ? ''
+                          : isBeatStart
+                            ? 'border-l-2 border-cyan-500/50'
+                            : isSubGroupStart
+                              ? 'border-l border-slate-600/60'
+                              : 'border-l border-white/5';
+
                       return (
                         <button
                           key={`drum-cell-${row.voice}-${stepIdx}`}
                           onClick={() => handleCellClick(stepIdx, undefined, row.voice)}
                           className={`h-full flex items-center justify-center transition-all relative ${isPlayback ? 'bg-cyan-500/15' : 'hover:bg-slate-100/50 dark:hover:bg-white/5'
-                            } ${isBeatStart && stepIdx > 0 ? 'border-l border-white/10' : ''
-                            }`}
+                            } ${cellBorder}`}
                         >
                           {hit ? (
                             <div className="relative flex flex-col items-center">
@@ -5618,14 +5640,29 @@ export const ExerciseBuilder: React.FC = () => {
                     {Array.from({ length: stepsPerMeasure }).map((_, stepIdx) => {
                       const globalStep = activeMeasureStart + stepIdx;
                       const isPlayback = isPlaying && playbackActiveStep === globalStep;
+                      const { isBeatStart, isSubGroupStart } = getStepCountLabel(
+                        stepIdx,
+                        stepsPerMeasure,
+                        activeMeasureSubdivision,
+                        timeSignature
+                      );
                       const note = notes.find((n) => n.step === globalStep && n.string === str.num);
+
+                      const stringCellBorder =
+                        stepIdx === 0
+                          ? ''
+                          : isBeatStart
+                            ? 'border-l-2 border-amber-500/40'
+                            : isSubGroupStart
+                              ? 'border-l border-amber-500/20'
+                              : '';
 
                       return (
                         <button
                           key={`string-cell-${str.num}-${stepIdx}`}
                           onClick={() => handleCellClick(stepIdx, str.num)}
                           className={`h-full flex items-center justify-center transition-all relative ${isPlayback ? 'bg-cyan-400/20 shadow-[inset_0_0_8px_rgba(34,211,238,0.4)]' : 'hover:bg-white/5'
-                            }`}
+                            } ${stringCellBorder}`}
                         >
                           {note ? (
                             <div className="relative flex flex-col items-center">

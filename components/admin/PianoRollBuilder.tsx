@@ -77,7 +77,7 @@ export function getStepsPerBeat(
   if (subdivision === '1/8T') return 3;
   if (subdivision === '1/16') return 4;
   if (subdivision === 'quintillo') return 5;
-  if (subdivision === '1/16T') return 6;
+  if (subdivision === '1/16T' || subdivision === '6-tuplet') return 6;
   if (subdivision === 'septillo') return 7;
   if (subdivision === '1/32') return 8;
 
@@ -130,11 +130,19 @@ export function getStepLabel(
     return (stepIndex + 1).toString();
   }
 
-  // 1/16T (Tresillos de semicorchea): 6 pasos por pulso (1, t, e, &, t, a)
+  // 1/16T (Tresillos de semicorchea 3+3): 6 pasos por pulso (1, y, a, +, y, a)
   if (subdivision === '1/16T') {
     const beatNumber = Math.floor(stepIndex / 6) + 1;
     const sub = stepIndex % 6;
-    const subLabels = [beatNumber.toString(), 't', 'e', '&', 't', 'a'];
+    const subLabels = [beatNumber.toString(), 'y', 'a', '+', 'y', 'a'];
+    return subLabels[sub];
+  }
+
+  // 6-tuplet (Seisillos 2+2+2): 6 pasos por pulso (1, e, y, a, +, e)
+  if (subdivision === '6-tuplet') {
+    const beatNumber = Math.floor(stepIndex / 6) + 1;
+    const sub = stepIndex % 6;
+    const subLabels = [beatNumber.toString(), 'e', 'y', 'a', '+', 'e'];
     return subLabels[sub];
   }
 

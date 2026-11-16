@@ -38,13 +38,24 @@ export const SUBDIVISION_CONFIGS: Record<string, SubdivisionConfig> = {
   },
   '1/16T': {
     id: '1/16T',
-    name: 'Tresillos de Semicorchea',
+    name: 'Tresillos de Semicorchea (3+3)',
     stepsPerMeasure: 24,
     stepLabels: [
       '1', 'y', 'a', '+', 'y', 'a',
       '2', 'y', 'a', '+', 'y', 'a',
       '3', 'y', 'a', '+', 'y', 'a',
       '4', 'y', 'a', '+', 'y', 'a',
+    ],
+  },
+  '6-tuplet': {
+    id: '6-tuplet',
+    name: 'Seisillos (2+2+2)',
+    stepsPerMeasure: 24,
+    stepLabels: [
+      '1', 'e', 'y', 'a', '+', 'e',
+      '2', 'e', 'y', 'a', '+', 'e',
+      '3', 'e', 'y', 'a', '+', 'e',
+      '4', 'e', 'y', 'a', '+', 'e',
     ],
   },
   'quintillo': {
@@ -80,13 +91,14 @@ export const SUBDIVISION_CONFIGS: Record<string, SubdivisionConfig> = {
 export function normalizeSubdivisionKey(val?: string): string {
   if (!val) return '1/16';
   const clean = val.trim();
+  if (clean.includes('6-tuplet') || clean.includes('seisillo')) return '6-tuplet';
   if (clean.includes('1/8T')) return '1/8T';
   if (clean.includes('1/16T')) return '1/16T';
   if (clean.includes('1/8')) return '1/8';
   if (clean.includes('1/4')) return '1/4';
   if (clean.includes('1/32')) return '1/32';
-  if (clean.includes('quintillo')) return 'quintillo';
-  if (clean.includes('septillo')) return 'septillo';
+  if (clean.includes('quintillo') || clean === '1/20') return 'quintillo';
+  if (clean.includes('septillo') || clean === '1/28') return 'septillo';
   return '1/16';
 }
 
@@ -137,7 +149,7 @@ export function getSubdivisionConfig(
 
 /**
  * Retorna la etiqueta rítmica estándar de batería y si es inicio de pulso (isBeatStart)
- * para cualquier paso dentro de un compás.
+ * o inicio de sub-agrupación (isSubGroupStart) para cualquier paso dentro de un compás.
  *
  * Mapeo canónico:
  * - 1/4 (1 paso/pulso):   1 | 2 | 3 | 4
@@ -145,7 +157,8 @@ export function getSubdivisionConfig(
  * - 1/8T (3 pasos/pulso): 1 y a | 2 y a | 3 y a | 4 y a
  * - 1/16 (4 pasos/pulso): 1 e y a | 2 e y a | 3 e y a | 4 e y a
  * - 5:4 (5 pasos/pulso):  1 e y a u | 2 e y a u | 3 e y a u | 4 e y a u
- * - 1/16T (6 pasos/pulso): 1 y a + y a | 2 y a + y a | 3 y a + y a | 4 y a + y a
+ * - 1/16T (6 pasos/pulso, 3+3): 1 y a + y a | 2 y a + y a | 3 y a + y a | 4 y a + y a
+ * - 6-tuplet (6 pasos/pulso, 2+2+2): 1 e y a + e | 2 e y a + e | 3 e y a + e | 4 e y a + e
  * - 1/32 (8 pasos/pulso): 1 e y a + e y a | 2 e y a + e y a...
  */
 export function getStepCountLabel(
@@ -157,6 +170,7 @@ export function getStepCountLabel(
   label: string;
   isBeatStart: boolean;
   isBeat: boolean;
+  isSubGroupStart?: boolean;
 } {
   return getStepCountLabelForTimeSignature(
     stepIndex,

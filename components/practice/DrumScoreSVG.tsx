@@ -314,7 +314,11 @@ export function DrumScoreRenderer({
     (mSteps: number, mTimeSig: string = timeSignature, mSub?: string) => {
       return Array.from({ length: mSteps }).map((_, sIdx) => {
         const res = getStepCountLabelForTimeSignature(sIdx, mSteps, mSub || '1/16', mTimeSig);
-        return { label: res.label, isMainBeat: res.isBeatStart };
+        return {
+          label: res.label,
+          isMainBeat: res.isBeatStart,
+          isSubGroup: Boolean(res.isSubGroupStart),
+        };
       });
     },
     [timeSignature]
@@ -324,7 +328,10 @@ export function DrumScoreRenderer({
     const s = sub || inferSubdivisionFromSteps(mSteps ?? 16, '1/16');
     if (s === '1/8T') return '1/8T (Tresillos)';
     if (s === '1/16') return '1/16 (Semicorcheas)';
-    if (s === '1/16T') return '1/16T (Seisillos)';
+    if (s === '1/16T') return '1/16T (3+3 Tresillos)';
+    if (s === '6-tuplet') return '6-tuplet (2+2+2 Seisillos)';
+    if (s === 'quintillo' || s === '1/20') return 'Quintillo (5:4)';
+    if (s === 'septillo' || s === '1/28') return 'Septillo (7:4)';
     if (s === '1/8') return '1/8 (Corcheas)';
     if (s === '1/4') return '1/4 (Negras)';
     if (s === '1/32') return '1/32 (Fusas)';
@@ -817,6 +824,7 @@ export function DrumScoreRenderer({
                     {mStepLabels.map((item, sIdx) => {
                       const cx = getXForMeasureStep(sIdx);
                       const isMainBeat = item.isMainBeat;
+                      const isSubGroup = item.isSubGroup && !isMainBeat;
                       const isStepActive =
                         isPlaying && isCurrent && currentStepInMeasure === sIdx;
 
@@ -824,31 +832,35 @@ export function DrumScoreRenderer({
                         <g key={`step-guide-${mIdx}-${sIdx}`}>
                           <line
                             x1={cx}
-                            y1={isMainBeat ? 18 : 22}
+                            y1={isMainBeat ? 16 : isSubGroup ? 20 : 23}
                             x2={cx}
                             y2={30}
                             stroke={
                               isStepActive
                                 ? '#22d3ee'
                                 : isMainBeat
-                                  ? '#64748b'
-                                  : '#334155'
+                                  ? '#38bdf8'
+                                  : isSubGroup
+                                    ? '#64748b'
+                                    : '#334155'
                             }
-                            strokeWidth={isMainBeat ? 1.5 : 1}
+                            strokeWidth={isMainBeat ? 1.8 : isSubGroup ? 1.2 : 0.8}
                           />
                           <text
                             x={cx}
-                            y={isMainBeat ? 14 : 16}
+                            y={isMainBeat ? 13 : isSubGroup ? 15 : 17}
                             textAnchor="middle"
                             fontFamily="ui-monospace, monospace"
-                            fontSize={isMainBeat ? '13' : '10'}
-                            fontWeight={isMainBeat ? '900' : '600'}
+                            fontSize={isMainBeat ? '13' : isSubGroup ? '11' : '9.5'}
+                            fontWeight={isMainBeat ? '900' : isSubGroup ? '800' : '500'}
                             fill={
                               isStepActive
                                 ? '#22d3ee'
                                 : isMainBeat
                                   ? '#f8fafc'
-                                  : '#64748b'
+                                  : isSubGroup
+                                    ? '#94a3b8'
+                                    : '#475569'
                             }
                           >
                             {item.label}
@@ -956,10 +968,64 @@ export function DrumScoreRenderer({
                       </>
                     )}
 
-                    {/* Guías verticales punteadas entre pasos según mSteps */}
+                    {/* Indicadores de Agrupación de Tresillos y Seisillos (3+3 vs 2+2+2) */}
+                    {mSub === '1/16T' && Array.from({ length: Math.floor(mSteps / 6) }).map((_, bIdx) => {
+                      const g1Start = getXForMeasureStep(bIdx * 6);
+                      const g1End = getXForMeasureStep(bIdx * 6 + 2);
+                      const g1Mid = (g1Start + g1End) / 2;
+                      const g2Start = getXForMeasureStep(bIdx * 6 + 3);
+                      const g2End = getXForMeasureStep(bIdx * 6 + 5);
+                      const g2Mid = (g2Start + g2End) / 2;
+                      return (
+                        <g key={`tuplet-16t-${mIdx}-${bIdx}`} className="tuplet-bracket opacity-75 select-none">
+                          {/* Subgrupo 1: 3 semicorcheas */}
+                          <line x1={g1Start - 3} y1="34" x2={g1End + 3} y2="34" stroke="#38bdf8" strokeWidth="1" />
+                          <line x1={g1Start - 3} y1="34" x2={g1Start - 3} y2="38" stroke="#38bdf8" strokeWidth="1" />
+                          <line x1={g1End + 3} y1="34" x2={g1End + 3} y2="38" stroke="#38bdf8" strokeWidth="1" />
+                          <text x={g1Mid} y="32" fill="#38bdf8" fontSize="8.5" fontWeight="900" fontFamily="monospace" textAnchor="middle">3</text>
+
+                          {/* Subgrupo 2: 3 semicorcheas */}
+                          <line x1={g2Start - 3} y1="34" x2={g2End + 3} y2="34" stroke="#38bdf8" strokeWidth="1" />
+                          <line x1={g2Start - 3} y1="34" x2={g2Start - 3} y2="38" stroke="#38bdf8" strokeWidth="1" />
+                          <line x1={g2End + 3} y1="34" x2={g2End + 3} y2="38" stroke="#38bdf8" strokeWidth="1" />
+                          <text x={g2Mid} y="32" fill="#38bdf8" fontSize="8.5" fontWeight="900" fontFamily="monospace" textAnchor="middle">3</text>
+                        </g>
+                      );
+                    })}
+
+                    {mSub === '6-tuplet' && Array.from({ length: Math.floor(mSteps / 6) }).map((_, bIdx) => {
+                      const bStart = getXForMeasureStep(bIdx * 6);
+                      const bEnd = getXForMeasureStep(bIdx * 6 + 5);
+                      const bMid = (bStart + bEnd) / 2;
+                      return (
+                        <g key={`tuplet-6t-${mIdx}-${bIdx}`} className="tuplet-bracket opacity-85 select-none">
+                          <line x1={bStart - 4} y1="34" x2={bEnd + 4} y2="34" stroke="#e879f9" strokeWidth="1.2" />
+                          <line x1={bStart - 4} y1="34" x2={bStart - 4} y2="38" stroke="#e879f9" strokeWidth="1.2" />
+                          <line x1={bEnd + 4} y1="34" x2={bEnd + 4} y2="38" stroke="#e879f9" strokeWidth="1.2" />
+                          <text x={bMid} y="32" fill="#e879f9" fontSize="9.5" fontWeight="900" fontFamily="monospace" textAnchor="middle">6</text>
+                        </g>
+                      );
+                    })}
+
+                    {mSub === '1/8T' && Array.from({ length: Math.floor(mSteps / 3) }).map((_, bIdx) => {
+                      const bStart = getXForMeasureStep(bIdx * 3);
+                      const bEnd = getXForMeasureStep(bIdx * 3 + 2);
+                      const bMid = (bStart + bEnd) / 2;
+                      return (
+                        <g key={`tuplet-8t-${mIdx}-${bIdx}`} className="tuplet-bracket opacity-75 select-none">
+                          <line x1={bStart - 3} y1="34" x2={bEnd + 3} y2="34" stroke="#fbbf24" strokeWidth="1" />
+                          <line x1={bStart - 3} y1="34" x2={bStart - 3} y2="38" stroke="#fbbf24" strokeWidth="1" />
+                          <line x1={bEnd + 3} y1="34" x2={bEnd + 3} y2="38" stroke="#fbbf24" strokeWidth="1" />
+                          <text x={bMid} y="32" fill="#fbbf24" fontSize="8.5" fontWeight="900" fontFamily="monospace" textAnchor="middle">3</text>
+                        </g>
+                      );
+                    })}
+
+                    {/* Guías verticales entre pasos según mSteps */}
                     {mStepLabels.map((item, sIdx) => {
                       const cx = getXForMeasureStep(sIdx);
                       const isMainBeat = item.isMainBeat;
+                      const isSubGroup = item.isSubGroup && !isMainBeat;
                       return (
                         <line
                           key={`grid-${mIdx}-${sIdx}`}
@@ -969,11 +1035,13 @@ export function DrumScoreRenderer({
                           y2="150"
                           stroke={
                             isMainBeat
-                              ? 'rgba(255,255,255,0.09)'
-                              : 'rgba(255,255,255,0.03)'
+                              ? 'rgba(56,189,248,0.18)'
+                              : isSubGroup
+                                ? 'rgba(148,163,184,0.12)'
+                                : 'rgba(255,255,255,0.03)'
                           }
-                          strokeWidth={isMainBeat ? '1.2' : '0.8'}
-                          strokeDasharray="2,3"
+                          strokeWidth={isMainBeat ? '1.5' : isSubGroup ? '1' : '0.6'}
+                          strokeDasharray={isMainBeat ? undefined : '2,3'}
                         />
                       );
                     })}

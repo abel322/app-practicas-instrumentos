@@ -12,11 +12,12 @@ export function getStepRhythmLabel(
   totalSteps: number = 16,
   subdivision?: string,
   timeSignature?: string
-): { label: string; isBeat: boolean } {
+): { label: string; isBeat: boolean; isSubGroup?: boolean } {
   const info = getStepCountLabel(stepIndex, totalSteps, subdivision, timeSignature);
   return {
     label: info.label,
     isBeat: info.isBeatStart,
+    isSubGroup: info.isSubGroupStart,
   };
 }
 

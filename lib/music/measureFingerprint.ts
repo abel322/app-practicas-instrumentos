@@ -108,7 +108,7 @@ export function inferSubdivisionFromSteps(
     case 20:
       return 'quintillo';
     case 24:
-      return '1/16T';
+      return fallback === '6-tuplet' ? '6-tuplet' : '1/16T';
     case 28:
       return 'septillo';
     case 32:

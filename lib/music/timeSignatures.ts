@@ -203,7 +203,7 @@ export function calculateStepsForMeasure(timeSignature: string, subdivision: str
     if (sub === '1/32') return spec.numerator * 4; // 4 pasos por corchea (ej. 24 en 6/8)
     if (sub === '1/4') return Math.max(1, Math.floor(spec.numerator / 2));
     if (sub === '1/8T') return spec.numerator;
-    if (sub === '1/16T') return spec.numerator * 3;
+    if (sub === '1/16T' || sub === '6-tuplet') return spec.numerator * 3;
     return spec.defaultSteps;
   }
 
@@ -219,10 +219,13 @@ export function calculateStepsForMeasure(timeSignature: string, subdivision: str
     case '1/16':
       return num * 4; // 4 pasos por negra (16 en 4/4, 12 en 3/4, 8 en 2/4, 20 en 5/4)
     case 'quintillo':
+    case '1/20':
       return num * 5; // 5 pasos por negra
     case '1/16T':
+    case '6-tuplet':
       return num * 6; // 6 pasos por negra (24 en 4/4, 18 en 3/4, 12 en 2/4)
     case 'septillo':
+    case '1/28':
       return num * 7; // 7 pasos por negra
     case '1/32':
       return num * 8; // 8 pasos por negra (32 en 4/4, 24 en 3/4)
@@ -247,6 +250,7 @@ export function getStepCountLabelForTimeSignature(
   label: string;
   isBeatStart: boolean;
   isBeat: boolean;
+  isSubGroupStart?: boolean;
 } {
   const spec = getTimeSignatureSpec(timeSignature);
 
@@ -260,6 +264,7 @@ export function getStepCountLabelForTimeSignature(
         label: `${eighthIndex + 1}`,
         isBeatStart: isAccent || eighthIndex === 0,
         isBeat: true,
+        isSubGroupStart: isAccent || eighthIndex === 0,
       };
     }
 
@@ -272,6 +277,7 @@ export function getStepCountLabelForTimeSignature(
         label: isSecondStep ? 'y' : `${eighthIndex + 1}`,
         isBeatStart: isAccent,
         isBeat: !isSecondStep,
+        isSubGroupStart: !isSecondStep,
       };
     }
 
@@ -285,6 +291,7 @@ export function getStepCountLabelForTimeSignature(
         label: syllables[sub] || '·',
         isBeatStart: isAccent,
         isBeat: sub === 0,
+        isSubGroupStart: sub === 0,
       };
     }
   }
@@ -297,7 +304,7 @@ export function getStepCountLabelForTimeSignature(
   const isBeatStart = subIndex === 0;
 
   if (stepsPerQuarter === 1) {
-    return { label: `${beatNumber}`, isBeatStart: true, isBeat: true };
+    return { label: `${beatNumber}`, isBeatStart: true, isBeat: true, isSubGroupStart: true };
   }
 
   if (stepsPerQuarter === 2) {
@@ -305,6 +312,7 @@ export function getStepCountLabelForTimeSignature(
       label: subIndex === 0 ? `${beatNumber}` : 'y',
       isBeatStart,
       isBeat: isBeatStart,
+      isSubGroupStart: isBeatStart,
     };
   }
 
@@ -314,6 +322,7 @@ export function getStepCountLabelForTimeSignature(
       label: syllables[subIndex] ?? 'a',
       isBeatStart,
       isBeat: isBeatStart,
+      isSubGroupStart: isBeatStart,
     };
   }
 
@@ -323,6 +332,7 @@ export function getStepCountLabelForTimeSignature(
       label: syllables[subIndex] ?? 'a',
       isBeatStart,
       isBeat: isBeatStart,
+      isSubGroupStart: subIndex === 0 || subIndex === 2,
     };
   }
 
@@ -332,15 +342,38 @@ export function getStepCountLabelForTimeSignature(
       label: syllables[subIndex] ?? 'u',
       isBeatStart,
       isBeat: isBeatStart,
+      isSubGroupStart: isBeatStart,
     };
   }
 
   if (stepsPerQuarter === 6) {
+    if (subdivision === '6-tuplet') {
+      // Seisillos (agrupación 2 + 2 + 2): 1 e | y a | + e
+      const syllables = [`${beatNumber}`, 'e', 'y', 'a', '+', 'e'];
+      return {
+        label: syllables[subIndex] ?? 'e',
+        isBeatStart: subIndex === 0,
+        isBeat: subIndex === 0,
+        isSubGroupStart: subIndex === 0 || subIndex === 2 || subIndex === 4,
+      };
+    }
+
+    // Tresillos de Semicorcheas (1/16T, agrupación 3 + 3): 1 y a | + y a
     const syllables = [`${beatNumber}`, 'y', 'a', '+', 'y', 'a'];
     return {
       label: syllables[subIndex] ?? 'a',
+      isBeatStart: subIndex === 0,
+      isBeat: subIndex === 0,
+      isSubGroupStart: subIndex === 0 || subIndex === 3,
+    };
+  }
+
+  if (stepsPerQuarter === 7) {
+    return {
+      label: subIndex === 0 ? `${beatNumber}` : `${subIndex + 1}`,
       isBeatStart,
       isBeat: isBeatStart,
+      isSubGroupStart: isBeatStart,
     };
   }
 
@@ -350,6 +383,7 @@ export function getStepCountLabelForTimeSignature(
       label: syllables[subIndex] ?? 'a',
       isBeatStart,
       isBeat: isBeatStart,
+      isSubGroupStart: subIndex === 0 || subIndex === 4,
     };
   }
 
@@ -357,5 +391,6 @@ export function getStepCountLabelForTimeSignature(
     label: subIndex === 0 ? `${beatNumber}` : `·${subIndex + 1}`,
     isBeatStart,
     isBeat: isBeatStart,
+    isSubGroupStart: isBeatStart,
   };
 }
