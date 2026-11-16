@@ -80,7 +80,7 @@ export { drumSampler, playDrumHit, drumSynth, getDrumAudioContext } from '@/lib/
 export type { DrumHitOptions, DrumPiece } from '@/lib/audio/drumSynth';
 
 export { DRUM_TRACKS, DRUM_ROWS } from './ExerciseBuilder';
-export type { DrumTrackConfig } from './ExerciseBuilder';
+export type { DrumTrackConfig, MeasureConfigItem } from './ExerciseBuilder';
 
 export const StudioBuilderView = ExerciseBuilder;
 export default ExerciseBuilder;

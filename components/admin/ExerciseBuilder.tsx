@@ -82,6 +82,18 @@ export type { QuantizeValue };
 type InstrumentCategory = 'drums' | 'bass' | 'guitar' | 'piano';
 type SubdivisionType = '1/4' | '1/8' | '1/16' | '1/32' | '1/8T' | '1/16T' | 'quintillo' | 'septillo';
 
+export interface MeasureConfigItem {
+  measureIndex: number;
+  patternCode: string;
+  patternName: string;
+  patternColor: string;
+  subdivision: SubdivisionType | string;
+  stepsPerMeasure: number;
+  startStep: number;
+  endStep: number;
+  notes?: any[];
+}
+
 interface EditorNote {
   step: number;        // Global step index: measureIndex * stepsPerMeasure + stepInMeasure
   stepIndex?: number;  // Local/global index alias
@@ -685,9 +697,9 @@ export const ExerciseBuilder: React.FC = () => {
       bank: PatternSummary[],
       fallbackSub: string,
       timeSig: '4/4' | '6/8' | '7/8'
-    ) => {
+    ): MeasureConfigItem[] => {
       let cursor = 0;
-      return Array.from({ length: Math.max(1, count) }).map((_, mIdx) => {
+      return Array.from({ length: Math.max(1, count) }).map((_, mIdx): MeasureConfigItem => {
         const assign = assignmentsMap[mIdx];
         const pat =
           bank.find((p) => p.code === assign?.patternCode) ||
@@ -720,7 +732,7 @@ export const ExerciseBuilder: React.FC = () => {
   const extractRelativeNotesByMeasure = useCallback(
     (
       flatNotes: EditorNote[],
-      configList: Array<{
+      configList: MeasureConfigItem[] | Array<{
         measureIndex: number;
         startStep: number;
         endStep: number;
@@ -748,7 +760,7 @@ export const ExerciseBuilder: React.FC = () => {
   const flattenMeasureNotes = useCallback(
     (
       byMeasure: Record<number, EditorNote[]>,
-      configList: Array<{
+      configList: MeasureConfigItem[] | Array<{
         measureIndex: number;
         startStep: number;
         endStep: number;
@@ -791,12 +803,12 @@ export const ExerciseBuilder: React.FC = () => {
     timeSignature,
   ]);
 
-  const measureConfigListRef = useRef(measureConfigList);
+  const measureConfigListRef = useRef<MeasureConfigItem[]>(measureConfigList);
   useEffect(() => {
     measureConfigListRef.current = measureConfigList;
   }, [measureConfigList]);
 
-  const activeMeasureConfig =
+  const activeMeasureConfig: MeasureConfigItem =
     measureConfigList[currentMeasure] ||
     measureConfigList[0] || {
       measureIndex: 0,
@@ -2967,24 +2979,30 @@ export const ExerciseBuilder: React.FC = () => {
   const bpmRef = useRef(bpm);
 
   // Obtener la configuración del compás que contiene un globalStep dado
-  const getMeasureCfgForGlobalStep = useCallback((stepNumber: number) => {
-    const list = measureConfigListRef.current;
-    if (!list || list.length === 0) {
-      const fallbackSteps = Math.max(1, stepsPerMeasureRef.current);
-      const mIdx = Math.floor(stepNumber / fallbackSteps);
-      return {
-        measureIndex: mIdx,
-        subdivision: subdivisionRef.current,
-        stepsPerMeasure: fallbackSteps,
-        startStep: mIdx * fallbackSteps,
-        endStep: (mIdx + 1) * fallbackSteps,
-      };
-    }
-    const found = list.find(
-      (cfg) => stepNumber >= cfg.startStep && stepNumber < cfg.endStep
-    );
-    return found || list[0];
-  }, []);
+  const getMeasureCfgForGlobalStep = useCallback(
+    (stepNumber: number): MeasureConfigItem => {
+      const list = measureConfigListRef.current;
+      if (!list || list.length === 0) {
+        const fallbackSteps = Math.max(1, stepsPerMeasureRef.current);
+        const mIdx = Math.floor(stepNumber / fallbackSteps);
+        return {
+          measureIndex: mIdx,
+          patternCode: 'P1',
+          patternName: 'Patrón 1',
+          patternColor: 'cyan',
+          subdivision: subdivisionRef.current,
+          stepsPerMeasure: fallbackSteps,
+          startStep: mIdx * fallbackSteps,
+          endStep: (mIdx + 1) * fallbackSteps,
+        };
+      }
+      const found = list.find(
+        (cfg) => stepNumber >= cfg.startStep && stepNumber < cfg.endStep
+      );
+      return found || list[0];
+    },
+    []
+  );
 
   const isBeatStep = useCallback(
     (stepNumber: number) => {

@@ -129,8 +129,8 @@ export function remapNotesToNewSubdivision(
       note.stepIndex !== undefined
         ? note.stepIndex
         : note.step !== undefined
-        ? note.step % oldSteps
-        : 0;
+          ? note.step % oldSteps
+          : 0;
     const newStep = Math.min(
       newSteps - 1,
       Math.max(0, Math.round((rawStep / oldSteps) * newSteps))
@@ -164,8 +164,8 @@ export function computeMeasureFingerprint(measure: any): string {
   );
   const mSub = String(
     measure?.subdivision ||
-      firstWithMeta?.subdivision ||
-      inferSubdivisionFromSteps(mSteps)
+    firstWithMeta?.subdivision ||
+    inferSubdivisionFromSteps(mSteps)
   );
 
   const activeNotes = (Array.isArray(rawNotes) ? rawNotes : [])
@@ -278,9 +278,9 @@ export function analyzeMeasureDuplicates(
       m?.patternColor || firstNoteWithMeta?.patternColor || autoInfo.color;
     const stepsPerMeasure = Number(
       m?.stepsPerMeasure ||
-        firstNoteWithMeta?.stepsPerMeasure ||
-        autoInfo.stepsPerMeasure ||
-        defaultSteps
+      firstNoteWithMeta?.stepsPerMeasure ||
+      autoInfo.stepsPerMeasure ||
+      defaultSteps
     );
     const subdivision =
       m?.subdivision ||
@@ -297,11 +297,11 @@ export function analyzeMeasureDuplicates(
       idx > 0 &&
       (fp !== fingerprints[idx - 1] ||
         patternCode !==
-          (measures[idx - 1]?.patternCode ||
-            (measures[idx - 1]?.notes || measures[idx - 1]?.hits || []).find(
-              (n: any) => n?.patternCode
-            )?.patternCode ||
-            autoCodeByFp.get(fingerprints[idx - 1])?.code));
+        (measures[idx - 1]?.patternCode ||
+          (measures[idx - 1]?.notes || measures[idx - 1]?.hits || []).find(
+            (n: any) => n?.patternCode
+          )?.patternCode ||
+          autoCodeByFp.get(fingerprints[idx - 1])?.code));
 
     return {
       measureIndex: idx,
