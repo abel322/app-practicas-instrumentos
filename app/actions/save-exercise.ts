@@ -245,21 +245,10 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
-    console.warn('⚠️ [saveExerciseAction] Fallback a almacenamiento local por error de conexión DB:', error?.message || error);
-    const fallbackSlug = formData.slug ? formData.slug.trim() : slugify(formData.title) || `ejercicio-${Date.now()}`;
-    const fallbackUrl =
-      formData.instrumentType === 'drums'
-        ? `/practice/${fallbackSlug}`
-        : formData.instrumentType === 'piano'
-        ? `/piano/practice/${fallbackSlug}`
-        : `/strings/practice/${fallbackSlug}`;
-
+    console.error('❌ [saveExerciseAction] Error crítico persistiendo en PostgreSQL:', error?.message || error);
     return {
-      success: true,
-      slug: fallbackSlug,
-      instrument: formData.instrumentType,
-      url: fallbackUrl,
-      isUpdate: Boolean(formData.slug),
+      success: false,
+      error: `Error al guardar en PostgreSQL: ${error?.message || 'Error de conexión con la base de datos'}`,
     };
   }
 }

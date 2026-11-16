@@ -27,22 +27,22 @@ import {
   inferSubdivisionFromSteps,
   PatternSummary,
 } from '@/lib/music/measureFingerprint';
-import { 
-  Play, 
-  Pause, 
-  Square, 
-  Volume2, 
-  VolumeX, 
-  Save, 
-  Plus, 
-  Copy, 
-  Trash2, 
+import {
+  Play,
+  Pause,
+  Square,
+  Volume2,
+  VolumeX,
+  Save,
+  Plus,
+  Copy,
+  Trash2,
   Pencil,
-  ArrowLeft, 
-  Drum, 
-  Music, 
+  ArrowLeft,
+  Drum,
+  Music,
   KeyboardMusic,
-  Sparkles, 
+  Sparkles,
   ExternalLink,
   ChevronRight,
   ChevronLeft,
@@ -67,6 +67,12 @@ import {
   getStepsForSubdivision,
   getStepCountLabel,
 } from '@/lib/music-theory/rhythmSubdivisions';
+import {
+  TIME_SIGNATURE_OPTIONS,
+  getTimeSignatureSpec,
+  calculateStepsForMeasure,
+  getStepCountLabelForTimeSignature,
+} from '@/lib/music/timeSignatures';
 import { normalizeInstrumentKey } from '@/lib/music-theory/instrumentUtils';
 import { validateLegatoTechnique } from './StudioBuilderView';
 import { PrintableScoreModal } from '@/components/studio/PrintableScoreModal';
@@ -92,6 +98,7 @@ export interface MeasureConfigItem {
   patternCode: string;
   patternName: string;
   patternColor: string;
+  timeSignature?: string;
   subdivision: SubdivisionType | string;
   stepsPerMeasure: number;
   startStep: number;
@@ -293,7 +300,7 @@ export const ExerciseBuilder: React.FC = () => {
   const [category, setCategory] = useState('Slap & Pop');
   const [difficulty, setDifficulty] = useState<'Básico' | 'Intermedio' | 'Avanzado'>('Intermedio');
   const [bpm, setBpm] = useState(95);
-  const [timeSignature, setTimeSignature] = useState<'4/4' | '6/8' | '7/8'>('4/4');
+  const [timeSignature, setTimeSignature] = useState<string>('4/4');
   const [subdivision, setSubdivision] = useState<SubdivisionType>('1/16');
 
   // Destino: Biblioteca General vs Asignar a Ruta Técnica
@@ -351,7 +358,7 @@ export const ExerciseBuilder: React.FC = () => {
       setInstrument(normalizedInitialInst as InstrumentCategory);
       try {
         localStorage.setItem(ACTIVE_INSTRUMENT_KEY, normalizedInitialInst);
-      } catch {}
+      } catch { }
     } else if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(ACTIVE_INSTRUMENT_KEY);
       if (saved && ['drums', 'bass', 'guitar', 'piano'].includes(saved)) {
@@ -477,8 +484,9 @@ export const ExerciseBuilder: React.FC = () => {
                 code: p.code || 'P1',
                 name: p.name || `Patrón ${p.code || '1'}`,
                 color: p.color || 'cyan',
+                timeSignature: p.timeSignature || loadedTimeSig,
                 subdivision: normalizeSubdivisionKey(p.subdivision || loadedSubKey),
-                stepsPerMeasure: p.stepsPerMeasure || getStepsForSubdivision(p.subdivision || loadedSubKey, loadedTimeSig),
+                stepsPerMeasure: p.stepsPerMeasure || calculateStepsForMeasure(p.timeSignature || loadedTimeSig, p.subdivision || loadedSubKey),
                 sampleMeasureIndex: p.sampleMeasureIndex ?? 0,
                 usageCount: p.usageCount ?? 0,
                 notes: Array.isArray(p.notes) ? p.notes : [],
@@ -516,6 +524,7 @@ export const ExerciseBuilder: React.FC = () => {
                   patternCode: string;
                   patternName: string;
                   patternColor: string;
+                  timeSignature?: string;
                   subdivision?: string;
                   stepsPerMeasure?: number;
                 }
@@ -525,6 +534,7 @@ export const ExerciseBuilder: React.FC = () => {
                   patternCode: item.patternCode,
                   patternName: item.patternName,
                   patternColor: item.patternColor,
+                  timeSignature: item.timeSignature || loadedTimeSig,
                   subdivision: item.subdivision,
                   stepsPerMeasure: item.stepsPerMeasure,
                 };
@@ -611,7 +621,7 @@ export const ExerciseBuilder: React.FC = () => {
           const parsed = JSON.parse(savedDraft);
           if (parsed.notes && Array.isArray(parsed.notes)) return parsed.notes;
         }
-      } catch {}
+      } catch { }
     }
     if (instrument === 'bass') {
       return [
@@ -694,6 +704,7 @@ export const ExerciseBuilder: React.FC = () => {
         patternCode: string;
         patternName: string;
         patternColor: string;
+        timeSignature?: string;
         subdivision?: string;
         stepsPerMeasure?: number;
       }
@@ -703,6 +714,7 @@ export const ExerciseBuilder: React.FC = () => {
       patternCode: 'P1',
       patternName: 'Patrón 1',
       patternColor: 'cyan',
+      timeSignature: '4/4',
       subdivision: '1/16',
       stepsPerMeasure: 16,
     },
@@ -713,7 +725,7 @@ export const ExerciseBuilder: React.FC = () => {
   const [previewingPatternCode, setPreviewingPatternCode] = useState<string | null>(null);
   const loopSingleMeasureRef = useRef<number | null>(null);
 
-  // Construir configuración por compás con subdivisión, stepsPerMeasure, startStep y endStep acumulativos
+  // Construir configuración por compás con métrica, subdivisión, stepsPerMeasure, startStep y endStep acumulativos
   const buildMeasureConfigList = useCallback(
     (
       count: number,
@@ -723,13 +735,14 @@ export const ExerciseBuilder: React.FC = () => {
           patternCode: string;
           patternName: string;
           patternColor: string;
+          timeSignature?: string;
           subdivision?: string;
           stepsPerMeasure?: number;
         }
       >,
       bank: PatternSummary[],
       fallbackSub: string,
-      timeSig: '4/4' | '6/8' | '7/8'
+      timeSig: string
     ): MeasureConfigItem[] => {
       let cursor = 0;
       return Array.from({ length: Math.max(1, count) }).map((_, mIdx): MeasureConfigItem => {
@@ -737,13 +750,15 @@ export const ExerciseBuilder: React.FC = () => {
         const pat =
           bank.find((p) => p.code === assign?.patternCode) ||
           (mIdx === 0 ? bank[0] : undefined);
+        const resolvedTimeSig =
+          assign?.timeSignature || pat?.timeSignature || timeSig || '4/4';
         const resolvedSub = normalizeSubdivisionKey(
           assign?.subdivision || pat?.subdivision || fallbackSub || '1/16'
         );
         const resolvedSteps =
           assign?.stepsPerMeasure ||
           pat?.stepsPerMeasure ||
-          getStepsForSubdivision(resolvedSub, timeSig);
+          calculateStepsForMeasure(resolvedTimeSig, resolvedSub);
         const startStep = cursor;
         const endStep = cursor + resolvedSteps;
         cursor = endStep;
@@ -752,6 +767,7 @@ export const ExerciseBuilder: React.FC = () => {
           patternCode: assign?.patternCode || pat?.code || 'P1',
           patternName: assign?.patternName || pat?.name || 'Patrón 1',
           patternColor: assign?.patternColor || pat?.color || 'cyan',
+          timeSignature: resolvedTimeSig,
           subdivision: resolvedSub,
           stepsPerMeasure: resolvedSteps,
           startStep,
@@ -864,7 +880,7 @@ export const ExerciseBuilder: React.FC = () => {
     return measureConfigList[measureConfigList.length - 1].endStep;
   }, [measureConfigList, stepsPerMeasure]);
 
-  // Agrupación de notas por compás con metadatos de patrón (patternCode, patternName, patternColor, subdivision, stepsPerMeasure)
+  // Agrupación de notas por compás con metadatos de patrón (patternCode, patternName, patternColor, timeSignature, subdivision, stepsPerMeasure)
   const measures = useMemo(() => {
     return measureConfigList.map((cfg) => {
       return {
@@ -873,6 +889,7 @@ export const ExerciseBuilder: React.FC = () => {
         patternCode: cfg.patternCode,
         patternName: cfg.patternName,
         patternColor: cfg.patternColor,
+        timeSignature: cfg.timeSignature || timeSignature,
         subdivision: cfg.subdivision,
         stepsPerMeasure: cfg.stepsPerMeasure,
         startStep: cfg.startStep,
@@ -1035,20 +1052,22 @@ export const ExerciseBuilder: React.FC = () => {
             const resolvedMeasuresCount = parsed.totalMeasures
               ? Math.max(1, parsed.totalMeasures)
               : parsed.measures && Array.isArray(parsed.measures)
-              ? Math.max(1, parsed.measures.length)
-              : 1;
+                ? Math.max(1, parsed.measures.length)
+                : 1;
             setTotalMeasures(resolvedMeasuresCount);
 
             if (parsed.patternBank && Array.isArray(parsed.patternBank) && parsed.patternBank.length > 0) {
               setPatternBank(
                 parsed.patternBank.map((p: any) => {
+                  const pTimeSig = p.timeSignature || defaultTimeSig;
                   const pSub = normalizeSubdivisionKey(
                     p.subdivision || inferSubdivisionFromSteps(p.stepsPerMeasure ?? 16, defaultSub)
                   );
                   const pSteps =
-                    Number(p.stepsPerMeasure) || getStepsForSubdivision(pSub, defaultTimeSig);
+                    Number(p.stepsPerMeasure) || calculateStepsForMeasure(pTimeSig, pSub);
                   return {
                     ...p,
+                    timeSignature: pTimeSig,
                     subdivision: pSub,
                     stepsPerMeasure: pSteps,
                   };
@@ -1077,6 +1096,7 @@ export const ExerciseBuilder: React.FC = () => {
                   patternCode: string;
                   patternName: string;
                   patternColor: string;
+                  timeSignature?: string;
                   subdivision?: string;
                   stepsPerMeasure?: number;
                 }
@@ -1086,6 +1106,7 @@ export const ExerciseBuilder: React.FC = () => {
                   patternCode: item.patternCode,
                   patternName: item.patternName,
                   patternColor: item.patternColor,
+                  timeSignature: item.timeSignature || defaultTimeSig,
                   subdivision: item.subdivision,
                   stepsPerMeasure: item.stepsPerMeasure,
                 };
@@ -1243,14 +1264,16 @@ export const ExerciseBuilder: React.FC = () => {
   const handleChangeSubdivision = useCallback(
     (rawSubdivision: string, targetPatternCode?: string) => {
       const normalizedSub = normalizeSubdivisionKey(rawSubdivision);
-      const newSteps = getStepsForSubdivision(normalizedSub, timeSignature);
-
-      const byMeasure = extractRelativeNotesByMeasure(notes, measureConfigList);
       const targetCode =
         targetPatternCode ||
         activeMeasureConfig.patternCode ||
         editingPatternCode ||
         'P1';
+      const targetPat = patternBank.find((p) => p.code === targetCode);
+      const targetTimeSig = targetPat?.timeSignature || activeMeasureConfig.timeSignature || timeSignature || '4/4';
+      const newSteps = calculateStepsForMeasure(targetTimeSig, normalizedSub);
+
+      const byMeasure = extractRelativeNotesByMeasure(notes, measureConfigList);
 
       if (measureEditMode === 'direct' && !targetPatternCode) {
         // En modo directo por compás, cambiar la subdivisión del compás actual (y su patrón asociado si aplica)
@@ -1268,6 +1291,7 @@ export const ExerciseBuilder: React.FC = () => {
               patternName: activeMeasureConfig.patternName,
               patternColor: activeMeasureConfig.patternColor,
             }),
+            timeSignature: targetTimeSig,
             subdivision: normalizedSub,
             stepsPerMeasure: newSteps,
           },
@@ -1275,15 +1299,16 @@ export const ExerciseBuilder: React.FC = () => {
         const nextBank = patternBank.map((p) =>
           p.code === targetCode
             ? {
-                ...p,
-                subdivision: normalizedSub,
-                stepsPerMeasure: newSteps,
-                notes: remapNotesToNewSubdivision(
-                  p.notes || [],
-                  p.stepsPerMeasure || oldSteps,
-                  newSteps
-                ),
-              }
+              ...p,
+              timeSignature: targetTimeSig,
+              subdivision: normalizedSub,
+              stepsPerMeasure: newSteps,
+              notes: remapNotesToNewSubdivision(
+                p.notes || [],
+                p.stepsPerMeasure || oldSteps,
+                newSteps
+              ),
+            }
             : p
         );
         const newConfigList = buildMeasureConfigList(
@@ -1291,7 +1316,7 @@ export const ExerciseBuilder: React.FC = () => {
           nextAssignments,
           nextBank,
           normalizedSub,
-          timeSignature
+          targetTimeSig
         );
         const rebuiltNotes = flattenMeasureNotes(byMeasure, newConfigList);
         activeNotesRef.current = rebuiltNotes;
@@ -1307,9 +1332,10 @@ export const ExerciseBuilder: React.FC = () => {
         if (p.code !== targetCode) return p;
         const oldPatSteps =
           p.stepsPerMeasure ||
-          getStepsForSubdivision(p.subdivision || '1/16', timeSignature);
+          calculateStepsForMeasure(p.timeSignature || targetTimeSig, p.subdivision || '1/16');
         return {
           ...p,
+          timeSignature: targetTimeSig,
           subdivision: normalizedSub,
           stepsPerMeasure: newSteps,
           notes: remapNotesToNewSubdivision(p.notes || [], oldPatSteps, newSteps),
@@ -1328,6 +1354,7 @@ export const ExerciseBuilder: React.FC = () => {
             patternCode: cfg.patternCode,
             patternName: cfg.patternName,
             patternColor: cfg.patternColor,
+            timeSignature: targetTimeSig,
             subdivision: normalizedSub,
             stepsPerMeasure: newSteps,
           };
@@ -1336,6 +1363,7 @@ export const ExerciseBuilder: React.FC = () => {
             patternCode: cfg.patternCode,
             patternName: cfg.patternName,
             patternColor: cfg.patternColor,
+            timeSignature: cfg.timeSignature,
             subdivision: cfg.subdivision,
             stepsPerMeasure: cfg.stepsPerMeasure,
           };
@@ -1380,6 +1408,163 @@ export const ExerciseBuilder: React.FC = () => {
     ]
   );
 
+  // Cambiar métrica de forma INDEPENDIENTE para el patrón/compás objetivo sin alterar otros patrones
+  const handleChangePatternTimeSignature = useCallback(
+    (newTimeSig: string, targetPatternCode?: string) => {
+      const targetCode =
+        targetPatternCode ||
+        activeMeasureConfig.patternCode ||
+        editingPatternCode ||
+        'P1';
+
+      const targetPat = patternBank.find((p) => p.code === targetCode);
+      const patSub = normalizeSubdivisionKey(
+        targetPat?.subdivision || activeMeasureConfig.subdivision || subdivision || '1/16'
+      );
+      const newSteps = calculateStepsForMeasure(newTimeSig, patSub);
+
+      const byMeasure = extractRelativeNotesByMeasure(notes, measureConfigList);
+
+      if (measureEditMode === 'direct' && !targetPatternCode) {
+        // En modo directo por compás, cambiar la métrica del compás actual
+        const oldSteps = activeMeasureConfig.stepsPerMeasure;
+        byMeasure[currentMeasure] = remapNotesToNewSubdivision(
+          byMeasure[currentMeasure] || [],
+          oldSteps,
+          newSteps
+        );
+        const nextAssignments = {
+          ...measureAssignments,
+          [currentMeasure]: {
+            ...(measureAssignments[currentMeasure] || {
+              patternCode: targetCode,
+              patternName: activeMeasureConfig.patternName,
+              patternColor: activeMeasureConfig.patternColor,
+            }),
+            timeSignature: newTimeSig,
+            subdivision: patSub,
+            stepsPerMeasure: newSteps,
+          },
+        };
+        const nextBank = patternBank.map((p) =>
+          p.code === targetCode
+            ? {
+              ...p,
+              timeSignature: newTimeSig,
+              subdivision: patSub,
+              stepsPerMeasure: newSteps,
+              notes: remapNotesToNewSubdivision(
+                p.notes || [],
+                p.stepsPerMeasure || oldSteps,
+                newSteps
+              ),
+            }
+            : p
+        );
+        const newConfigList = buildMeasureConfigList(
+          totalMeasures,
+          nextAssignments,
+          nextBank,
+          patSub,
+          newTimeSig
+        );
+        const rebuiltNotes = flattenMeasureNotes(byMeasure, newConfigList);
+        activeNotesRef.current = rebuiltNotes;
+        setPatternBank(nextBank);
+        setMeasureAssignments(nextAssignments);
+        setNotes(rebuiltNotes);
+        setTimeSignature(newTimeSig);
+        toast.info(
+          `Métrica de C.${currentMeasure + 1} (${targetCode}) cambiada a ${newTimeSig} (${newSteps} pasos).`
+        );
+        return;
+      }
+
+      // En Modo Patrones: actualizar únicamente el patrón objetivo y los compases asignados a él
+      const nextBank = patternBank.map((p) => {
+        if (p.code !== targetCode) return p;
+        const oldPatSteps =
+          p.stepsPerMeasure ||
+          calculateStepsForMeasure(p.timeSignature || timeSignature, p.subdivision || '1/16');
+        return {
+          ...p,
+          timeSignature: newTimeSig,
+          subdivision: patSub,
+          stepsPerMeasure: newSteps,
+          notes: remapNotesToNewSubdivision(p.notes || [], oldPatSteps, newSteps),
+        };
+      });
+
+      const nextAssignments = { ...measureAssignments };
+      measureConfigList.forEach((cfg) => {
+        if (cfg.patternCode === targetCode) {
+          byMeasure[cfg.measureIndex] = remapNotesToNewSubdivision(
+            byMeasure[cfg.measureIndex] || [],
+            cfg.stepsPerMeasure,
+            newSteps
+          );
+          nextAssignments[cfg.measureIndex] = {
+            patternCode: cfg.patternCode,
+            patternName: cfg.patternName,
+            patternColor: cfg.patternColor,
+            timeSignature: newTimeSig,
+            subdivision: patSub,
+            stepsPerMeasure: newSteps,
+          };
+        } else if (!nextAssignments[cfg.measureIndex]) {
+          nextAssignments[cfg.measureIndex] = {
+            patternCode: cfg.patternCode,
+            patternName: cfg.patternName,
+            patternColor: cfg.patternColor,
+            timeSignature: cfg.timeSignature,
+            subdivision: cfg.subdivision,
+            stepsPerMeasure: cfg.stepsPerMeasure,
+          };
+        }
+      });
+
+      const newConfigList = buildMeasureConfigList(
+        totalMeasures,
+        nextAssignments,
+        nextBank,
+        subdivision,
+        timeSignature
+      );
+      const rebuiltNotes = flattenMeasureNotes(byMeasure, newConfigList);
+
+      activeNotesRef.current = rebuiltNotes;
+      setPatternBank(nextBank);
+      setMeasureAssignments(nextAssignments);
+      setNotes(rebuiltNotes);
+
+      if (
+        activeMeasureConfig.patternCode === targetCode ||
+        editingPatternCode === targetCode
+      ) {
+        setTimeSignature(newTimeSig);
+      }
+      toast.info(
+        `Métrica de ${targetCode} ajustada a ${newTimeSig} (${newSteps} pasos).`
+      );
+    },
+    [
+      activeMeasureConfig,
+      editingPatternCode,
+      patternBank,
+      subdivision,
+      timeSignature,
+      extractRelativeNotesByMeasure,
+      notes,
+      measureConfigList,
+      measureEditMode,
+      currentMeasure,
+      measureAssignments,
+      totalMeasures,
+      buildMeasureConfigList,
+      flattenMeasureNotes,
+    ]
+  );
+
   // Crear nuevo patrón en el banco (P2, P3... hasta P12+) con su propia subdivisión independiente (por defecto 1/16 = 16 pasos)
   const handleCreatePattern = useCallback(() => {
     const usedNums = patternBank
@@ -1389,8 +1574,9 @@ export const ExerciseBuilder: React.FC = () => {
     const newCode = `P${nextNum}`;
     const newName = `Patrón ${nextNum}`;
     const newColor = PATTERN_PALETTE[(nextNum - 1) % PATTERN_PALETTE.length].key;
+    const newPatTimeSig = timeSignature || '4/4';
     const newPatSub = '1/16';
-    const newPatSteps = getStepsForSubdivision(newPatSub, timeSignature);
+    const newPatSteps = calculateStepsForMeasure(newPatTimeSig, newPatSub);
 
     const newMeasureIdx = totalMeasuresRef.current;
     totalMeasuresRef.current = newMeasureIdx + 1;
@@ -1400,6 +1586,7 @@ export const ExerciseBuilder: React.FC = () => {
       code: newCode,
       name: newName,
       color: newColor,
+      timeSignature: newPatTimeSig,
       subdivision: newPatSub,
       stepsPerMeasure: newPatSteps,
       sampleMeasureIndex: newMeasureIdx,
@@ -1414,6 +1601,7 @@ export const ExerciseBuilder: React.FC = () => {
         patternCode: newCode,
         patternName: newName,
         patternColor: newColor,
+        timeSignature: newPatTimeSig,
         subdivision: newPatSub,
         stepsPerMeasure: newPatSteps,
       },
@@ -1423,7 +1611,7 @@ export const ExerciseBuilder: React.FC = () => {
     setEditingPatternCode(newCode);
     setActiveBrushPatternCode(newCode);
     toast.success(
-      `✨ Patrón ${newCode} (${newPatSub} • ${newPatSteps} pasos) creado en el banco y listo para componer en C.${newMeasureIdx + 1}.`
+      `✨ Patrón ${newCode} (${newPatTimeSig} • ${newPatSub} • ${newPatSteps} pasos) creado en el banco y listo para componer en C.${newMeasureIdx + 1}.`
     );
   }, [patternBank, timeSignature]);
 
@@ -1453,9 +1641,13 @@ export const ExerciseBuilder: React.FC = () => {
       setEditingPatternCode(code);
       setActiveBrushPatternCode(code);
 
+      const patTimeSig = pat.timeSignature || timeSignature || '4/4';
       const patSub = normalizeSubdivisionKey(pat.subdivision || '1/16');
       const patSteps =
-        pat.stepsPerMeasure || getStepsForSubdivision(patSub, timeSignature);
+        pat.stepsPerMeasure || calculateStepsForMeasure(patTimeSig, patSub);
+
+      setTimeSignature(patTimeSig);
+      setSubdivision(patSub as SubdivisionType);
 
       // Buscar el primer compás que tenga asignado este patrón
       let targetIdx = -1;
@@ -1476,6 +1668,7 @@ export const ExerciseBuilder: React.FC = () => {
           patternCode: pat.code,
           patternName: pat.name,
           patternColor: pat.color,
+          timeSignature: patTimeSig,
           subdivision: patSub,
           stepsPerMeasure: patSteps,
         };
@@ -1486,6 +1679,7 @@ export const ExerciseBuilder: React.FC = () => {
           patternCode: pat.code,
           patternName: pat.name,
           patternColor: pat.color,
+          timeSignature: patTimeSig,
           subdivision: patSub,
           stepsPerMeasure: patSteps,
         };
@@ -1543,6 +1737,7 @@ export const ExerciseBuilder: React.FC = () => {
       const pat = patternBank.find((p) => p.code === code);
       if (!pat) return;
 
+      const patTimeSig = pat.timeSignature || timeSignature || '4/4';
       const patSub = normalizeSubdivisionKey(
         activeMeasureConfig.patternCode === code
           ? activeMeasureConfig.subdivision
@@ -1551,7 +1746,7 @@ export const ExerciseBuilder: React.FC = () => {
       const patSteps =
         activeMeasureConfig.patternCode === code
           ? activeMeasureConfig.stepsPerMeasure
-          : pat.stepsPerMeasure || getStepsForSubdivision(patSub, timeSignature);
+          : pat.stepsPerMeasure || calculateStepsForMeasure(patTimeSig, patSub);
 
       const byMeasure = extractRelativeNotesByMeasure(notes, measureConfigList);
 
@@ -1578,6 +1773,7 @@ export const ExerciseBuilder: React.FC = () => {
             patternCode: pat.code,
             patternName: pat.name,
             patternColor: pat.color,
+            timeSignature: patTimeSig,
             subdivision: patSub,
             stepsPerMeasure: patSteps,
           };
@@ -1607,8 +1803,7 @@ export const ExerciseBuilder: React.FC = () => {
       setNotes(rebuiltNotes);
 
       toast.success(
-        `Patrón ${pat.code} ("${pat.name}" • ${patSub}) sincronizado en ${syncedMeasuresCount} ${
-          syncedMeasuresCount === 1 ? 'compás' : 'compases'
+        `Patrón ${pat.code} ("${pat.name}" • ${patTimeSig} • ${patSub}) sincronizado en ${syncedMeasuresCount} ${syncedMeasuresCount === 1 ? 'compás' : 'compases'
         }.`
       );
     },
@@ -1634,9 +1829,10 @@ export const ExerciseBuilder: React.FC = () => {
       const pat = patternBank.find((p) => p.code === code) || patternBank[0];
       if (!pat) return;
 
+      const patTimeSig = pat.timeSignature || timeSignature || '4/4';
       const patSub = normalizeSubdivisionKey(pat.subdivision || '1/16');
       const patSteps =
-        pat.stepsPerMeasure || getStepsForSubdivision(patSub, timeSignature);
+        pat.stepsPerMeasure || calculateStepsForMeasure(patTimeSig, patSub);
 
       const newIdx = totalMeasuresRef.current;
       const mStart = totalSteps;
@@ -1650,6 +1846,7 @@ export const ExerciseBuilder: React.FC = () => {
           patternCode: pat.code,
           patternName: pat.name,
           patternColor: pat.color,
+          timeSignature: patTimeSig,
           subdivision: patSub,
           stepsPerMeasure: patSteps,
         },
@@ -1674,7 +1871,7 @@ export const ExerciseBuilder: React.FC = () => {
       setTotalMeasures(newIdx + 1);
       setCurrentMeasure(newIdx);
       toast.info(
-        `Compás C.${newIdx + 1} añadido al final con [${pat.code}] ${pat.name} (${patSub}).`
+        `Compás C.${newIdx + 1} añadido al final con [${pat.code}] ${pat.name} (${patTimeSig} • ${patSub}).`
       );
     },
     [patternBank, timeSignature, totalSteps]
@@ -1687,9 +1884,10 @@ export const ExerciseBuilder: React.FC = () => {
       const pat = patternBank.find((p) => p.code === targetCode) || patternBank[0];
       if (!pat) return;
 
+      const patTimeSig = pat.timeSignature || timeSignature || '4/4';
       const patSub = normalizeSubdivisionKey(pat.subdivision || '1/16');
       const patSteps =
-        pat.stepsPerMeasure || getStepsForSubdivision(patSub, timeSignature);
+        pat.stepsPerMeasure || calculateStepsForMeasure(patTimeSig, patSub);
 
       const byMeasure = extractRelativeNotesByMeasure(notes, measureConfigList);
       byMeasure[mIdx] = (pat.notes || []).map((n: any) => {
@@ -1709,6 +1907,7 @@ export const ExerciseBuilder: React.FC = () => {
           patternCode: pat.code,
           patternName: pat.name,
           patternColor: pat.color,
+          timeSignature: patTimeSig,
           subdivision: patSub,
           stepsPerMeasure: patSteps,
         },
@@ -1730,6 +1929,7 @@ export const ExerciseBuilder: React.FC = () => {
       currentMeasureRef.current = mIdx;
       setCurrentMeasure(mIdx);
       setEditingPatternCode(pat.code);
+      setTimeSignature(patTimeSig);
     },
     [
       activeBrushPatternCode,
@@ -2057,8 +2257,8 @@ export const ExerciseBuilder: React.FC = () => {
         stepsPerMeasure >= 16
           ? [1, 3, 6, 7, 11, 14]
           : stepsPerMeasure >= 8
-          ? [1, 3, 5, 7]
-          : [1, 3];
+            ? [1, 3, 5, 7]
+            : [1, 3];
       const ghostSnareSteps =
         stepsPerMeasure >= 16 ? [1, 7, 9, 15] : [1, 5];
 
@@ -2265,13 +2465,13 @@ export const ExerciseBuilder: React.FC = () => {
             const next = prev.map((n, idx) =>
               idx === existingIdx
                 ? {
-                    ...n,
-                    ghost: nextGhost,
-                    accent: nextAccent,
-                    syncopated: nextSync,
-                    sticking: effectiveSticking,
-                    velocity: nextGhost ? 0.32 : nextAccent ? 1.0 : 0.8,
-                  }
+                  ...n,
+                  ghost: nextGhost,
+                  accent: nextAccent,
+                  syncopated: nextSync,
+                  sticking: effectiveSticking,
+                  velocity: nextGhost ? 0.32 : nextAccent ? 1.0 : 0.8,
+                }
                 : n
             );
             activeNotesRef.current = next;
@@ -2361,21 +2561,21 @@ export const ExerciseBuilder: React.FC = () => {
           noteTech === 'slide_up'
             ? 'up'
             : noteTech === 'slide_down'
-            ? 'down'
-            : existingNote.slideDirection;
+              ? 'down'
+              : existingNote.slideDirection;
 
         // Actualizar técnica/dedo si el usuario seleccionó otra articulación activa
         setNotes((prev) => {
           const next = prev.map((n, idx) =>
             idx === existingIdx
               ? {
-                  ...n,
-                  technique: noteTech,
-                  slideDirection: targetSlideDirection,
-                  bendType: targetBendType,
-                  bendAmount: targetBendAmount,
-                  finger: selectedFinger,
-                }
+                ...n,
+                technique: noteTech,
+                slideDirection: targetSlideDirection,
+                bendType: targetBendType,
+                bendAmount: targetBendAmount,
+                finger: selectedFinger,
+              }
               : n
           );
           activeNotesRef.current = next;
@@ -2528,18 +2728,18 @@ export const ExerciseBuilder: React.FC = () => {
         fret < 0
           ? filtered
           : [
-              ...filtered,
-              {
-                step: globalStep,
-                string: stringNum,
-                fret,
-                technique: noteTech,
-                slideDirection: targetSlideDirection,
-                bendType: noteTech === 'bend' ? (existing?.bendType || selectedBendType) : undefined,
-                bendAmount: noteTech === 'bend' ? (existing?.bendAmount || selectedBendAmount) : undefined,
-                finger: existing?.finger || selectedFinger,
-              },
-            ];
+            ...filtered,
+            {
+              step: globalStep,
+              string: stringNum,
+              fret,
+              technique: noteTech,
+              slideDirection: targetSlideDirection,
+              bendType: noteTech === 'bend' ? (existing?.bendType || selectedBendType) : undefined,
+              bendAmount: noteTech === 'bend' ? (existing?.bendAmount || selectedBendAmount) : undefined,
+              finger: existing?.finger || selectedFinger,
+            },
+          ];
       activeNotesRef.current = next;
       return next;
     });
@@ -2622,20 +2822,20 @@ export const ExerciseBuilder: React.FC = () => {
           finalTech === 'slide_up'
             ? 'up'
             : finalTech === 'slide_down'
-            ? 'down'
-            : activeNote.slideDirection;
+              ? 'down'
+              : activeNote.slideDirection;
 
         const previewFret = activeNote.fret ?? selectedFret;
         setNotes((prev) => {
           const next = prev.map((n) =>
             n.step === activeCell.step && n.string === activeCell.string
               ? {
-                  ...n,
-                  technique: finalTech,
-                  slideDirection: targetSlideDirection,
-                  bendType: targetBendType,
-                  bendAmount: targetBendAmount,
-                }
+                ...n,
+                technique: finalTech,
+                slideDirection: targetSlideDirection,
+                bendType: targetBendType,
+                bendAmount: targetBendAmount,
+              }
               : n
           );
           activeNotesRef.current = next;
@@ -2789,7 +2989,7 @@ export const ExerciseBuilder: React.FC = () => {
   const totalStepsRef = useRef<number>(totalSteps);
   const totalMeasuresRef = useRef<number>(totalMeasures);
   const currentMeasureRef = useRef<number>(currentMeasure);
-  const timeSignatureRef = useRef<'4/4' | '6/8' | '7/8'>(timeSignature);
+  const timeSignatureRef = useRef<string>(timeSignature);
   const subdivisionRef = useRef<SubdivisionType>(subdivision);
 
   useEffect(() => {
@@ -2832,16 +3032,16 @@ export const ExerciseBuilder: React.FC = () => {
           existingIdx >= 0
             ? withoutRest.filter((_, idx) => idx !== existingIdx)
             : [
-                ...withoutRest,
-                {
-                  step: globalStep,
-                  midiNumber,
-                  velocity,
-                  duration,
-                  durationSteps: durationStepsMap[duration] || 1,
-                  isRest: false,
-                },
-              ];
+              ...withoutRest,
+              {
+                step: globalStep,
+                midiNumber,
+                velocity,
+                duration,
+                durationSteps: durationStepsMap[duration] || 1,
+                isRest: false,
+              },
+            ];
         activeNotesRef.current = next;
         return next;
       });
@@ -2904,13 +3104,13 @@ export const ExerciseBuilder: React.FC = () => {
           existingRestIdx >= 0
             ? prev.filter((_, idx) => idx !== existingRestIdx)
             : [
-                ...prev.filter((n) => n.step !== globalStep),
-                {
-                  step: globalStep,
-                  isRest: true,
-                  duration,
-                },
-              ];
+              ...prev.filter((n) => n.step !== globalStep),
+              {
+                step: globalStep,
+                isRest: true,
+                duration,
+              },
+            ];
         activeNotesRef.current = next;
         return next;
       });
@@ -3042,15 +3242,17 @@ export const ExerciseBuilder: React.FC = () => {
       const cfg = getMeasureCfgForGlobalStep(stepNumber);
       const mSteps = Math.max(1, cfg.stepsPerMeasure);
       const stepInMeasure = stepNumber - cfg.startStep;
-      const liveTimeSig = timeSignatureRef.current;
-      if (liveTimeSig === '6/8') {
-        const stepsPerDottedQuarter = Math.max(1, Math.round(mSteps / 2));
-        return stepInMeasure % stepsPerDottedQuarter === 0;
+      const mTimeSig = cfg.timeSignature || timeSignatureRef.current || '4/4';
+      const spec = getTimeSignatureSpec(mTimeSig);
+
+      if (spec.denominator === 8) {
+        const stepsPerEighth = Math.max(1, Math.round(mSteps / spec.numerator));
+        const eighthIndex = Math.floor(stepInMeasure / stepsPerEighth);
+        const isEighthStart = stepInMeasure % stepsPerEighth === 0;
+        return isEighthStart && (spec.accentBeats || [0]).includes(eighthIndex);
       }
-      if (liveTimeSig === '7/8') {
-        return stepInMeasure === 0;
-      }
-      const stepsPerBeat = Math.max(1, Math.round(mSteps / 4));
+
+      const stepsPerBeat = Math.max(1, Math.round(mSteps / spec.numerator));
       return stepInMeasure % stepsPerBeat === 0;
     },
     [getMeasureCfgForGlobalStep]
@@ -3064,19 +3266,18 @@ export const ExerciseBuilder: React.FC = () => {
     [getMeasureCfgForGlobalStep]
   );
 
-  // Duración del paso en segundos según el stepsPerMeasure propio del compás actual (manteniendo constante la duración del compás = (60 / bpm) * beats)
+  // Duración del paso en segundos según el stepsPerMeasure y métrica propios del compás actual
   const getStepDuration = useCallback(
     (forGlobalStep?: number) => {
       const beatDuration = 60 / bpmRef.current;
-      const liveTimeSig = timeSignatureRef.current;
       const targetStep =
         forGlobalStep !== undefined ? forGlobalStep : playStepRef.current;
       const cfg = getMeasureCfgForGlobalStep(targetStep);
       const mSteps = Math.max(1, cfg.stepsPerMeasure);
+      const mTimeSig = cfg.timeSignature || timeSignatureRef.current || '4/4';
+      const spec = getTimeSignatureSpec(mTimeSig);
 
-      const beatsInMeasure =
-        liveTimeSig === '6/8' ? 3 : liveTimeSig === '7/8' ? 3.5 : 4;
-      const measureDurationSec = beatDuration * beatsInMeasure;
+      const measureDurationSec = beatDuration * spec.quarterNoteBeats;
       return measureDurationSec / mSteps;
     },
     [getMeasureCfgForGlobalStep]
@@ -3093,8 +3294,8 @@ export const ExerciseBuilder: React.FC = () => {
         liveInstrument === 'drums'
           ? getAudioEngine().getAudioContext()
           : liveInstrument === 'piano'
-          ? getPianoAudioEngine().getAudioContext()
-          : getStringsAudioEngine().getAudioContext();
+            ? getPianoAudioEngine().getAudioContext()
+            : getStringsAudioEngine().getAudioContext();
 
       if (audioCtx) {
         const newStepDuration = getStepDuration(playStepRef.current);
@@ -3316,8 +3517,8 @@ export const ExerciseBuilder: React.FC = () => {
       liveInstrument === 'drums'
         ? getAudioEngine().getAudioContext()
         : liveInstrument === 'piano'
-        ? getPianoAudioEngine().getAudioContext()
-        : getStringsAudioEngine().getAudioContext();
+          ? getPianoAudioEngine().getAudioContext()
+          : getStringsAudioEngine().getAudioContext();
 
     if (!audioCtx) return;
 
@@ -3360,8 +3561,8 @@ export const ExerciseBuilder: React.FC = () => {
       liveInstrument === 'drums'
         ? getAudioEngine().getAudioContext()
         : liveInstrument === 'piano'
-        ? getPianoAudioEngine().getAudioContext()
-        : getStringsAudioEngine().getAudioContext();
+          ? getPianoAudioEngine().getAudioContext()
+          : getStringsAudioEngine().getAudioContext();
 
     const liveTotalSteps = Math.max(1, totalStepsRef.current);
     const liveTotalMeasures = Math.max(1, totalMeasuresRef.current);
@@ -3428,8 +3629,8 @@ export const ExerciseBuilder: React.FC = () => {
         instrument === 'drums'
           ? getAudioEngine()
           : instrument === 'piano'
-          ? getPianoAudioEngine()
-          : getStringsAudioEngine();
+            ? getPianoAudioEngine()
+            : getStringsAudioEngine();
       engine.init();
       engine.resume();
       const ctx = engine.getAudioContext();
@@ -3470,8 +3671,8 @@ export const ExerciseBuilder: React.FC = () => {
       instrument === 'drums'
         ? getAudioEngine()
         : instrument === 'piano'
-        ? getPianoAudioEngine()
-        : getStringsAudioEngine();
+          ? getPianoAudioEngine()
+          : getStringsAudioEngine();
     engine.init();
     engine.resume();
     const ctx = engine.getAudioContext();
@@ -3625,9 +3826,11 @@ export const ExerciseBuilder: React.FC = () => {
 
     let currentBank = [...patternBank];
     const patIdx = currentBank.findIndex((p) => p.code === activeCode);
+    const activeTimeSig = activeMeasureConfig.timeSignature || timeSignature || '4/4';
     if (patIdx !== -1) {
       currentBank[patIdx] = {
         ...currentBank[patIdx],
+        timeSignature: activeTimeSig,
         subdivision: mSub,
         stepsPerMeasure: mSteps,
         notes: JSON.parse(JSON.stringify(currentMeasureRelNotes)),
@@ -3637,6 +3840,7 @@ export const ExerciseBuilder: React.FC = () => {
         code: activeCode,
         name: activeMeasureConfig.patternName || `Patrón ${activeCode.replace(/\D/g, '') || '1'}`,
         color: activeMeasureConfig.patternColor || 'cyan',
+        timeSignature: activeTimeSig,
         subdivision: mSub,
         stepsPerMeasure: mSteps,
         sampleMeasureIndex: currentMeasure,
@@ -3645,7 +3849,7 @@ export const ExerciseBuilder: React.FC = () => {
       });
     }
 
-    // 2. Construir copia profunda de measures con patternCode, patternName, patternColor, subdivision, stepsPerMeasure y notes
+    // 2. Construir copia profunda de measures con patternCode, patternName, patternColor, timeSignature, subdivision, stepsPerMeasure y notes
     const savedMeasures = measureConfigList.map((cfg) => {
       const mNotes = formattedData
         .filter((n) => n.step >= cfg.startStep && n.step < cfg.endStep)
@@ -3656,6 +3860,7 @@ export const ExerciseBuilder: React.FC = () => {
           patternCode: cfg.patternCode,
           patternName: cfg.patternName,
           patternColor: cfg.patternColor,
+          timeSignature: cfg.timeSignature || timeSignature || '4/4',
           subdivision: cfg.subdivision,
           stepsPerMeasure: cfg.stepsPerMeasure,
         }));
@@ -3665,6 +3870,7 @@ export const ExerciseBuilder: React.FC = () => {
         patternCode: cfg.patternCode,
         patternName: cfg.patternName,
         patternColor: cfg.patternColor,
+        timeSignature: cfg.timeSignature || timeSignature || '4/4',
         subdivision: cfg.subdivision,
         stepsPerMeasure: cfg.stepsPerMeasure,
         notes: mNotes,
@@ -3730,7 +3936,7 @@ export const ExerciseBuilder: React.FC = () => {
           data: formattedData,
           measures: savedMeasures,
           patternBank: currentBank,
-        }).catch(() => {});
+        }).catch(() => { });
 
         try {
           localStorage.removeItem(DRAFT_STORAGE_KEY);
@@ -3792,7 +3998,7 @@ export const ExerciseBuilder: React.FC = () => {
         saveLocalExercise(savedPayload);
         try {
           sessionStorage.setItem('soundlab_editing_exercise', JSON.stringify(savedPayload));
-        } catch {}
+        } catch { }
 
         if (editingSlug) {
           toast.success(`Ejercicio "${title}" actualizado con éxito.`);
@@ -3806,8 +4012,8 @@ export const ExerciseBuilder: React.FC = () => {
         (instrument === 'piano'
           ? `/piano/practice/${res.slug}`
           : instrument === 'drums'
-          ? `/practice/${res.slug}`
-          : `/strings/practice/${res.slug}`);
+            ? `/practice/${res.slug}`
+            : `/strings/practice/${res.slug}`);
 
       setSaveResult({ ...res, url: practiceUrl });
     } catch (e: any) {
@@ -3865,11 +4071,10 @@ export const ExerciseBuilder: React.FC = () => {
           <div className="flex items-center p-1 rounded-xl bg-slate-200/80 dark:bg-zinc-900/80 border border-slate-300/80 dark:border-white/5">
             <button
               onClick={() => handleSelectInstrument('drums')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                instrument === 'drums'
-                  ? 'bg-[#0891b2] text-white shadow-sm dark:bg-cyan-500 dark:text-zinc-950 dark:shadow-[0_0_15px_rgba(34,211,238,0.35)]'
-                  : 'text-slate-700 hover:text-slate-950 dark:text-zinc-400 dark:hover:text-white'
-              }`}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${instrument === 'drums'
+                ? 'bg-[#0891b2] text-white shadow-sm dark:bg-cyan-500 dark:text-zinc-950 dark:shadow-[0_0_15px_rgba(34,211,238,0.35)]'
+                : 'text-slate-700 hover:text-slate-950 dark:text-zinc-400 dark:hover:text-white'
+                }`}
             >
               <Drum className="w-3.5 h-3.5" />
               <span>Batería</span>
@@ -3877,11 +4082,10 @@ export const ExerciseBuilder: React.FC = () => {
 
             <button
               onClick={() => handleSelectInstrument('bass')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                instrument === 'bass'
-                  ? 'bg-[#0891b2] text-white shadow-sm dark:bg-cyan-500 dark:text-zinc-950 dark:shadow-[0_0_15px_rgba(34,211,238,0.35)]'
-                  : 'text-slate-700 hover:text-slate-950 dark:text-zinc-400 dark:hover:text-white'
-              }`}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${instrument === 'bass'
+                ? 'bg-[#0891b2] text-white shadow-sm dark:bg-cyan-500 dark:text-zinc-950 dark:shadow-[0_0_15px_rgba(34,211,238,0.35)]'
+                : 'text-slate-700 hover:text-slate-950 dark:text-zinc-400 dark:hover:text-white'
+                }`}
             >
               <Music className="w-3.5 h-3.5" />
               <span>Bajo (4C)</span>
@@ -3889,11 +4093,10 @@ export const ExerciseBuilder: React.FC = () => {
 
             <button
               onClick={() => handleSelectInstrument('guitar')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                instrument === 'guitar'
-                  ? 'bg-[#0891b2] text-white shadow-sm dark:bg-cyan-500 dark:text-zinc-950 dark:shadow-[0_0_15px_rgba(34,211,238,0.35)]'
-                  : 'text-slate-700 hover:text-slate-950 dark:text-zinc-400 dark:hover:text-white'
-              }`}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${instrument === 'guitar'
+                ? 'bg-[#0891b2] text-white shadow-sm dark:bg-cyan-500 dark:text-zinc-950 dark:shadow-[0_0_15px_rgba(34,211,238,0.35)]'
+                : 'text-slate-700 hover:text-slate-950 dark:text-zinc-400 dark:hover:text-white'
+                }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>Guitarra (6C)</span>
@@ -3901,11 +4104,10 @@ export const ExerciseBuilder: React.FC = () => {
 
             <button
               onClick={() => handleSelectInstrument('piano')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                instrument === 'piano'
-                  ? 'bg-[#0891b2] text-white shadow-sm dark:bg-cyan-500 dark:text-zinc-950 dark:shadow-[0_0_15px_rgba(34,211,238,0.35)]'
-                  : 'text-slate-700 hover:text-slate-950 dark:text-zinc-400 dark:hover:text-white'
-              }`}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${instrument === 'piano'
+                ? 'bg-[#0891b2] text-white shadow-sm dark:bg-cyan-500 dark:text-zinc-950 dark:shadow-[0_0_15px_rgba(34,211,238,0.35)]'
+                : 'text-slate-700 hover:text-slate-950 dark:text-zinc-400 dark:hover:text-white'
+                }`}
             >
               <KeyboardMusic className="w-3.5 h-3.5" />
               <span>Piano</span>
@@ -3958,11 +4160,10 @@ export const ExerciseBuilder: React.FC = () => {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className={`p-4 rounded-xl border flex items-center justify-between gap-4 ${
-              saveResult.success
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-            }`}
+            className={`p-4 rounded-xl border flex items-center justify-between gap-4 ${saveResult.success
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+              : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+              }`}
           >
             <div className="flex items-center gap-3 text-xs">
               {saveResult.success ? (
@@ -3995,15 +4196,35 @@ export const ExerciseBuilder: React.FC = () => {
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 p-4 rounded-2xl glass-panel border border-slate-200 dark:border-white/5 text-xs shadow-sm">
         {/* Métrica / Time Signature */}
         <div>
-          <label className="text-[10px] text-slate-500 dark:text-zinc-400 uppercase font-semibold block mb-1">Métrica</label>
+          <label className="text-[10px] text-slate-500 dark:text-zinc-400 uppercase font-semibold block mb-1">
+            Métrica ({activeMeasureConfig.patternCode})
+          </label>
           <select
-            value={timeSignature}
-            onChange={(e) => setTimeSignature(e.target.value as any)}
+            value={activeMeasureConfig.timeSignature || timeSignature}
+            onChange={(e) => handleChangePatternTimeSignature(e.target.value)}
             className="w-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-white/10 rounded-xl px-2.5 py-1.5 text-slate-900 dark:text-white font-mono focus:border-cyan-500 focus:outline-none"
           >
-            <option value="4/4">4/4 (Cuaternario)</option>
-            <option value="6/8">6/8 (Compuesto)</option>
-            <option value="7/8">7/8 (Amorfo/Progresivo)</option>
+            <optgroup label="── MÉTRICAS SIMPLES ──" className="bg-slate-950 text-slate-400 font-bold">
+              {TIME_SIGNATURE_OPTIONS.filter((o) => o.denominator === 4).map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="── MÉTRICAS COMPUESTAS (/8) ──" className="bg-slate-950 text-cyan-400 font-bold">
+              {TIME_SIGNATURE_OPTIONS.filter((o) => [6, 9, 12].includes(o.numerator) && o.denominator === 8).map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="── MÉTRICAS IRREGULARES / AMALGAMADAS ──" className="bg-slate-950 text-amber-400 font-bold">
+              {TIME_SIGNATURE_OPTIONS.filter((o) => ![6, 9, 12].includes(o.numerator) && o.denominator === 8).map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </optgroup>
           </select>
         </div>
 
@@ -4018,16 +4239,16 @@ export const ExerciseBuilder: React.FC = () => {
             className="w-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-white/10 rounded-xl px-2.5 py-1.5 text-slate-900 dark:text-white font-mono focus:border-cyan-500 focus:outline-none"
           >
             <optgroup label="── SUBDIVISIONES REGULARES ──" className="bg-slate-950 text-slate-400 font-bold">
-              <option value="1/4">1/4 (Negras - 4 pasos)</option>
-              <option value="1/8">1/8 (Corcheas - 8 pasos)</option>
-              <option value="1/16">1/16 (Semicorcheas - 16 pasos)</option>
-              <option value="1/32">1/32 (Fusas - 32 pasos)</option>
+              <option value="1/4">1/4 (Negras - {calculateStepsForMeasure(activeMeasureConfig.timeSignature || timeSignature, '1/4')} pasos)</option>
+              <option value="1/8">1/8 (Corcheas - {calculateStepsForMeasure(activeMeasureConfig.timeSignature || timeSignature, '1/8')} pasos)</option>
+              <option value="1/16">1/16 (Semicorcheas - {calculateStepsForMeasure(activeMeasureConfig.timeSignature || timeSignature, '1/16')} pasos)</option>
+              <option value="1/32">1/32 (Fusas - {calculateStepsForMeasure(activeMeasureConfig.timeSignature || timeSignature, '1/32')} pasos)</option>
             </optgroup>
             <optgroup label="── SUBDIVISIONES IRREGULARES (TRESILLOS / POLIRRITMIA) ──" className="bg-slate-950 text-amber-400 font-bold">
-              <option value="1/8T">1/8T (Tresillos de Corchea - 12 pasos)</option>
-              <option value="1/16T">1/16T (Tresillos de Semicorchea - 24 pasos)</option>
-              <option value="quintillo">Quintillo (5:4 - 20 pasos)</option>
-              <option value="septillo">Septillo (7:4 - 28 pasos)</option>
+              <option value="1/8T">1/8T (Tresillos de Corchea - {calculateStepsForMeasure(activeMeasureConfig.timeSignature || timeSignature, '1/8T')} pasos)</option>
+              <option value="1/16T">1/16T (Tresillos de Semicorchea - {calculateStepsForMeasure(activeMeasureConfig.timeSignature || timeSignature, '1/16T')} pasos)</option>
+              <option value="quintillo">Quintillo (5:4 - {calculateStepsForMeasure(activeMeasureConfig.timeSignature || timeSignature, 'quintillo')} pasos)</option>
+              <option value="septillo">Septillo (7:4 - {calculateStepsForMeasure(activeMeasureConfig.timeSignature || timeSignature, 'septillo')} pasos)</option>
             </optgroup>
           </select>
         </div>
@@ -4073,8 +4294,8 @@ export const ExerciseBuilder: React.FC = () => {
             {(instrument === 'drums'
               ? DRUM_CATEGORIES
               : instrument === 'piano'
-              ? PIANO_CATEGORIES
-              : STRINGS_CATEGORIES
+                ? PIANO_CATEGORIES
+                : STRINGS_CATEGORIES
             ).map((cat) => (
               <option key={cat} value={cat}>
                 {cat}
@@ -4087,11 +4308,10 @@ export const ExerciseBuilder: React.FC = () => {
         <div className="flex flex-col justify-end">
           <button
             onClick={handleTogglePlay}
-            className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md ${
-              isPlaying
-                ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
-                : 'bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-800 dark:text-white border border-slate-300 dark:border-white/10'
-            }`}
+            className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md ${isPlaying
+              ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
+              : 'bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-800 dark:text-white border border-slate-300 dark:border-white/10'
+              }`}
           >
             {isPlaying ? (
               <>
@@ -4119,11 +4339,10 @@ export const ExerciseBuilder: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setDestination('general')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  destination === 'general'
-                    ? 'bg-slate-900 dark:bg-zinc-800 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${destination === 'general'
+                  ? 'bg-slate-900 dark:bg-zinc-800 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
               >
                 Biblioteca General
               </button>
@@ -4131,11 +4350,10 @@ export const ExerciseBuilder: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setDestination('mastery')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  destination === 'mastery'
-                    ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
-                    : 'text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-300'
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${destination === 'mastery'
+                  ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
+                  : 'text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-300'
+                  }`}
               >
                 <Target className="w-3.5 h-3.5" />
                 <span>Asignar a Ruta Técnica</span>
@@ -4172,11 +4390,10 @@ export const ExerciseBuilder: React.FC = () => {
             <button
               type="button"
               onClick={() => setMeasureEditMode('patterns')}
-              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                measureEditMode === 'patterns'
-                  ? 'bg-cyan-500 text-slate-950 font-black shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${measureEditMode === 'patterns'
+                ? 'bg-cyan-500 text-slate-950 font-black shadow-md'
+                : 'text-slate-400 hover:text-white'
+                }`}
             >
               <span>🧩 Modo Patrones + Arreglador (Multi-Compás)</span>
             </button>
@@ -4184,11 +4401,10 @@ export const ExerciseBuilder: React.FC = () => {
             <button
               type="button"
               onClick={() => setMeasureEditMode('direct')}
-              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                measureEditMode === 'direct'
-                  ? 'bg-cyan-500 text-slate-950 font-black shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${measureEditMode === 'direct'
+                ? 'bg-cyan-500 text-slate-950 font-black shadow-md'
+                : 'text-slate-400 hover:text-white'
+                }`}
             >
               <span>📝 Edición Directa por Compás</span>
             </button>
@@ -4249,11 +4465,10 @@ export const ExerciseBuilder: React.FC = () => {
                   return (
                     <div
                       key={`bank-card-${pat.code}`}
-                      className={`p-3 rounded-xl border transition-all flex flex-col gap-2.5 ${
-                        isEditingThis
-                          ? 'bg-slate-900 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.2)]'
-                          : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
-                      }`}
+                      className={`p-3 rounded-xl border transition-all flex flex-col gap-2.5 ${isEditingThis
+                        ? 'bg-slate-900 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.2)]'
+                        : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                        }`}
                     >
                       {/* Cabecera de la tarjeta: Badge P1 + Input Nombre + Uso + Eliminar */}
                       <div className="flex items-center justify-between gap-2">
@@ -4293,6 +4508,44 @@ export const ExerciseBuilder: React.FC = () => {
                         </div>
                       </div>
 
+                      {/* Mini-selector de Métrica Propia del Patrón */}
+                      <div className="flex items-center justify-between gap-2 bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800/80">
+                        <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">
+                          Métrica {pat.code}:
+                        </span>
+                        <select
+                          value={pat.timeSignature || timeSignature}
+                          onChange={(e) => handleChangePatternTimeSignature(e.target.value, pat.code)}
+                          className="bg-slate-900 border border-slate-700 hover:border-amber-500/50 focus:border-amber-400 rounded-md px-2 py-0.5 text-[11px] font-mono font-bold text-amber-300 focus:outline-none cursor-pointer"
+                          title={`Cambiar métrica independiente de ${pat.code}`}
+                        >
+                          <optgroup label="── SIMPLES (/4) ──" className="bg-slate-950 text-slate-400 font-bold">
+                            {TIME_SIGNATURE_OPTIONS.filter((o) => o.denominator === 4).map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.value}
+                              </option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="── COMPUESTAS (/8) ──" className="bg-slate-950 text-cyan-400 font-bold">
+                            {TIME_SIGNATURE_OPTIONS.filter((o) => [6, 9, 12].includes(o.numerator) && o.denominator === 8).map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.value}
+                              </option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="── IRREGULARES (/8) ──" className="bg-slate-950 text-amber-400 font-bold">
+                            {TIME_SIGNATURE_OPTIONS.filter((o) => ![6, 9, 12].includes(o.numerator) && o.denominator === 8).map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.value}
+                              </option>
+                            ))}
+                          </optgroup>
+                        </select>
+                        <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded">
+                          {pat.timeSignature || timeSignature}
+                        </span>
+                      </div>
+
                       {/* Mini-selector de Subdivisión Propia del Patrón */}
                       <div className="flex items-center justify-between gap-2 bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800/80">
                         <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">
@@ -4304,16 +4557,16 @@ export const ExerciseBuilder: React.FC = () => {
                           className="bg-slate-900 border border-slate-700 hover:border-cyan-500/50 focus:border-cyan-400 rounded-md px-2 py-0.5 text-[11px] font-mono font-bold text-cyan-300 focus:outline-none cursor-pointer"
                           title={`Cambiar subdivisión independiente de ${pat.code}`}
                         >
-                          <option value="1/4">1/4 ({getStepsForSubdivision('1/4', timeSignature)} pasos)</option>
-                          <option value="1/8">1/8 ({getStepsForSubdivision('1/8', timeSignature)} pasos)</option>
-                          <option value="1/8T">1/8T ({getStepsForSubdivision('1/8T', timeSignature)} pasos - Tresillos)</option>
-                          <option value="1/16">1/16 ({getStepsForSubdivision('1/16', timeSignature)} pasos)</option>
-                          <option value="1/16T">1/16T ({getStepsForSubdivision('1/16T', timeSignature)} pasos - Seisillos)</option>
-                          <option value="quintillo">5:4 ({getStepsForSubdivision('quintillo', timeSignature)} pasos)</option>
-                          <option value="septillo">7:4 ({getStepsForSubdivision('septillo', timeSignature)} pasos)</option>
-                          <option value="1/32">1/32 ({getStepsForSubdivision('1/32', timeSignature)} pasos)</option>
+                          <option value="1/4">1/4 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/4')} pasos)</option>
+                          <option value="1/8">1/8 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/8')} pasos)</option>
+                          <option value="1/8T">1/8T ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/8T')} pasos - Tresillos)</option>
+                          <option value="1/16">1/16 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/16')} pasos)</option>
+                          <option value="1/16T">1/16T ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/16T')} pasos - Seisillos)</option>
+                          <option value="quintillo">5:4 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, 'quintillo')} pasos)</option>
+                          <option value="septillo">7:4 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, 'septillo')} pasos)</option>
+                          <option value="1/32">1/32 ({calculateStepsForMeasure(pat.timeSignature || timeSignature, '1/32')} pasos)</option>
                         </select>
-                        <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded">
+                        <span className="text-[10px] font-mono font-bold text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 px-1.5 py-0.5 rounded">
                           {patSteps}p
                         </span>
                       </div>
@@ -4323,11 +4576,10 @@ export const ExerciseBuilder: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => handleEditPatternNotes(pat.code)}
-                          className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center justify-center gap-1 border transition-all cursor-pointer ${
-                            isEditingThis
-                              ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
-                              : 'bg-slate-800/80 hover:bg-slate-800 border-slate-700 text-slate-200'
-                          }`}
+                          className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center justify-center gap-1 border transition-all cursor-pointer ${isEditingThis
+                            ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+                            : 'bg-slate-800/80 hover:bg-slate-800 border-slate-700 text-slate-200'
+                            }`}
                         >
                           <span>✏️ Editar Notas</span>
                         </button>
@@ -4335,11 +4587,10 @@ export const ExerciseBuilder: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => handlePreviewPattern(pat.code)}
-                          className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center justify-center gap-1 border transition-all cursor-pointer ${
-                            isPreviewingThis
-                              ? 'bg-amber-400 text-slate-950 border-amber-300 font-black animate-pulse'
-                              : 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/40 text-emerald-300'
-                          }`}
+                          className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center justify-center gap-1 border transition-all cursor-pointer ${isPreviewingThis
+                            ? 'bg-amber-400 text-slate-950 border-amber-300 font-black animate-pulse'
+                            : 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/40 text-emerald-300'
+                            }`}
                         >
                           <span>
                             {isPreviewingThis ? `⏸ Parar ${pat.code}` : `▶ Probar ${pat.code}`}
@@ -4436,20 +4687,20 @@ export const ExerciseBuilder: React.FC = () => {
                   const style = getPatternStyle(pat.color);
                   const isBrush = activeBrushPatternCode === pat.code;
                   const patSub = normalizeSubdivisionKey(pat.subdivision || '1/16');
+                  const patSteps = pat.stepsPerMeasure || calculateStepsForMeasure(pat.timeSignature || timeSignature, patSub);
                   return (
                     <button
                       key={`brush-${pat.code}`}
                       type="button"
                       onClick={() => setActiveBrushPatternCode(pat.code)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
-                        isBrush
-                          ? `${style.badge} ring-2 ring-white/40 scale-105 shadow-md`
-                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                      }`}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${isBrush
+                        ? `${style.badge} ring-2 ring-white/40 scale-105 shadow-md`
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
                     >
                       <span>[{pat.code}]</span>
                       <span>{pat.name}</span>
-                      <span className="text-[10px] opacity-80">• {patSub}</span>
+                      <span className="text-[10px] opacity-80">• {pat.timeSignature || timeSignature} • {patSub} ({patSteps}p)</span>
                     </button>
                   );
                 })}
@@ -4466,11 +4717,10 @@ export const ExerciseBuilder: React.FC = () => {
                     <div
                       key={`arranger-cell-${idx}`}
                       onClick={() => handleAssignPatternToMeasure(idx, activeBrushPatternCode)}
-                      className={`p-2 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 relative group ${
-                        isSelected
-                          ? 'bg-slate-800 border-cyan-400 ring-1 ring-cyan-400/50 shadow-md'
-                          : 'bg-slate-900/90 hover:bg-slate-800/80 border-slate-800'
-                      }`}
+                      className={`p-2 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 relative group ${isSelected
+                        ? 'bg-slate-800 border-cyan-400 ring-1 ring-cyan-400/50 shadow-md'
+                        : 'bg-slate-900/90 hover:bg-slate-800/80 border-slate-800'
+                        }`}
                       title={`Clic para asignar [${activeBrushPatternCode}] a Compás ${idx + 1} y editarlo`}
                     >
                       <div className="flex items-center justify-between gap-1">
@@ -4479,7 +4729,7 @@ export const ExerciseBuilder: React.FC = () => {
                         </span>
                         <div className="flex items-center gap-1">
                           <span className="text-[9px] font-mono text-amber-300/90 bg-slate-950 px-1 rounded">
-                            {m.subdivision} ({m.stepsPerMeasure}p)
+                            {m.timeSignature || timeSignature} • {m.subdivision} ({m.stepsPerMeasure}p)
                           </span>
                           <span className="text-[9px] font-mono text-slate-400">
                             {noteCount}n
@@ -4515,7 +4765,7 @@ export const ExerciseBuilder: React.FC = () => {
             <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/40 text-xs">
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 rounded bg-cyan-500 text-slate-950 font-mono font-black">
-                  Editando Patrón {measures[currentMeasure]?.patternCode || editingPatternCode} ({activeMeasureSubdivision} • {stepsPerMeasure} pasos)
+                  Editando Patrón {measures[currentMeasure]?.patternCode || editingPatternCode} ({measures[currentMeasure]?.timeSignature || timeSignature} • {activeMeasureSubdivision} • {stepsPerMeasure} pasos)
                 </span>
                 <span className="font-bold text-cyan-200">
                   {measures[currentMeasure]?.patternName || 'Patrón Activo'}
@@ -4567,21 +4817,19 @@ export const ExerciseBuilder: React.FC = () => {
                       setCurrentMeasure(idx);
                       setActiveCell(null);
                     }}
-                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border cursor-pointer ${
-                      isSelected
-                        ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-lg shadow-cyan-950/50'
-                        : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border-slate-800'
-                    }`}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border cursor-pointer ${isSelected
+                      ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-lg shadow-cyan-950/50'
+                      : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border-slate-800'
+                      }`}
                   >
                     <span>Compás {idx + 1}</span>
                     <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${
-                        isSelected
-                          ? 'bg-slate-950/20 text-slate-950 font-bold'
-                          : 'bg-slate-950 text-slate-400'
-                      }`}
+                      className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${isSelected
+                        ? 'bg-slate-950/20 text-slate-950 font-bold'
+                        : 'bg-slate-950 text-slate-400'
+                        }`}
                     >
-                      [{m.patternCode}] • {noteCount}n
+                      [{m.patternCode}] • {m.timeSignature || timeSignature} • {noteCount}n
                     </span>
                   </button>
                 );
@@ -4645,11 +4893,10 @@ export const ExerciseBuilder: React.FC = () => {
                 setSelectedAccent(next);
                 if (next) setSelectedGhost(false);
               }}
-              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
-                selectedAccent
-                  ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.3)]'
-                  : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white'
-              }`}
+              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${selectedAccent
+                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.3)]'
+                : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white'
+                }`}
               title="Acento dinámico (>)"
             >
               <span className="text-sm font-black">&gt;</span>
@@ -4664,11 +4911,10 @@ export const ExerciseBuilder: React.FC = () => {
                 setSelectedGhost(next);
                 if (next) setSelectedAccent(false);
               }}
-              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
-                selectedGhost
-                  ? 'border-slate-400 bg-slate-800/90 text-cyan-200 shadow-[0_0_10px_rgba(148,163,184,0.35)] ring-1 ring-cyan-400/40'
-                  : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white'
-              }`}
+              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${selectedGhost
+                ? 'border-slate-400 bg-slate-800/90 text-cyan-200 shadow-[0_0_10px_rgba(148,163,184,0.35)] ring-1 ring-cyan-400/40'
+                : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white'
+                }`}
               title="Nota Fantasma suave a baja altura (Atajo: tecla G)"
             >
               <span className="font-mono font-black text-xs">( )</span>
@@ -4679,11 +4925,10 @@ export const ExerciseBuilder: React.FC = () => {
             <button
               type="button"
               onClick={() => setSelectedSyncopated(!selectedSyncopated)}
-              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
-                selectedSyncopated
-                  ? 'border-violet-500/60 bg-violet-500/20 text-violet-200 shadow-[0_0_12px_rgba(139,92,246,0.35)]'
-                  : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white'
-              }`}
+              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${selectedSyncopated
+                ? 'border-violet-500/60 bg-violet-500/20 text-violet-200 shadow-[0_0_12px_rgba(139,92,246,0.35)]'
+                : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white'
+                }`}
               title="Marcar golpe como Sincopado en contratiempo (Atajo: tecla S)"
             >
               <span className="text-amber-300 font-black">⚡</span>
@@ -4695,22 +4940,20 @@ export const ExerciseBuilder: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setSelectedSticking('R')}
-                className={`px-2.5 py-1 rounded-lg font-bold text-xs cursor-pointer ${
-                  selectedSticking === 'R'
-                    ? 'bg-cyan-500 text-zinc-950 font-black'
-                    : 'text-cyan-400 hover:bg-white/5'
-                }`}
+                className={`px-2.5 py-1 rounded-lg font-bold text-xs cursor-pointer ${selectedSticking === 'R'
+                  ? 'bg-cyan-500 text-zinc-950 font-black'
+                  : 'text-cyan-400 hover:bg-white/5'
+                  }`}
               >
                 R (Der)
               </button>
               <button
                 type="button"
                 onClick={() => setSelectedSticking('L')}
-                className={`px-2.5 py-1 rounded-lg font-bold text-xs cursor-pointer ${
-                  selectedSticking === 'L'
-                    ? 'bg-fuchsia-500 text-zinc-950 font-black'
-                    : 'text-fuchsia-400 hover:bg-white/5'
-                }`}
+                className={`px-2.5 py-1 rounded-lg font-bold text-xs cursor-pointer ${selectedSticking === 'L'
+                  ? 'bg-fuchsia-500 text-zinc-950 font-black'
+                  : 'text-fuchsia-400 hover:bg-white/5'
+                  }`}
               >
                 L (Izq)
               </button>
@@ -4809,11 +5052,10 @@ export const ExerciseBuilder: React.FC = () => {
                   onClick={() => {
                     handleSetTechnique(tech.id as StringTechnique);
                   }}
-                  className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-all ${
-                    isSelected
-                      ? 'bg-cyan-500 text-zinc-950 font-bold border-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.3)]'
-                      : 'bg-white/5 border-white/5 text-zinc-400 hover:text-white hover:bg-white/10'
-                  }`}
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-all ${isSelected
+                    ? 'bg-cyan-500 text-zinc-950 font-bold border-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.3)]'
+                    : 'bg-white/5 border-white/5 text-zinc-400 hover:text-white hover:bg-white/10'
+                    }`}
                 >
                   {tech.symbol ? (
                     <span className="text-[10px] font-mono font-black opacity-85 px-1 py-0.5 rounded bg-black/30">
@@ -4836,11 +5078,10 @@ export const ExerciseBuilder: React.FC = () => {
                 <button
                   key={`finger-${f}`}
                   onClick={() => setSelectedFinger(f)}
-                  className={`w-6 h-6 rounded-md font-mono text-[11px] font-bold ${
-                    selectedFinger === f
-                      ? 'bg-white/20 text-white border border-white/30'
-                      : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
+                  className={`w-6 h-6 rounded-md font-mono text-[11px] font-bold ${selectedFinger === f
+                    ? 'bg-white/20 text-white border border-white/30'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
                 >
                   {f}
                 </button>
@@ -4899,11 +5140,10 @@ export const ExerciseBuilder: React.FC = () => {
                           }
                         }
                       }}
-                      className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all border ${
-                        selectedBendType === type.id
-                          ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black shadow-sm'
-                          : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
-                      }`}
+                      className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all border ${selectedBendType === type.id
+                        ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black shadow-sm'
+                        : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                        }`}
                     >
                       {type.label}
                     </button>
@@ -4947,11 +5187,10 @@ export const ExerciseBuilder: React.FC = () => {
                           }
                         }
                       }}
-                      className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all border ${
-                        selectedBendAmount === amt.id
-                          ? 'bg-teal-400 text-slate-950 border-teal-300 font-black shadow-sm'
-                          : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
-                      }`}
+                      className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all border ${selectedBendAmount === amt.id
+                        ? 'bg-teal-400 text-slate-950 border-teal-300 font-black shadow-sm'
+                        : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                        }`}
                     >
                       {amt.label}
                     </button>
@@ -4995,488 +5234,475 @@ export const ExerciseBuilder: React.FC = () => {
           onAddMeasure={handleAddMeasure}
         />
       ) : (
-      <div 
-        className={`w-full overflow-x-auto rounded-2xl p-4 sm:p-6 transition-all relative ${
-          instrument === 'drums'
+        <div
+          className={`w-full overflow-x-auto rounded-2xl p-4 sm:p-6 transition-all relative ${instrument === 'drums'
             ? 'glass-panel border border-slate-200 dark:border-white/10 shadow-xl'
             : 'border-2 border-[#2b1810] shadow-2xl'
-        }`}
-        style={
-          instrument !== 'drums'
-            ? {
+            }`}
+          style={
+            instrument !== 'drums'
+              ? {
                 background: 'linear-gradient(180deg, #1c0e08 0%, #2e170d 25%, #3d1f11 50%, #2e170d 75%, #180c07 100%)',
                 boxShadow: 'inset 0 4px 14px rgba(0,0,0,0.8), 0 10px 30px rgba(0,0,0,0.3)',
               }
-            : undefined
-        }
-      >
-        <div className="min-w-[760px] flex flex-col">
-          {/* Cabecera de Pasos / Tiempos */}
-          <div className={`flex items-center pb-2 mb-2 font-mono text-xs ${
-            instrument === 'drums' ? 'border-b border-white/10' : 'border-b border-[#4d2817]'
-          }`}>
-            <div className={`w-24 shrink-0 text-[11px] font-bold uppercase ${
-              instrument === 'drums' ? 'text-slate-500 dark:text-zinc-400' : 'text-amber-200/90'
-            }`}>
-              Compás {currentMeasure + 1}
-            </div>
+              : undefined
+          }
+        >
+          <div className="min-w-[760px] flex flex-col">
+            {/* Cabecera de Pasos / Tiempos */}
+            <div className={`flex items-center pb-2 mb-2 font-mono text-xs ${instrument === 'drums' ? 'border-b border-white/10' : 'border-b border-[#4d2817]'
+              }`}>
+              <div className={`w-24 shrink-0 text-[11px] font-bold uppercase ${instrument === 'drums' ? 'text-slate-500 dark:text-zinc-400' : 'text-amber-200/90'
+                }`}>
+                Compás {currentMeasure + 1}
+              </div>
 
-            <div className="flex-1 grid" style={{ gridTemplateColumns: `repeat(${stepsPerMeasure}, minmax(0, 1fr))` }}>
-              {Array.from({ length: stepsPerMeasure }).map((_, stepIdx) => {
-                const globalStep = activeMeasureStart + stepIdx;
-                const isPlayback = isPlaying && playbackActiveStep === globalStep;
-                const { label, isBeatStart } = getStepCountLabel(
-                  stepIdx,
-                  stepsPerMeasure,
-                  activeMeasureSubdivision,
-                  timeSignature
-                );
+              <div className="flex-1 grid" style={{ gridTemplateColumns: `repeat(${stepsPerMeasure}, minmax(0, 1fr))` }}>
+                {Array.from({ length: stepsPerMeasure }).map((_, stepIdx) => {
+                  const globalStep = activeMeasureStart + stepIdx;
+                  const isPlayback = isPlaying && playbackActiveStep === globalStep;
+                  const { label, isBeatStart } = getStepCountLabel(
+                    stepIdx,
+                    stepsPerMeasure,
+                    activeMeasureSubdivision,
+                    timeSignature
+                  );
 
-                return (
-                  <div
-                    key={`step-head-${stepIdx}`}
-                    className={`flex-1 flex flex-col items-center justify-center py-1 transition-colors relative ${
-                      isPlayback ? 'scale-110' : ''
-                    } ${
-                      isBeatStart && stepIdx > 0
-                        ? instrument === 'drums'
-                          ? 'border-l border-white/20'
-                          : 'border-l border-amber-500/25'
-                        : ''
-                    }`}
-                  >
-                    <span
-                      className={`font-mono transition-colors ${
-                        isPlayback
+                  return (
+                    <div
+                      key={`step-head-${stepIdx}`}
+                      className={`flex-1 flex flex-col items-center justify-center py-1 transition-colors relative ${isPlayback ? 'scale-110' : ''
+                        } ${isBeatStart && stepIdx > 0
+                          ? instrument === 'drums'
+                            ? 'border-l border-white/20'
+                            : 'border-l border-amber-500/25'
+                          : ''
+                        }`}
+                    >
+                      <span
+                        className={`font-mono transition-colors ${isPlayback
                           ? 'text-cyan-300 font-black text-xs'
                           : isBeatStart
-                          ? instrument === 'drums'
-                            ? 'text-cyan-400 font-bold text-xs'
-                            : 'text-amber-300 font-black text-xs'
-                          : instrument === 'drums'
-                          ? 'text-slate-400 dark:text-slate-400 font-semibold text-[11px]'
-                          : 'text-amber-200/50 font-semibold text-[11px]'
-                      }`}
-                    >
-                      {label}
-                    </span>
-                    {/* Punto indicador de pulso a tierra */}
-                    <span
-                      className={`w-1 h-1 rounded-full mt-0.5 transition-colors ${
-                        isPlayback
+                            ? instrument === 'drums'
+                              ? 'text-cyan-400 font-bold text-xs'
+                              : 'text-amber-300 font-black text-xs'
+                            : instrument === 'drums'
+                              ? 'text-slate-400 dark:text-slate-400 font-semibold text-[11px]'
+                              : 'text-amber-200/50 font-semibold text-[11px]'
+                          }`}
+                      >
+                        {label}
+                      </span>
+                      {/* Punto indicador de pulso a tierra */}
+                      <span
+                        className={`w-1 h-1 rounded-full mt-0.5 transition-colors ${isPlayback
                           ? 'bg-cyan-300 ring-2 ring-cyan-300/50'
                           : isBeatStart
-                          ? instrument === 'drums'
-                            ? 'bg-cyan-400 ring-2 ring-cyan-400/30'
-                            : 'bg-amber-400 ring-2 ring-amber-400/30'
-                          : 'bg-transparent'
-                      }`}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Filas de la Rejilla según el Instrumento */}
-          {instrument === 'drums' ? (
-            // Filas de Batería
-            DRUM_ROWS.map((row) => (
-              <div key={row.voice} className="flex items-center h-12 relative border-b border-white/5 group">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const isFoot = row.voice === 'kick';
-                    const targetInstrument = row.voice === 'hihat' ? 'hihat_closed' : row.voice;
-                    playDrumHit({
-                      instrument: targetInstrument,
-                      velocity: 95,
-                      accent: selectedAccent,
-                      sticking: isFoot ? null : (selectedSticking as 'R' | 'L') || 'R',
-                    });
-                  }}
-                  title={`Probar sonido de ${row.label}`}
-                  className="w-24 shrink-0 flex flex-col pr-2 text-left hover:opacity-80 active:scale-95 transition-all cursor-pointer group/label"
-                >
-                  <span className="text-xs font-bold text-slate-900 dark:text-white group-hover/label:text-cyan-500 dark:group-hover/label:text-cyan-400 transition-colors">
-                    {row.label}
-                  </span>
-                  <span className="text-[9px] text-slate-500 dark:text-zinc-400 truncate">{row.sub}</span>
-                </button>
-
-                {/* Línea horizontal continua de pentagrama */}
-                <div className="absolute left-24 right-0 top-1/2 -translate-y-1/2 h-px bg-slate-300 dark:bg-white/15 pointer-events-none" />
-
-                {/* Celdas de paso */}
-                <div className="flex-1 grid h-full relative z-10" style={{ gridTemplateColumns: `repeat(${stepsPerMeasure}, minmax(0, 1fr))` }}>
-                  {Array.from({ length: stepsPerMeasure }).map((_, stepIdx) => {
-                    const globalStep = activeMeasureStart + stepIdx;
-                    const isPlayback = isPlaying && playbackActiveStep === globalStep;
-                    const { isBeatStart } = getStepCountLabel(
-                      stepIdx,
-                      stepsPerMeasure,
-                      activeMeasureSubdivision,
-                      timeSignature
-                    );
-                    const hit = notes.find((n) => n.step === globalStep && (n.drumVoice === row.voice || (row.voice === 'hihat' && n.drumVoice === 'hihat_closed') || (row.voice === 'floor_tom' && n.drumVoice === 'granadero')));
-
-                    const isKickTrack =
-                      row.voice === 'kick' ||
-                      (row.voice as string) === 'bombo' ||
-                      hit?.drumVoice === 'kick' ||
-                      (hit?.drumVoice as string) === 'bombo';
-                    const displaySticking = isKickTrack
-                      ? 'K'
-                      : hit?.sticking || (row.voice === 'hihat' ? '×' : '•');
-
-                    return (
-                      <button
-                        key={`drum-cell-${row.voice}-${stepIdx}`}
-                        onClick={() => handleCellClick(stepIdx, undefined, row.voice)}
-                        className={`h-full flex items-center justify-center transition-all relative ${
-                          isPlayback ? 'bg-cyan-500/15' : 'hover:bg-slate-100/50 dark:hover:bg-white/5'
-                        } ${
-                          isBeatStart && stepIdx > 0 ? 'border-l border-white/10' : ''
-                        }`}
-                      >
-                        {hit ? (
-                          <div className="relative flex flex-col items-center">
-                            {hit.accent && !hit.ghost && (
-                              <span className="absolute -top-3.5 text-[11px] font-black text-cyan-500 dark:text-cyan-400">
-                                &gt;
-                              </span>
-                            )}
-                            {hit.syncopated && (
-                              <span
-                                className="absolute -top-3.5 -right-2 text-[10px] font-black text-violet-300 drop-shadow-[0_0_6px_rgba(139,92,246,0.8)]"
-                                title="Golpe Sincopado"
-                              >
-                                ⚡
-                              </span>
-                            )}
-                            {hit.ghost ? (
-                              <div
-                                className="w-5 h-5 rounded-full bg-slate-800/90 border border-cyan-400/50 text-cyan-200 font-mono font-bold flex items-center justify-center text-[10px] opacity-75 shadow-inner"
-                                title="Ghost Note (Nota Fantasma)"
-                              >
-                                ({isKickTrack ? 'K' : hit.sticking || '●'})
-                              </div>
-                            ) : row.voice === 'hihat_open' || hit.drumVoice === 'hihat_open' ? (
-                              <div
-                                className={`w-7 h-7 rounded-full bg-amber-400 text-zinc-950 font-bold flex items-center justify-center text-xs shadow-[0_0_14px_rgba(251,191,36,0.7)] ring-2 ${
-                                  hit.syncopated
-                                    ? 'ring-violet-400 ring-offset-1 ring-offset-black'
-                                    : 'ring-amber-300 ring-offset-1 ring-offset-black'
-                                }`}
-                              >
-                                {displaySticking || '○'}
-                              </div>
-                            ) : (
-                              <div
-                                className={`w-7 h-7 rounded-full bg-cyan-400 text-zinc-950 font-bold flex items-center justify-center text-xs shadow-[0_0_12px_rgba(34,211,238,0.5)] ${
-                                  hit.syncopated ? 'ring-2 ring-violet-400 ring-offset-1 ring-offset-black' : ''
-                                }`}
-                              >
-                                {displaySticking}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-white/10 group-hover:bg-slate-400 dark:group-hover:bg-white/20" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+                            ? instrument === 'drums'
+                              ? 'bg-cyan-400 ring-2 ring-cyan-400/30'
+                              : 'bg-amber-400 ring-2 ring-amber-400/30'
+                            : 'bg-transparent'
+                          }`}
+                      />
+                    </div>
+                  );
+                })}
               </div>
-            ))
-          ) : (
-            // Filas de Bajo o Guitarra con Mástil Realista de Palisandro
-            (instrument === 'bass' ? BASS_STRINGS : GUITAR_STRINGS).map((str) => (
-              <div key={str.num} className="flex items-center h-12 relative border-b border-[#3d1f11]/60 group">
-                <div className="w-24 shrink-0 flex items-center gap-2 pr-2">
-                  <span className="w-5 h-5 rounded-md bg-[#140804] border border-[#5c3a28] text-amber-200 font-mono font-black text-xs flex items-center justify-center shadow-sm">
-                    {str.label}
-                  </span>
-                  <span className="text-[10px] text-amber-200/70 truncate font-mono">{str.num}ª Cuerda</span>
-                </div>
+            </div>
 
-                {/* Sombra de la cuerda sobre la madera noble */}
-                <div className="absolute left-24 right-0 top-1/2 translate-y-[2px] h-[2px] bg-black/60 pointer-events-none" />
-
-                {/* Alambre metálico de acero/níquel con relieve */}
-                <div 
-                  className="absolute left-24 right-0 top-1/2 -translate-y-1/2 pointer-events-none" 
-                  style={{
-                    height: `${Math.max(1.8, (instrument === 'bass' ? (5 - str.num) * 1.0 : (7 - str.num) * 0.6))}px`,
-                    background: 'linear-gradient(180deg, #f3f4f6 0%, #cbd5e1 35%, #94a3b8 70%, #475569 100%)',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.8)'
-                  }}
-                />
-
-                {/* Celdas de paso interactivas */}
-                <div className="flex-1 grid h-full relative z-10" style={{ gridTemplateColumns: `repeat(${stepsPerMeasure}, minmax(0, 1fr))` }}>
-                  {/* Capa SVG de Arcos de Ligadura en la Cuerda (Hammer-on / Pull-off) */}
-                  <svg
-                    className="absolute inset-0 w-full h-full pointer-events-none z-20 overflow-visible"
-                    viewBox={`0 0 ${stepsPerMeasure * 100} 48`}
-                    preserveAspectRatio="none"
+            {/* Filas de la Rejilla según el Instrumento */}
+            {instrument === 'drums' ? (
+              // Filas de Batería
+              DRUM_ROWS.map((row) => (
+                <div key={row.voice} className="flex items-center h-12 relative border-b border-white/5 group">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const isFoot = row.voice === 'kick';
+                      const targetInstrument = row.voice === 'hihat' ? 'hihat_closed' : row.voice;
+                      playDrumHit({
+                        instrument: targetInstrument,
+                        velocity: 95,
+                        accent: selectedAccent,
+                        sticking: isFoot ? null : (selectedSticking as 'R' | 'L') || 'R',
+                      });
+                    }}
+                    title={`Probar sonido de ${row.label}`}
+                    className="w-24 shrink-0 flex flex-col pr-2 text-left hover:opacity-80 active:scale-95 transition-all cursor-pointer group/label"
                   >
-                    {notes
-                      .filter(
-                        (n) =>
-                          n.string === str.num &&
-                          n.step >= activeMeasureStart &&
-                          n.step < activeMeasureStart + stepsPerMeasure &&
-                          (n.technique === 'hammer' || n.technique === 'pull' || (n.technique as any) === 'pulloff')
-                      )
-                      .map((note, idx) => {
-                        // Buscar la nota precedente en la misma cuerda en este compás
-                        const prevNote = notes
-                          .filter(
-                            (n) =>
-                              n.string === str.num &&
-                              n.step >= activeMeasureStart &&
-                              n.step < note.step
-                          )
-                          .sort((a, b) => b.step - a.step)[0];
+                    <span className="text-xs font-bold text-slate-900 dark:text-white group-hover/label:text-cyan-500 dark:group-hover/label:text-cyan-400 transition-colors">
+                      {row.label}
+                    </span>
+                    <span className="text-[9px] text-slate-500 dark:text-zinc-400 truncate">{row.sub}</span>
+                  </button>
 
-                        if (!prevNote) return null;
+                  {/* Línea horizontal continua de pentagrama */}
+                  <div className="absolute left-24 right-0 top-1/2 -translate-y-1/2 h-px bg-slate-300 dark:bg-white/15 pointer-events-none" />
 
-                        const step1 = prevNote.step - activeMeasureStart;
-                        const step2 = note.step - activeMeasureStart;
+                  {/* Celdas de paso */}
+                  <div className="flex-1 grid h-full relative z-10" style={{ gridTemplateColumns: `repeat(${stepsPerMeasure}, minmax(0, 1fr))` }}>
+                    {Array.from({ length: stepsPerMeasure }).map((_, stepIdx) => {
+                      const globalStep = activeMeasureStart + stepIdx;
+                      const isPlayback = isPlaying && playbackActiveStep === globalStep;
+                      const { isBeatStart } = getStepCountLabel(
+                        stepIdx,
+                        stepsPerMeasure,
+                        activeMeasureSubdivision,
+                        timeSignature
+                      );
+                      const hit = notes.find((n) => n.step === globalStep && (n.drumVoice === row.voice || (row.voice === 'hihat' && n.drumVoice === 'hihat_closed') || (row.voice === 'floor_tom' && n.drumVoice === 'granadero')));
 
-                        const x1 = (step1 + 0.5) * 100;
-                        const x2 = (step2 + 0.5) * 100;
-                        const y = 8;
-                        const midX = (x1 + x2) / 2;
-                        const arcControlY = y - Math.min(18, Math.abs(x2 - x1) * 0.12);
+                      const isKickTrack =
+                        row.voice === 'kick' ||
+                        (row.voice as string) === 'bombo' ||
+                        hit?.drumVoice === 'kick' ||
+                        (hit?.drumVoice as string) === 'bombo';
+                      const displaySticking = isKickTrack
+                        ? 'K'
+                        : hit?.sticking || (row.voice === 'hihat' ? '×' : '•');
 
-                        const isHammer = note.technique === 'hammer';
-                        const color = isHammer ? '#38bdf8' : '#fbbf24'; // Cyan para Hammer, Ámbar para Pull-off
-
-                        return (
-                          <g key={`string-slur-${str.num}-${idx}`} className="select-none pointer-events-none">
-                            {/* Arco Curvo de Ligadura */}
-                            <path
-                              d={`M ${x1} ${y} Q ${midX} ${arcControlY} ${x2} ${y}`}
-                              fill="none"
-                              stroke={color}
-                              strokeWidth="2.5"
-                              strokeLinecap="round"
-                            />
-                            {/* Insignia tipográfica 'h' o 'p' */}
-                            <text
-                              x={midX}
-                              y={arcControlY - 3}
-                              textAnchor="middle"
-                              fill={color}
-                              fontSize="12"
-                              fontWeight="900"
-                              fontFamily="ui-monospace, monospace"
-                            >
-                              {isHammer ? 'h' : 'p'}
-                            </text>
-                          </g>
-                        );
-                      })}
-
-                    {/* Capa SVG de Bending (Standard Bend, Bend & Release, Pre-Bend) */}
-                    {notes
-                      .filter(
-                        (n) =>
-                          n.string === str.num &&
-                          n.step >= activeMeasureStart &&
-                          n.step < activeMeasureStart + stepsPerMeasure &&
-                          n.technique === 'bend'
-                      )
-                      .map((note, idx) => {
-                        const stepInMeasure = note.step - activeMeasureStart;
-                        const cx = (stepInMeasure + 0.5) * 100;
-                        const cy = 24;
-                        const isRelease = note.bendType === 'bend_release';
-                        const isPreBend = note.bendType === 'pre_bend';
-                        const amountLabel =
-                          note.bendAmount === '1/4'
-                            ? '¼'
-                            : note.bendAmount === '1/2'
-                            ? '½'
-                            : note.bendAmount === '1.5'
-                            ? '1½'
-                            : 'Full';
-
-                        return (
-                          <g key={`bend-svg-${str.num}-${idx}`} className="pointer-events-none select-none">
-                            {/* 1. Standard Bend (Flecha Curva Ascendente) */}
-                            {!isRelease && !isPreBend && (
-                              <>
-                                <path
-                                  d={`M ${cx + 10} ${cy} Q ${cx + 16} ${cy - 14} ${cx + 14} ${cy - 22}`}
-                                  fill="none"
-                                  stroke="#10b981"
-                                  strokeWidth="2.2"
-                                  strokeLinecap="round"
-                                />
-                                <polygon
-                                  points={`${cx + 14},${cy - 26} ${cx + 11},${cy - 20} ${cx + 17},${cy - 20}`}
-                                  fill="#10b981"
-                                />
-                              </>
-                            )}
-
-                            {/* 2. Bend & Release (Curva Parabólica Subida y Bajada) */}
-                            {isRelease && (
-                              <>
-                                <path
-                                  d={`M ${cx + 6} ${cy} Q ${cx + 14} ${cy - 26} ${cx + 22} ${cy}`}
-                                  fill="none"
-                                  stroke="#10b981"
-                                  strokeWidth="2.2"
-                                  strokeLinecap="round"
-                                />
-                                <polygon
-                                  points={`${cx + 22},${cy + 2} ${cx + 19},${cy - 4} ${cx + 25},${cy - 4}`}
-                                  fill="#10b981"
-                                />
-                              </>
-                            )}
-
-                            {/* 3. Pre-Bend (Flecha Vertical con Caída) */}
-                            {isPreBend && (
-                              <>
-                                <line
-                                  x1={cx + 12}
-                                  y1={cy - 24}
-                                  x2={cx + 12}
-                                  y2={cy}
-                                  stroke="#10b981"
-                                  strokeWidth="2"
-                                  strokeDasharray="3 3"
-                                />
-                                <polygon
-                                  points={`${cx + 12},${cy + 2} ${cx + 9},${cy - 4} ${cx + 15},${cy - 4}`}
-                                  fill="#10b981"
-                                />
-                              </>
-                            )}
-
-                            {/* Insignia tipográfica superior con el valor */}
-                            <rect
-                              x={cx - 16}
-                              y={cy - 34}
-                              width="32"
-                              height="14"
-                              rx="3"
-                              fill="#022c22"
-                              stroke="#10b981"
-                              strokeWidth="1"
-                            />
-                            <text
-                              x={cx}
-                              y={cy - 24}
-                              textAnchor="middle"
-                              fill="#6ee7b7"
-                              fontSize="9"
-                              fontWeight="900"
-                              fontFamily="ui-monospace, monospace"
-                            >
-                              {isPreBend ? `pb ${amountLabel}` : isRelease ? `b/r ${amountLabel}` : amountLabel}
-                            </text>
-                          </g>
-                        );
-                      })}
-                  </svg>
-
-                  {Array.from({ length: stepsPerMeasure }).map((_, stepIdx) => {
-                    const globalStep = activeMeasureStart + stepIdx;
-                    const isPlayback = isPlaying && playbackActiveStep === globalStep;
-                    const note = notes.find((n) => n.step === globalStep && n.string === str.num);
-
-                    return (
-                      <button
-                        key={`string-cell-${str.num}-${stepIdx}`}
-                        onClick={() => handleCellClick(stepIdx, str.num)}
-                        className={`h-full flex items-center justify-center transition-all relative ${
-                          isPlayback ? 'bg-cyan-400/20 shadow-[inset_0_0_8px_rgba(34,211,238,0.4)]' : 'hover:bg-white/5'
-                        }`}
-                      >
-                        {note ? (
-                          <div className="relative flex flex-col items-center">
-                            {/* Insignia de técnica */}
-                            {note.technique &&
-                              note.technique !== 'normal' &&
-                              note.technique !== 'hammer' &&
-                              note.technique !== 'pull' &&
-                              (note.technique as any) !== 'pulloff' &&
-                              note.technique !== 'bend' &&
-                              note.technique !== 'slide_up' &&
-                              note.technique !== 'slide_down' && (
-                                <span className="absolute -top-3.5 text-[9px] font-mono font-black text-amber-300 bg-amber-500/30 px-1 rounded border border-amber-400/40 shadow-sm whitespace-nowrap">
-                                  {getTechniqueBadge(note.technique, instrument)}
+                      return (
+                        <button
+                          key={`drum-cell-${row.voice}-${stepIdx}`}
+                          onClick={() => handleCellClick(stepIdx, undefined, row.voice)}
+                          className={`h-full flex items-center justify-center transition-all relative ${isPlayback ? 'bg-cyan-500/15' : 'hover:bg-slate-100/50 dark:hover:bg-white/5'
+                            } ${isBeatStart && stepIdx > 0 ? 'border-l border-white/10' : ''
+                            }`}
+                        >
+                          {hit ? (
+                            <div className="relative flex flex-col items-center">
+                              {hit.accent && !hit.ghost && (
+                                <span className="absolute -top-3.5 text-[11px] font-black text-cyan-500 dark:text-cyan-400">
+                                  &gt;
                                 </span>
                               )}
+                              {hit.syncopated && (
+                                <span
+                                  className="absolute -top-3.5 -right-2 text-[10px] font-black text-violet-300 drop-shadow-[0_0_6px_rgba(139,92,246,0.8)]"
+                                  title="Golpe Sincopado"
+                                >
+                                  ⚡
+                                </span>
+                              )}
+                              {hit.ghost ? (
+                                <div
+                                  className="w-5 h-5 rounded-full bg-slate-800/90 border border-cyan-400/50 text-cyan-200 font-mono font-bold flex items-center justify-center text-[10px] opacity-75 shadow-inner"
+                                  title="Ghost Note (Nota Fantasma)"
+                                >
+                                  ({isKickTrack ? 'K' : hit.sticking || '●'})
+                                </div>
+                              ) : row.voice === 'hihat_open' || hit.drumVoice === 'hihat_open' ? (
+                                <div
+                                  className={`w-7 h-7 rounded-full bg-amber-400 text-zinc-950 font-bold flex items-center justify-center text-xs shadow-[0_0_14px_rgba(251,191,36,0.7)] ring-2 ${hit.syncopated
+                                    ? 'ring-violet-400 ring-offset-1 ring-offset-black'
+                                    : 'ring-amber-300 ring-offset-1 ring-offset-black'
+                                    }`}
+                                >
+                                  {displaySticking || '○'}
+                                </div>
+                              ) : (
+                                <div
+                                  className={`w-7 h-7 rounded-full bg-cyan-400 text-zinc-950 font-bold flex items-center justify-center text-xs shadow-[0_0_12px_rgba(34,211,238,0.5)] ${hit.syncopated ? 'ring-2 ring-violet-400 ring-offset-1 ring-offset-black' : ''
+                                    }`}
+                                >
+                                  {displaySticking}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-white/10 group-hover:bg-slate-400 dark:group-hover:bg-white/20" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            ) : (
+              // Filas de Bajo o Guitarra con Mástil Realista de Palisandro
+              (instrument === 'bass' ? BASS_STRINGS : GUITAR_STRINGS).map((str) => (
+                <div key={str.num} className="flex items-center h-12 relative border-b border-[#3d1f11]/60 group">
+                  <div className="w-24 shrink-0 flex items-center gap-2 pr-2">
+                    <span className="w-5 h-5 rounded-md bg-[#140804] border border-[#5c3a28] text-amber-200 font-mono font-black text-xs flex items-center justify-center shadow-sm">
+                      {str.label}
+                    </span>
+                    <span className="text-[10px] text-amber-200/70 truncate font-mono">{str.num}ª Cuerda</span>
+                  </div>
 
-                            {(() => {
-                              const hasSlideUp = note.technique === 'slide_up' || note.slideDirection === 'up';
-                              const hasSlideDown = note.technique === 'slide_down' || note.slideDirection === 'down';
-                              const displayFretText =
-                                note.technique === 'ghost'
-                                  ? 'X'
-                                  : `${hasSlideUp ? '/' : ''}${note.fret}${hasSlideDown ? '\\' : ''}`;
+                  {/* Sombra de la cuerda sobre la madera noble */}
+                  <div className="absolute left-24 right-0 top-1/2 translate-y-[2px] h-[2px] bg-black/60 pointer-events-none" />
 
-                              return (
-                                <div className="relative flex items-center justify-center">
-                                  {/* Trazo diagonal de entrada hacia la izquierda si es slide ascendente (/10) */}
-                                  {hasSlideUp && (
-                                    <span
-                                      className="absolute -left-3 w-3 h-[2px] bg-emerald-400 -rotate-45 transform origin-right shadow-[0_0_6px_rgba(52,211,153,0.9)] pointer-events-none"
-                                      title="Slide Ascendente de Entrada"
-                                    />
-                                  )}
+                  {/* Alambre metálico de acero/níquel con relieve */}
+                  <div
+                    className="absolute left-24 right-0 top-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{
+                      height: `${Math.max(1.8, (instrument === 'bass' ? (5 - str.num) * 1.0 : (7 - str.num) * 0.6))}px`,
+                      background: 'linear-gradient(180deg, #f3f4f6 0%, #cbd5e1 35%, #94a3b8 70%, #475569 100%)',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.8)'
+                    }}
+                  />
 
-                                  {/* Píldora de traste enmascarando la línea con alto contraste sobre la madera */}
-                                  <div
-                                    className={`min-w-[24px] px-1 h-6 rounded-md bg-[#0a0402] border-2 ${
-                                      hasSlideUp
+                  {/* Celdas de paso interactivas */}
+                  <div className="flex-1 grid h-full relative z-10" style={{ gridTemplateColumns: `repeat(${stepsPerMeasure}, minmax(0, 1fr))` }}>
+                    {/* Capa SVG de Arcos de Ligadura en la Cuerda (Hammer-on / Pull-off) */}
+                    <svg
+                      className="absolute inset-0 w-full h-full pointer-events-none z-20 overflow-visible"
+                      viewBox={`0 0 ${stepsPerMeasure * 100} 48`}
+                      preserveAspectRatio="none"
+                    >
+                      {notes
+                        .filter(
+                          (n) =>
+                            n.string === str.num &&
+                            n.step >= activeMeasureStart &&
+                            n.step < activeMeasureStart + stepsPerMeasure &&
+                            (n.technique === 'hammer' || n.technique === 'pull' || (n.technique as any) === 'pulloff')
+                        )
+                        .map((note, idx) => {
+                          // Buscar la nota precedente en la misma cuerda en este compás
+                          const prevNote = notes
+                            .filter(
+                              (n) =>
+                                n.string === str.num &&
+                                n.step >= activeMeasureStart &&
+                                n.step < note.step
+                            )
+                            .sort((a, b) => b.step - a.step)[0];
+
+                          if (!prevNote) return null;
+
+                          const step1 = prevNote.step - activeMeasureStart;
+                          const step2 = note.step - activeMeasureStart;
+
+                          const x1 = (step1 + 0.5) * 100;
+                          const x2 = (step2 + 0.5) * 100;
+                          const y = 8;
+                          const midX = (x1 + x2) / 2;
+                          const arcControlY = y - Math.min(18, Math.abs(x2 - x1) * 0.12);
+
+                          const isHammer = note.technique === 'hammer';
+                          const color = isHammer ? '#38bdf8' : '#fbbf24'; // Cyan para Hammer, Ámbar para Pull-off
+
+                          return (
+                            <g key={`string-slur-${str.num}-${idx}`} className="select-none pointer-events-none">
+                              {/* Arco Curvo de Ligadura */}
+                              <path
+                                d={`M ${x1} ${y} Q ${midX} ${arcControlY} ${x2} ${y}`}
+                                fill="none"
+                                stroke={color}
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                              />
+                              {/* Insignia tipográfica 'h' o 'p' */}
+                              <text
+                                x={midX}
+                                y={arcControlY - 3}
+                                textAnchor="middle"
+                                fill={color}
+                                fontSize="12"
+                                fontWeight="900"
+                                fontFamily="ui-monospace, monospace"
+                              >
+                                {isHammer ? 'h' : 'p'}
+                              </text>
+                            </g>
+                          );
+                        })}
+
+                      {/* Capa SVG de Bending (Standard Bend, Bend & Release, Pre-Bend) */}
+                      {notes
+                        .filter(
+                          (n) =>
+                            n.string === str.num &&
+                            n.step >= activeMeasureStart &&
+                            n.step < activeMeasureStart + stepsPerMeasure &&
+                            n.technique === 'bend'
+                        )
+                        .map((note, idx) => {
+                          const stepInMeasure = note.step - activeMeasureStart;
+                          const cx = (stepInMeasure + 0.5) * 100;
+                          const cy = 24;
+                          const isRelease = note.bendType === 'bend_release';
+                          const isPreBend = note.bendType === 'pre_bend';
+                          const amountLabel =
+                            note.bendAmount === '1/4'
+                              ? '¼'
+                              : note.bendAmount === '1/2'
+                                ? '½'
+                                : note.bendAmount === '1.5'
+                                  ? '1½'
+                                  : 'Full';
+
+                          return (
+                            <g key={`bend-svg-${str.num}-${idx}`} className="pointer-events-none select-none">
+                              {/* 1. Standard Bend (Flecha Curva Ascendente) */}
+                              {!isRelease && !isPreBend && (
+                                <>
+                                  <path
+                                    d={`M ${cx + 10} ${cy} Q ${cx + 16} ${cy - 14} ${cx + 14} ${cy - 22}`}
+                                    fill="none"
+                                    stroke="#10b981"
+                                    strokeWidth="2.2"
+                                    strokeLinecap="round"
+                                  />
+                                  <polygon
+                                    points={`${cx + 14},${cy - 26} ${cx + 11},${cy - 20} ${cx + 17},${cy - 20}`}
+                                    fill="#10b981"
+                                  />
+                                </>
+                              )}
+
+                              {/* 2. Bend & Release (Curva Parabólica Subida y Bajada) */}
+                              {isRelease && (
+                                <>
+                                  <path
+                                    d={`M ${cx + 6} ${cy} Q ${cx + 14} ${cy - 26} ${cx + 22} ${cy}`}
+                                    fill="none"
+                                    stroke="#10b981"
+                                    strokeWidth="2.2"
+                                    strokeLinecap="round"
+                                  />
+                                  <polygon
+                                    points={`${cx + 22},${cy + 2} ${cx + 19},${cy - 4} ${cx + 25},${cy - 4}`}
+                                    fill="#10b981"
+                                  />
+                                </>
+                              )}
+
+                              {/* 3. Pre-Bend (Flecha Vertical con Caída) */}
+                              {isPreBend && (
+                                <>
+                                  <line
+                                    x1={cx + 12}
+                                    y1={cy - 24}
+                                    x2={cx + 12}
+                                    y2={cy}
+                                    stroke="#10b981"
+                                    strokeWidth="2"
+                                    strokeDasharray="3 3"
+                                  />
+                                  <polygon
+                                    points={`${cx + 12},${cy + 2} ${cx + 9},${cy - 4} ${cx + 15},${cy - 4}`}
+                                    fill="#10b981"
+                                  />
+                                </>
+                              )}
+
+                              {/* Insignia tipográfica superior con el valor */}
+                              <rect
+                                x={cx - 16}
+                                y={cy - 34}
+                                width="32"
+                                height="14"
+                                rx="3"
+                                fill="#022c22"
+                                stroke="#10b981"
+                                strokeWidth="1"
+                              />
+                              <text
+                                x={cx}
+                                y={cy - 24}
+                                textAnchor="middle"
+                                fill="#6ee7b7"
+                                fontSize="9"
+                                fontWeight="900"
+                                fontFamily="ui-monospace, monospace"
+                              >
+                                {isPreBend ? `pb ${amountLabel}` : isRelease ? `b/r ${amountLabel}` : amountLabel}
+                              </text>
+                            </g>
+                          );
+                        })}
+                    </svg>
+
+                    {Array.from({ length: stepsPerMeasure }).map((_, stepIdx) => {
+                      const globalStep = activeMeasureStart + stepIdx;
+                      const isPlayback = isPlaying && playbackActiveStep === globalStep;
+                      const note = notes.find((n) => n.step === globalStep && n.string === str.num);
+
+                      return (
+                        <button
+                          key={`string-cell-${str.num}-${stepIdx}`}
+                          onClick={() => handleCellClick(stepIdx, str.num)}
+                          className={`h-full flex items-center justify-center transition-all relative ${isPlayback ? 'bg-cyan-400/20 shadow-[inset_0_0_8px_rgba(34,211,238,0.4)]' : 'hover:bg-white/5'
+                            }`}
+                        >
+                          {note ? (
+                            <div className="relative flex flex-col items-center">
+                              {/* Insignia de técnica */}
+                              {note.technique &&
+                                note.technique !== 'normal' &&
+                                note.technique !== 'hammer' &&
+                                note.technique !== 'pull' &&
+                                (note.technique as any) !== 'pulloff' &&
+                                note.technique !== 'bend' &&
+                                note.technique !== 'slide_up' &&
+                                note.technique !== 'slide_down' && (
+                                  <span className="absolute -top-3.5 text-[9px] font-mono font-black text-amber-300 bg-amber-500/30 px-1 rounded border border-amber-400/40 shadow-sm whitespace-nowrap">
+                                    {getTechniqueBadge(note.technique, instrument)}
+                                  </span>
+                                )}
+
+                              {(() => {
+                                const hasSlideUp = note.technique === 'slide_up' || note.slideDirection === 'up';
+                                const hasSlideDown = note.technique === 'slide_down' || note.slideDirection === 'down';
+                                const displayFretText =
+                                  note.technique === 'ghost'
+                                    ? 'X'
+                                    : `${hasSlideUp ? '/' : ''}${note.fret}${hasSlideDown ? '\\' : ''}`;
+
+                                return (
+                                  <div className="relative flex items-center justify-center">
+                                    {/* Trazo diagonal de entrada hacia la izquierda si es slide ascendente (/10) */}
+                                    {hasSlideUp && (
+                                      <span
+                                        className="absolute -left-3 w-3 h-[2px] bg-emerald-400 -rotate-45 transform origin-right shadow-[0_0_6px_rgba(52,211,153,0.9)] pointer-events-none"
+                                        title="Slide Ascendente de Entrada"
+                                      />
+                                    )}
+
+                                    {/* Píldora de traste enmascarando la línea con alto contraste sobre la madera */}
+                                    <div
+                                      className={`min-w-[24px] px-1 h-6 rounded-md bg-[#0a0402] border-2 ${hasSlideUp
                                         ? 'border-emerald-400 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.6)]'
                                         : hasSlideDown
-                                        ? 'border-rose-400 text-rose-300 shadow-[0_0_12px_rgba(251,113,133,0.6)]'
-                                        : 'border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.6)]'
-                                    } font-black font-mono text-xs flex items-center justify-center tracking-tighter`}
-                                  >
-                                    {displayFretText}
+                                          ? 'border-rose-400 text-rose-300 shadow-[0_0_12px_rgba(251,113,133,0.6)]'
+                                          : 'border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.6)]'
+                                        } font-black font-mono text-xs flex items-center justify-center tracking-tighter`}
+                                    >
+                                      {displayFretText}
+                                    </div>
+
+                                    {/* Trazo diagonal de salida hacia la derecha si es slide descendente (8\) */}
+                                    {hasSlideDown && (
+                                      <span
+                                        className="absolute -right-3 w-3 h-[2px] bg-rose-400 rotate-45 transform origin-left shadow-[0_0_6px_rgba(251,113,133,0.9)] pointer-events-none"
+                                        title="Slide Descendente de Salida"
+                                      />
+                                    )}
                                   </div>
+                                );
+                              })()}
 
-                                  {/* Trazo diagonal de salida hacia la derecha si es slide descendente (8\) */}
-                                  {hasSlideDown && (
-                                    <span
-                                      className="absolute -right-3 w-3 h-[2px] bg-rose-400 rotate-45 transform origin-left shadow-[0_0_6px_rgba(251,113,133,0.9)] pointer-events-none"
-                                      title="Slide Descendente de Salida"
-                                    />
-                                  )}
-                                </div>
-                              );
-                            })()}
-
-                            {/* Dedo sugerido */}
-                            {note.finger && (
-                              <span className="absolute -bottom-3 text-[8px] font-mono text-amber-300 font-bold">
-                                {note.finger}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="w-1.5 h-1.5 rounded-full bg-amber-200/20 group-hover:bg-amber-200/45 transition-colors" />
-                        )}
-                      </button>
-                    );
-                  })}
+                              {/* Dedo sugerido */}
+                              {note.finger && (
+                                <span className="absolute -bottom-3 text-[8px] font-mono text-amber-300 font-bold">
+                                  {note.finger}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="w-1.5 h-1.5 rounded-full bg-amber-200/20 group-hover:bg-amber-200/45 transition-colors" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))
-          )}
+              ))
+            )}
+          </div>
         </div>
-      </div>
       )}
 
       {/* 6. Panel Flotante / Diálogo de Edición Rápida de Traste */}
@@ -5497,11 +5723,10 @@ export const ExerciseBuilder: React.FC = () => {
                     key={fretNum}
                     type="button"
                     onClick={() => handleSelectFret(fretNum)}
-                    className={`shrink-0 min-w-[32px] h-8 px-2 rounded-xl text-xs font-mono font-bold transition-all ${
-                      isSelected
-                        ? 'bg-cyan-500 text-slate-950 font-black shadow-lg ring-2 ring-cyan-300'
-                        : 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700/60'
-                    }`}
+                    className={`shrink-0 min-w-[32px] h-8 px-2 rounded-xl text-xs font-mono font-bold transition-all ${isSelected
+                      ? 'bg-cyan-500 text-slate-950 font-black shadow-lg ring-2 ring-cyan-300'
+                      : 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700/60'
+                      }`}
                   >
                     {fretNum}
                   </button>
@@ -5523,11 +5748,10 @@ export const ExerciseBuilder: React.FC = () => {
                       type="button"
                       onClick={() => handleUpdateNoteSlide(activeCell.step, activeCell.string!, 'up')}
                       title="Slide Ascendente de Entrada (/10)"
-                      className={`px-2.5 py-1 rounded-xl text-xs font-mono font-bold transition-all border flex items-center gap-1 ${
-                        isSlideUpActive
-                          ? 'bg-emerald-500/30 text-emerald-300 border-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.4)]'
-                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-emerald-500/50'
-                      }`}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-mono font-bold transition-all border flex items-center gap-1 ${isSlideUpActive
+                        ? 'bg-emerald-500/30 text-emerald-300 border-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.4)]'
+                        : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-emerald-500/50'
+                        }`}
                     >
                       <span className="font-black text-sm leading-none">/</span>
                       <span>Asc.</span>
@@ -5536,11 +5760,10 @@ export const ExerciseBuilder: React.FC = () => {
                       type="button"
                       onClick={() => handleUpdateNoteSlide(activeCell.step, activeCell.string!, 'down')}
                       title="Slide Descendente de Salida (8\)"
-                      className={`px-2.5 py-1 rounded-xl text-xs font-mono font-bold transition-all border flex items-center gap-1 ${
-                        isSlideDownActive
-                          ? 'bg-rose-500/30 text-rose-300 border-rose-400 shadow-[0_0_10px_rgba(251,113,133,0.4)]'
-                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-rose-500/50'
-                      }`}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-mono font-bold transition-all border flex items-center gap-1 ${isSlideDownActive
+                        ? 'bg-rose-500/30 text-rose-300 border-rose-400 shadow-[0_0_10px_rgba(251,113,133,0.4)]'
+                        : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-rose-500/50'
+                        }`}
                     >
                       <span className="font-black text-sm leading-none">\</span>
                       <span>Desc.</span>

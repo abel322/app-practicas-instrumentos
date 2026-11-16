@@ -93,6 +93,8 @@ export async function syncLocalExercisesToDb(): Promise<{ synced: number; total:
           ...item,
           instrumentType: item.instrumentType || (item.instrument === 'drums' ? 'drums' : item.instrument === 'piano' ? 'piano' : item.instrument === 'bass_4' ? 'bass' : 'guitar'),
           data: item.hitsData || item.tabData || item.notesData || item.data || [],
+          measures: item.measures,
+          patternBank: item.patternBank,
         }),
       });
       if (res.ok) {

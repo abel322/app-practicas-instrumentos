@@ -8,6 +8,7 @@ export interface PatternSummary {
   code: string; // "P1", "P2", ...
   name: string; // Ej: "Paradiddle", "Patrón 1"
   color: string; // Clave de color ("cyan", "emerald", "amber", "violet", "rose", "sky", "orange", "fuchsia")
+  timeSignature?: string; // Ej: '4/4', '6/8', '7/8', '3/4', etc.
   subdivision: string; // Ej: '1/16', '1/8T', '1/16T', '1/8', '1/4', '1/32', 'quintillo', 'septillo'
   stepsPerMeasure: number; // Ej: 16, 12, 24, 8, 4, 32, 20, 28
   sampleMeasureIndex: number;
@@ -21,6 +22,7 @@ export interface MeasureAnalysis {
   patternCode: string;
   patternName: string;
   patternColor: string;
+  timeSignature?: string;
   subdivision: string;
   stepsPerMeasure: number;
   fingerprint: string;
@@ -160,7 +162,10 @@ export function remapNotesToNewSubdivision(
 export function computeMeasureFingerprint(measure: any): string {
   const rawNotes = measure?.notes || measure?.hits || [];
   const firstWithMeta = (Array.isArray(rawNotes) ? rawNotes : []).find(
-    (n: any) => n?.stepsPerMeasure || n?.subdivision
+    (n: any) => n?.stepsPerMeasure || n?.subdivision || n?.timeSignature
+  );
+  const mTimeSig = String(
+    measure?.timeSignature || firstWithMeta?.timeSignature || '4/4'
   );
   const mSteps = Number(
     measure?.stepsPerMeasure || firstWithMeta?.stepsPerMeasure || 16
@@ -196,13 +201,14 @@ export function computeMeasureFingerprint(measure: any): string {
         a.s - b.s || a.m - b.m || a.i.localeCompare(b.i)
     );
 
-  return `${mSub}:${mSteps}::${JSON.stringify(activeNotes)}`;
+  return `${mTimeSig}:${mSub}:${mSteps}::${JSON.stringify(activeNotes)}`;
 }
 
 export function analyzeMeasureDuplicates(
   measures: any[],
   defaultSubdivision: string = '1/16',
-  defaultSteps: number = 16
+  defaultSteps: number = 16,
+  defaultTimeSignature: string = '4/4'
 ): MeasureAnalysis[] {
   if (!Array.isArray(measures) || measures.length === 0) return [];
 
@@ -219,6 +225,7 @@ export function analyzeMeasureDuplicates(
       code: string;
       name: string;
       color: string;
+      timeSignature: string;
       subdivision: string;
       stepsPerMeasure: number;
     }
@@ -230,11 +237,13 @@ export function analyzeMeasureDuplicates(
   measures.forEach((m, idx) => {
     const fp = fingerprints[idx];
     const firstNoteWithMeta = (m?.notes || m?.hits || []).find(
-      (n: any) => n?.patternCode || n?.subdivision || n?.stepsPerMeasure
+      (n: any) => n?.patternCode || n?.subdivision || n?.stepsPerMeasure || n?.timeSignature
     );
     const explicitCode = m?.patternCode || firstNoteWithMeta?.patternCode;
     const explicitName = m?.patternName || firstNoteWithMeta?.patternName;
     const explicitColor = m?.patternColor || firstNoteWithMeta?.patternColor;
+    const explicitTimeSig =
+      m?.timeSignature || firstNoteWithMeta?.timeSignature || defaultTimeSignature;
     const explicitSteps = Number(
       m?.stepsPerMeasure || firstNoteWithMeta?.stepsPerMeasure || defaultSteps
     );
@@ -253,6 +262,7 @@ export function analyzeMeasureDuplicates(
         code,
         name,
         color,
+        timeSignature: explicitTimeSig,
         subdivision: explicitSub,
         stepsPerMeasure: explicitSteps,
       });
@@ -270,7 +280,7 @@ export function analyzeMeasureDuplicates(
     seenSoFar.set(fp, occurrenceIndex);
 
     const firstNoteWithMeta = (m?.notes || m?.hits || []).find(
-      (n: any) => n?.patternCode || n?.subdivision || n?.stepsPerMeasure
+      (n: any) => n?.patternCode || n?.subdivision || n?.stepsPerMeasure || n?.timeSignature
     );
     const autoInfo = autoCodeByFp.get(fp)!;
     const patternCode =
@@ -279,6 +289,8 @@ export function analyzeMeasureDuplicates(
       m?.patternName || firstNoteWithMeta?.patternName || autoInfo.name;
     const patternColor =
       m?.patternColor || firstNoteWithMeta?.patternColor || autoInfo.color;
+    const timeSignature =
+      m?.timeSignature || firstNoteWithMeta?.timeSignature || autoInfo.timeSignature || defaultTimeSignature;
     const stepsPerMeasure = Number(
       m?.stepsPerMeasure ||
       firstNoteWithMeta?.stepsPerMeasure ||
@@ -312,6 +324,7 @@ export function analyzeMeasureDuplicates(
       patternCode,
       patternName,
       patternColor,
+      timeSignature,
       subdivision,
       stepsPerMeasure,
       fingerprint: fp,
@@ -336,12 +349,14 @@ export function analyzeMeasureDuplicates(
 export function extractPatternBankFromMeasures(
   measures: any[],
   defaultSubdivision: string = '1/16',
-  defaultSteps: number = 16
+  defaultSteps: number = 16,
+  defaultTimeSignature: string = '4/4'
 ): PatternSummary[] {
   const analysis = analyzeMeasureDuplicates(
     measures,
     defaultSubdivision,
-    defaultSteps
+    defaultSteps,
+    defaultTimeSignature
   );
   const bankMap = new Map<string, PatternSummary>();
 
@@ -353,6 +368,7 @@ export function extractPatternBankFromMeasures(
         code: item.patternCode,
         name: item.patternName,
         color: item.patternColor,
+        timeSignature: item.timeSignature || defaultTimeSignature,
         subdivision: item.subdivision,
         stepsPerMeasure: item.stepsPerMeasure,
         sampleMeasureIndex: idx,

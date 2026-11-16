@@ -72,7 +72,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialExercises }) =>
       try {
         const syncRes = await syncLocalExercisesToDb();
         if (syncRes.synced > 0 && isMounted) {
-          toast.success(`☁️ ${syncRes.synced} ejercicio(s) local(es) sincronizado(s) con PostgreSQL.`);
+          toast.success(`✅ ${syncRes.synced} ejercicios sincronizados con la nube`);
           await refreshExercisesFromDb();
         }
       } catch (e) {
@@ -93,9 +93,9 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialExercises }) =>
       const syncRes = await syncLocalExercisesToDb();
       await refreshExercisesFromDb();
       if (syncRes.synced > 0) {
-        toast.success(`☁️ ${syncRes.synced} ejercicio(s) sincronizado(s) exitosamente a la nube.`);
+        toast.success(`✅ ${syncRes.synced} ejercicios sincronizados con la nube`);
       } else {
-        toast.info('☁️ Tu catálogo ya está 100% sincronizado con la base de datos PostgreSQL.');
+        toast.success('✅ Todos los ejercicios están sincronizados con la nube');
       }
     } catch (err: any) {
       toast.error(err?.message || 'Error durante la sincronización a la nube.');

@@ -20,6 +20,10 @@ import {
   getStepsForSubdivision,
   getSubdivisionConfig,
 } from '@/lib/music-theory/rhythmSubdivisions';
+import {
+  getTimeSignatureSpec,
+  calculateStepsForMeasure,
+} from '@/lib/music/timeSignatures';
 import { ArrowLeft, Drum, Sparkles, Keyboard, Maximize2, Minimize2 } from 'lucide-react';
 
 interface PracticePlayerProps {
@@ -109,10 +113,10 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     (activeExercise?.totalSteps === 8
       ? '1/8'
       : activeExercise?.totalSteps === 4
-      ? '1/4'
-      : activeExercise?.totalSteps === 12 && activeExercise?.timeSignature === '4/4'
-      ? '1/8T'
-      : '1/16');
+        ? '1/4'
+        : activeExercise?.totalSteps === 12 && activeExercise?.timeSignature === '4/4'
+          ? '1/8T'
+          : '1/16');
 
   const normalizedSub = normalizeSubdivisionKey(rawSubdivision);
   const stepsPerMeasure =
@@ -142,19 +146,20 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       return (activeExercise as any).measures.map((m: any, idx: number) => {
         const rawNotes = m.notes || m.hits || [];
         const firstNoteWithMeta = rawNotes.find(
-          (n: any) => n?.patternCode || n?.subdivision || n?.stepsPerMeasure
+          (n: any) => n?.patternCode || n?.subdivision || n?.stepsPerMeasure || n?.timeSignature
         );
+        const mTimeSig = m.timeSignature || firstNoteWithMeta?.timeSignature || activeExercise?.timeSignature || '4/4';
         const mSub = normalizeSubdivisionKey(
           m.subdivision ||
-            firstNoteWithMeta?.subdivision ||
-            inferSubdivisionFromSteps(
-              m.stepsPerMeasure || firstNoteWithMeta?.stepsPerMeasure || 16,
-              normalizedSub
-            )
+          firstNoteWithMeta?.subdivision ||
+          inferSubdivisionFromSteps(
+            m.stepsPerMeasure || firstNoteWithMeta?.stepsPerMeasure || 16,
+            normalizedSub
+          )
         );
         const mSteps =
           Number(m.stepsPerMeasure || firstNoteWithMeta?.stepsPerMeasure) ||
-          getStepsForSubdivision(mSub, activeExercise?.timeSignature) ||
+          calculateStepsForMeasure(mTimeSig, mSub) ||
           stepsPerMeasure;
         const startStep = runningStep;
         const endStep = startStep + mSteps;
@@ -166,6 +171,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
           patternCode: m.patternCode || firstNoteWithMeta?.patternCode,
           patternName: m.patternName || firstNoteWithMeta?.patternName,
           patternColor: m.patternColor || firstNoteWithMeta?.patternColor,
+          timeSignature: mTimeSig,
           subdivision: mSub,
           stepsPerMeasure: mSteps,
           startStep,
@@ -180,8 +186,8 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
               n.stepIndex !== undefined
                 ? n.stepIndex
                 : n.step !== undefined
-                ? n.step % mSteps
-                : 0;
+                  ? n.step % mSteps
+                  : 0;
             return {
               ...n,
               stepIndex: rel,
@@ -192,6 +198,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
               syncopated: Boolean(n.syncopated),
               sticking: isKick ? 'K' : (n.sticking || 'R'),
               velocity: n.ghost ? 0.32 : (n.velocity ?? 0.8),
+              timeSignature: mTimeSig,
               subdivision: mSub,
               stepsPerMeasure: mSteps,
             };
@@ -213,21 +220,22 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
           h.step !== undefined
             ? h.step
             : h.stepIndex !== undefined
-            ? h.stepIndex
-            : 0;
+              ? h.stepIndex
+              : 0;
         return s >= mStartDefault && s < mEndDefault;
       });
 
-      const firstWithMeta = rawMeasNotes.find(
-        (n: any) => n?.patternCode || n?.subdivision || n?.stepsPerMeasure
+      const firstWithMeta: any = rawMeasNotes.find(
+        (n: any) => n?.patternCode || n?.subdivision || n?.stepsPerMeasure || n?.timeSignature
       );
+      const mTimeSig = firstWithMeta?.timeSignature || activeExercise?.timeSignature || '4/4';
       const mSub = normalizeSubdivisionKey(
         firstWithMeta?.subdivision ||
-          inferSubdivisionFromSteps(firstWithMeta?.stepsPerMeasure ?? 16, normalizedSub)
+        inferSubdivisionFromSteps(firstWithMeta?.stepsPerMeasure ?? 16, normalizedSub)
       );
       const mSteps =
         Number(firstWithMeta?.stepsPerMeasure) ||
-        getStepsForSubdivision(mSub, activeExercise?.timeSignature) ||
+        calculateStepsForMeasure(mTimeSig, mSub) ||
         stepsPerMeasure;
       const startStep = runningStep;
       const endStep = startStep + mSteps;
@@ -238,8 +246,8 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
           h.step !== undefined
             ? h.step
             : h.stepIndex !== undefined
-            ? h.stepIndex
-            : 0;
+              ? h.stepIndex
+              : 0;
         const rel =
           h.stepIndex !== undefined ? h.stepIndex : (s - mStartDefault + mSteps) % mSteps;
         const inst =
@@ -257,6 +265,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
           syncopated: Boolean(h.syncopated),
           sticking: isKick ? 'K' : (h.sticking || 'R'),
           velocity: h.ghost ? 0.32 : (h.velocity ?? 0.8),
+          timeSignature: mTimeSig,
           subdivision: mSub,
           stepsPerMeasure: mSteps,
         };
@@ -268,6 +277,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
         patternCode: firstWithMeta?.patternCode,
         patternName: firstWithMeta?.patternName,
         patternColor: firstWithMeta?.patternColor,
+        timeSignature: mTimeSig,
         subdivision: mSub,
         stepsPerMeasure: mSteps,
         startStep,
@@ -284,16 +294,18 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       (activeExercise as any).patternBank.length > 0
     ) {
       return (activeExercise as any).patternBank.map((p: any) => {
+        const pTimeSig = p.timeSignature || activeExercise?.timeSignature || '4/4';
         const pSub = normalizeSubdivisionKey(
           p.subdivision ||
-            inferSubdivisionFromSteps(p.stepsPerMeasure ?? 16, normalizedSub)
+          inferSubdivisionFromSteps(p.stepsPerMeasure ?? 16, normalizedSub)
         );
         const pSteps =
           Number(p.stepsPerMeasure) ||
-          getStepsForSubdivision(pSub, activeExercise?.timeSignature) ||
+          calculateStepsForMeasure(pTimeSig, pSub) ||
           stepsPerMeasure;
         return {
           ...p,
+          timeSignature: pTimeSig,
           subdivision: pSub,
           stepsPerMeasure: pSteps,
         };
@@ -315,13 +327,14 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     if (!targetPat) {
       return fullMeasures;
     }
+    const patTimeSig = targetPat.timeSignature || activeExercise?.timeSignature || '4/4';
     const patSub = normalizeSubdivisionKey(
       targetPat.subdivision ||
-        inferSubdivisionFromSteps(targetPat.stepsPerMeasure ?? 16, normalizedSub)
+      inferSubdivisionFromSteps(targetPat.stepsPerMeasure ?? 16, normalizedSub)
     );
     const patSteps =
       Number(targetPat.stepsPerMeasure) ||
-      getStepsForSubdivision(patSub, activeExercise?.timeSignature) ||
+      calculateStepsForMeasure(patTimeSig, patSub) ||
       stepsPerMeasure;
 
     return [
@@ -331,6 +344,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
         patternCode: targetPat.code,
         patternName: targetPat.name,
         patternColor: targetPat.color,
+        timeSignature: patTimeSig,
         subdivision: patSub,
         stepsPerMeasure: patSteps,
         startStep: 0,
@@ -414,39 +428,29 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
   const activeSubConfig = useMemo(() => {
     return getSubdivisionConfig(
       activeMeasureSub as any,
-      activeExercise?.timeSignature,
+      activeMeasureObj?.timeSignature || activeExercise?.timeSignature,
       activeMeasureSteps
     );
-  }, [activeMeasureSub, activeExercise?.timeSignature, activeMeasureSteps]);
-
-  // Pulsos por compás según métrica
-  const beatsPerMeasure =
-    activeExercise.timeSignature === '6/8'
-      ? 2
-      : activeExercise.timeSignature === '3/4'
-      ? 3
-      : 4;
+  }, [activeMeasureSub, activeMeasureObj?.timeSignature, activeExercise?.timeSignature, activeMeasureSteps]);
 
   // ==============================================================
   // 2. SINCRONIZACIÓN DE TIEMPO DEL SECUENCIADOR WEB AUDIO (MULTI-SUBDIVISIÓN)
   // ==============================================================
   const getMeasureDuration = useCallback(
-    (currentBpm: number) => {
-      if (activeExercise.timeSignature === '6/8') {
-        return (60 / currentBpm) * 3;
-      }
-      if (activeExercise.timeSignature === '3/4') {
-        return (60 / currentBpm) * 3;
-      }
-      return (60 / currentBpm) * 4;
+    (currentBpm: number, forGlobalStep?: number) => {
+      const targetStep =
+        forGlobalStep !== undefined ? forGlobalStep : schedulerStepRef.current;
+      const mObj = getMeasureForGlobalStep(targetStep);
+      const mTimeSig = mObj?.timeSignature || activeExercise?.timeSignature || '4/4';
+      const spec = getTimeSignatureSpec(mTimeSig);
+      return (60 / currentBpm) * spec.quarterNoteBeats;
     },
-    [activeExercise.timeSignature]
+    [activeExercise?.timeSignature, getMeasureForGlobalStep]
   );
 
-  // La duración total del compás se mantiene constante ((60 / bpm) * 4); cada paso dura measureDurationSec / mSteps
+  // La duración total del compás se calcula de forma exacta según su métrica; cada paso dura measureDurationSec / mSteps
   const getSecondsPerStep = useCallback(
     (currentBpm: number, forGlobalStep?: number) => {
-      const measureDurationSec = getMeasureDuration(currentBpm);
       const targetStep =
         forGlobalStep !== undefined ? forGlobalStep : schedulerStepRef.current;
       const mObj = getMeasureForGlobalStep(targetStep);
@@ -454,6 +458,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
         1,
         mObj?.stepsPerMeasure || stepsPerMeasure || 16
       );
+      const measureDurationSec = getMeasureDuration(currentBpm, targetStep);
       return measureDurationSec / mSteps;
     },
     [getMeasureDuration, getMeasureForGlobalStep, stepsPerMeasure]
@@ -547,10 +552,10 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
             hit.ghost
               ? 32
               : hit.velocity !== undefined
-              ? hit.velocity > 1
-                ? hit.velocity
-                : hit.velocity * 100
-              : 80,
+                ? hit.velocity > 1
+                  ? hit.velocity
+                  : hit.velocity * 100
+                : 80,
           accent: Boolean(hit.accent && !hit.ghost),
           ghost: Boolean(hit.ghost),
           syncopated: Boolean(hit.syncopated),
@@ -559,21 +564,33 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
         });
       });
 
-      // 2. Metrónomo sincronizado en los tiempos de negra/pulso fuerte usando el stepsPerMeasure propio del compás
+      // 2. Metrónomo sincronizado en los tiempos de negra/pulso fuerte usando la métrica y stepsPerMeasure propios del compás
       const mObj = getMeasureForGlobalStep(stepNumber);
       const mStart = mObj?.startStep || 0;
       const mSteps = Math.max(1, mObj?.stepsPerMeasure || stepsPerMeasure || 16);
       const relStep = stepNumber - mStart;
-      const mStepsPerBeat = Math.max(1, Math.round(mSteps / beatsPerMeasure));
+      const mTimeSig = mObj?.timeSignature || activeExercise?.timeSignature || '4/4';
+      const spec = getTimeSignatureSpec(mTimeSig);
 
-      if (metronomeEnabled && relStep % mStepsPerBeat === 0) {
+      let isClick = false;
+      if (spec.denominator === 8) {
+        const stepsPerEighth = Math.max(1, Math.round(mSteps / spec.numerator));
+        const eighthIndex = Math.floor(relStep / stepsPerEighth);
+        const isEighthStart = relStep % stepsPerEighth === 0;
+        isClick = isEighthStart && (spec.accentBeats || [0]).includes(eighthIndex);
+      } else {
+        const mStepsPerBeat = Math.max(1, Math.round(mSteps / spec.numerator));
+        isClick = relStep % mStepsPerBeat === 0;
+      }
+
+      if (metronomeEnabled && isClick) {
         const isDownbeat = relStep === 0;
         engine.playMetronome(time, isDownbeat);
       }
     },
     [
       metronomeEnabled,
-      beatsPerMeasure,
+      activeExercise?.timeSignature,
       stepsPerMeasure,
       totalSteps,
       getMeasureForGlobalStep,
@@ -737,7 +754,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
         } else if ((document as any).webkitExitFullscreen) {
           await (document as any).webkitExitFullscreen();
         }
-      } catch (err) {}
+      } catch (err) { }
 
       try {
         const orientation =
@@ -747,7 +764,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
         if (orientation && typeof orientation.unlock === 'function') {
           orientation.unlock();
         }
-      } catch (err) {}
+      } catch (err) { }
 
       setIsForceLandscapeCSS(false);
       setIsFullscreen(false);
@@ -774,7 +791,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
         if (orientation && typeof orientation.unlock === 'function') {
           try {
             orientation.unlock();
-          } catch (e) {}
+          } catch (e) { }
         }
       }
     };
@@ -875,13 +892,12 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
   return (
     <div
       ref={drumFullscreenRef}
-      className={`transition-all duration-200 ${
-        isFullscreen
-          ? isForceLandscapeCSS
-            ? 'fixed inset-0 z-[9999] bg-[#0c0e14] w-[100vh] h-[100vw] origin-top-left rotate-90 translate-x-[100vw] flex flex-col justify-between p-3 sm:p-4 overflow-hidden select-none'
-            : 'fixed inset-0 z-[9999] bg-[#0c0e14] flex flex-col justify-between p-3 sm:p-4 w-screen h-screen overflow-hidden select-none'
-          : 'relative w-full max-w-6xl mx-auto flex flex-col gap-4'
-      }`}
+      className={`transition-all duration-200 ${isFullscreen
+        ? isForceLandscapeCSS
+          ? 'fixed inset-0 z-[9999] bg-[#0c0e14] w-[100vh] h-[100vw] origin-top-left rotate-90 translate-x-[100vw] flex flex-col justify-between p-3 sm:p-4 overflow-hidden select-none'
+          : 'fixed inset-0 z-[9999] bg-[#0c0e14] flex flex-col justify-between p-3 sm:p-4 w-screen h-screen overflow-hidden select-none'
+        : 'relative w-full max-w-6xl mx-auto flex flex-col gap-4'
+        }`}
     >
       {/* ============================================================== */}
       {/* 1. MODO PANTALLA COMPLETA                                       */}
@@ -903,11 +919,10 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
                   <button
                     type="button"
                     onClick={() => handleSelectPatternMode('ALL')}
-                    className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold border cursor-pointer ${
-                      selectedPatternFilter === 'ALL'
-                        ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black'
-                        : 'bg-slate-800 text-slate-300 border-slate-700'
-                    }`}
+                    className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold border cursor-pointer ${selectedPatternFilter === 'ALL'
+                      ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black'
+                      : 'bg-slate-800 text-slate-300 border-slate-700'
+                      }`}
                   >
                     🔥 Secuencia ({fullMeasures.length}c)
                   </button>
@@ -919,11 +934,10 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
                         key={`fs-pat-${pat.code}`}
                         type="button"
                         onClick={() => handleSelectPatternMode(pat.code)}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold border cursor-pointer ${
-                          isSelected
-                            ? `${style.badge} ring-1 ring-white/50`
-                            : 'bg-slate-800/80 text-slate-400 border-slate-700'
-                        }`}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold border cursor-pointer ${isSelected
+                          ? `${style.badge} ring-1 ring-white/50`
+                          : 'bg-slate-800/80 text-slate-400 border-slate-700'
+                          }`}
                       >
                         [{pat.code} • {pat.name} • {pat.subdivision || '1/16'}]
                       </button>
@@ -955,7 +969,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
                 stepsPerMeasure={activeMeasureSteps}
                 currentStepInMeasure={stepInMeasure}
                 progress={progress}
-                timeSignature={activeExercise.timeSignature}
+                timeSignature={activeMeasureObj?.timeSignature || activeExercise.timeSignature}
                 isPlaying={isPlaying}
                 onSelectMeasure={handleSelectMeasure}
                 isFullscreen={true}
@@ -968,11 +982,10 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
             <button
               type="button"
               onClick={handlePlayPause}
-              className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all shadow-md cursor-pointer ${
-                isPlaying
-                  ? 'bg-amber-400 text-slate-950 animate-pulse'
-                  : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-              }`}
+              className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all shadow-md cursor-pointer ${isPlaying
+                ? 'bg-amber-400 text-slate-950 animate-pulse'
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                }`}
             >
               <span>{isPlaying ? '⏸ Pausar' : '▶ Iniciar Práctica'}</span>
             </button>
@@ -992,11 +1005,10 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
             <button
               type="button"
               onClick={handleToggleMetronome}
-              className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all cursor-pointer ${
-                metronomeEnabled
-                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
-                  : 'bg-slate-950 text-slate-500 border-slate-800'
-              }`}
+              className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all cursor-pointer ${metronomeEnabled
+                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
+                : 'bg-slate-950 text-slate-500 border-slate-800'
+                }`}
             >
               🔔 Metrónomo {metronomeEnabled ? 'ON' : 'OFF'}
             </button>
@@ -1024,7 +1036,9 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
                     {activeExercise.category}
                   </span>
                   <span className="text-zinc-600">•</span>
-                  <span className="text-[11px] text-zinc-400 font-mono">{activeExercise.timeSignature}</span>
+                  <span className="text-[11px] text-amber-300 font-mono font-bold">
+                    {activeMeasureObj?.timeSignature || activeExercise.timeSignature}
+                  </span>
                   <span className="text-zinc-600">•</span>
                   <span className="text-[11px] text-zinc-400 font-mono">
                     Compás {activeMeasureIndex + 1} de {totalMeasures} • {activeSubConfig.name} ({activeMeasureSteps} pasos)
@@ -1065,11 +1079,10 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
                 <button
                   type="button"
                   onClick={() => handleSelectPatternMode('ALL')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
-                    selectedPatternFilter === 'ALL'
-                      ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-[0_0_12px_rgba(34,211,238,0.35)]'
-                      : 'bg-slate-950/80 hover:bg-slate-800 text-slate-300 border-slate-800'
-                  }`}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${selectedPatternFilter === 'ALL'
+                    ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-[0_0_12px_rgba(34,211,238,0.35)]'
+                    : 'bg-slate-950/80 hover:bg-slate-800 text-slate-300 border-slate-800'
+                    }`}
                 >
                   <span>🔥 Secuencia Completa ({fullMeasures.length} Compases)</span>
                 </button>
@@ -1077,19 +1090,19 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
                 {patternBank.map((pat: any) => {
                   const style = getPatternStyle(pat.color);
                   const isSelected = selectedPatternFilter === pat.code;
+                  const patTimeSig = pat.timeSignature || activeExercise.timeSignature || '4/4';
                   return (
                     <button
                       key={`warmup-pat-${pat.code}`}
                       type="button"
                       onClick={() => handleSelectPatternMode(pat.code)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
-                        isSelected
-                          ? `${style.badge} ring-2 ring-white/40 scale-105 shadow-md font-black`
-                          : 'bg-slate-950/80 hover:bg-slate-800 text-slate-300 border-slate-800'
-                      }`}
-                      title={`Practicar únicamente ${pat.code} (${pat.name} • ${pat.subdivision || '1/16'}) en bucle continuo`}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${isSelected
+                        ? `${style.badge} ring-2 ring-white/40 scale-105 shadow-md font-black`
+                        : 'bg-slate-950/80 hover:bg-slate-800 text-slate-300 border-slate-800'
+                        }`}
+                      title={`Practicar únicamente ${pat.code} (${pat.name} • ${patTimeSig} • ${pat.subdivision || '1/16'}) en bucle continuo`}
                     >
-                      <span>[{pat.code} • {pat.name} • {pat.subdivision || '1/16'}]</span>
+                      <span>[{pat.code} • {pat.name} • {patTimeSig} • {pat.subdivision || '1/16'}]</span>
                       <span className="text-[10px] opacity-75">({pat.usageCount}c)</span>
                     </button>
                   );
@@ -1114,7 +1127,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
               stepsPerMeasure={activeMeasureSteps}
               currentStepInMeasure={stepInMeasure}
               progress={progress}
-              timeSignature={activeExercise.timeSignature}
+              timeSignature={activeMeasureObj?.timeSignature || activeExercise.timeSignature}
               isPlaying={isPlaying}
               onSelectMeasure={handleSelectMeasure}
               isFullscreen={false}

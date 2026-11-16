@@ -1,3 +1,9 @@
+import {
+  calculateStepsForMeasure,
+  getStepCountLabelForTimeSignature,
+  getTimeSignatureSpec,
+} from '@/lib/music/timeSignatures';
+
 export interface SubdivisionConfig {
   id: string;
   name: string;
@@ -86,26 +92,7 @@ export function normalizeSubdivisionKey(val?: string): string {
 
 export function getStepsForSubdivision(subdivisionKey: string, timeSignature: string = '4/4'): number {
   const key = normalizeSubdivisionKey(subdivisionKey);
-  if (timeSignature === '6/8') {
-    if (key === '1/8') return 6;
-    if (key === '1/32') return 24;
-    return 12;
-  }
-  if (timeSignature === '7/8') {
-    return key === '1/8' ? 7 : 14;
-  }
-  switch (key) {
-    case '1/4': return 4;
-    case '1/8': return 8;
-    case '1/8T': return 12;
-    case '1/16T': return 24;
-    case '1/32': return 32;
-    case 'quintillo': return 20;
-    case 'septillo': return 28;
-    case '1/16':
-    default:
-      return 16;
-  }
+  return calculateStepsForMeasure(timeSignature, key);
 }
 
 export function getSubdivisionConfig(
@@ -171,90 +158,10 @@ export function getStepCountLabel(
   isBeatStart: boolean;
   isBeat: boolean;
 } {
-  // Determinar pasos por pulso (asumiendo 4 tiempos por compás o métrica equivalente)
-  const beatsPerBar =
-    timeSignature === '6/8'
-      ? 2
-      : timeSignature === '7/8'
-      ? 7
-      : stepsPerMeasure === 20 && subdivision === '5/4'
-      ? 5
-      : stepsPerMeasure === 28 && subdivision === '7/4'
-      ? 7
-      : 4;
-
-  const stepsPerBeat = Math.max(1, Math.round(stepsPerMeasure / beatsPerBar));
-  const beatNumber = Math.floor(stepIndex / stepsPerBeat) + 1;
-  const subIndex = stepIndex % stepsPerBeat;
-  const isBeatStart = subIndex === 0;
-
-  // 1. Negras (1/4 -> 1 paso por pulso): 1 | 2 | 3 | 4
-  if (stepsPerBeat === 1) {
-    return { label: `${beatNumber}`, isBeatStart: true, isBeat: true };
-  }
-
-  // 2. Corcheas (1/8 -> 2 pasos por pulso): 1 y | 2 y | 3 y | 4 y
-  if (stepsPerBeat === 2) {
-    return {
-      label: subIndex === 0 ? `${beatNumber}` : 'y',
-      isBeatStart,
-      isBeat: isBeatStart,
-    };
-  }
-
-  // 3. Tresillos de Corcheas (1/8T -> 3 pasos por pulso): 1 y a | 2 y a | 3 y a | 4 y a
-  if (stepsPerBeat === 3) {
-    const syllables = [`${beatNumber}`, 'y', 'a'];
-    return {
-      label: syllables[subIndex] ?? 'a',
-      isBeatStart,
-      isBeat: isBeatStart,
-    };
-  }
-
-  // 4. Semicorcheas (1/16 -> 4 pasos por pulso): 1 e y a | 2 e y a | 3 e y a | 4 e y a
-  if (stepsPerBeat === 4) {
-    const syllables = [`${beatNumber}`, 'e', 'y', 'a'];
-    return {
-      label: syllables[subIndex] ?? 'a',
-      isBeatStart,
-      isBeat: isBeatStart,
-    };
-  }
-
-  // 5. Quintillos (5 pasos por pulso): 1 e y a u | 2 e y a u | 3 e y a u | 4 e y a u
-  if (stepsPerBeat === 5) {
-    const syllables = [`${beatNumber}`, 'e', 'y', 'a', 'u'];
-    return {
-      label: syllables[subIndex] ?? 'u',
-      isBeatStart,
-      isBeat: isBeatStart,
-    };
-  }
-
-  // 6. Seisillos (1/16T -> 6 pasos por pulso): 1 y a + y a | 2 y a + y a | 3 y a + y a | 4 y a + y a
-  if (stepsPerBeat === 6) {
-    const syllables = [`${beatNumber}`, 'y', 'a', '+', 'y', 'a'];
-    return {
-      label: syllables[subIndex] ?? 'a',
-      isBeatStart,
-      isBeat: isBeatStart,
-    };
-  }
-
-  // 7. Fusas (1/32 -> 8 pasos por pulso): 1 e y a + e y a | 2 e y a + e y a...
-  if (stepsPerBeat === 8) {
-    const syllables = [`${beatNumber}`, 'e', 'y', 'a', '+', 'e', 'y', 'a'];
-    return {
-      label: syllables[subIndex] ?? 'a',
-      isBeatStart,
-      isBeat: isBeatStart,
-    };
-  }
-
-  return {
-    label: subIndex === 0 ? `${beatNumber}` : `·${subIndex + 1}`,
-    isBeatStart,
-    isBeat: isBeatStart,
-  };
+  return getStepCountLabelForTimeSignature(
+    stepIndex,
+    stepsPerMeasure,
+    subdivision || '1/16',
+    timeSignature || '4/4'
+  );
 }
