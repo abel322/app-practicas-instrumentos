@@ -62,7 +62,11 @@ import {
   getQuantizedStep,
 } from './PianoRollBuilder';
 import { NoteDuration } from './PianoGrandStaffView';
-import { normalizeSubdivisionKey, getStepsForSubdivision } from '@/lib/music-theory/rhythmSubdivisions';
+import {
+  normalizeSubdivisionKey,
+  getStepsForSubdivision,
+  getStepCountLabel,
+} from '@/lib/music-theory/rhythmSubdivisions';
 import { normalizeInstrumentKey } from '@/lib/music-theory/instrumentUtils';
 import { validateLegatoTechnique } from './StudioBuilderView';
 import { PrintableScoreModal } from '@/components/studio/PrintableScoreModal';
@@ -70,6 +74,7 @@ import type { ScoreMeasure } from '@/components/studio/ExtendedScoreView';
 
 export {
   getStepRhythmLabel,
+  getStepCountLabel,
   getStepLabel,
   AVAILABLE_FRETS,
   validateLegatoTechnique,
@@ -4938,25 +4943,36 @@ export const ExerciseBuilder: React.FC = () => {
               {Array.from({ length: stepsPerMeasure }).map((_, stepIdx) => {
                 const globalStep = activeMeasureStart + stepIdx;
                 const isPlayback = isPlaying && playbackActiveStep === globalStep;
-                const { label, isBeat } = getStepRhythmLabel(stepIdx, stepsPerMeasure);
+                const { label, isBeatStart } = getStepCountLabel(
+                  stepIdx,
+                  stepsPerMeasure,
+                  activeMeasureSubdivision,
+                  timeSignature
+                );
 
                 return (
                   <div
                     key={`step-head-${stepIdx}`}
-                    className={`flex-1 flex flex-col items-center justify-center py-1 transition-colors ${
+                    className={`flex-1 flex flex-col items-center justify-center py-1 transition-colors relative ${
                       isPlayback ? 'scale-110' : ''
+                    } ${
+                      isBeatStart && stepIdx > 0
+                        ? instrument === 'drums'
+                          ? 'border-l border-white/20'
+                          : 'border-l border-amber-500/25'
+                        : ''
                     }`}
                   >
                     <span
-                      className={`text-xs font-mono font-bold transition-colors ${
+                      className={`font-mono transition-colors ${
                         isPlayback
-                          ? 'text-cyan-300 font-black'
-                          : isBeat
+                          ? 'text-cyan-300 font-black text-xs'
+                          : isBeatStart
                           ? instrument === 'drums'
-                            ? 'text-cyan-500 dark:text-cyan-400 text-sm font-black'
-                            : 'text-amber-300 text-sm font-black'
+                            ? 'text-cyan-400 font-bold text-xs'
+                            : 'text-amber-300 font-black text-xs'
                           : instrument === 'drums'
-                          ? 'text-slate-400 dark:text-slate-500 font-semibold text-[11px]'
+                          ? 'text-slate-400 dark:text-slate-400 font-semibold text-[11px]'
                           : 'text-amber-200/50 font-semibold text-[11px]'
                       }`}
                     >
@@ -4967,7 +4983,7 @@ export const ExerciseBuilder: React.FC = () => {
                       className={`w-1 h-1 rounded-full mt-0.5 transition-colors ${
                         isPlayback
                           ? 'bg-cyan-300 ring-2 ring-cyan-300/50'
-                          : isBeat
+                          : isBeatStart
                           ? instrument === 'drums'
                             ? 'bg-cyan-400 ring-2 ring-cyan-400/30'
                             : 'bg-amber-400 ring-2 ring-amber-400/30'
@@ -5014,6 +5030,12 @@ export const ExerciseBuilder: React.FC = () => {
                   {Array.from({ length: stepsPerMeasure }).map((_, stepIdx) => {
                     const globalStep = activeMeasureStart + stepIdx;
                     const isPlayback = isPlaying && playbackActiveStep === globalStep;
+                    const { isBeatStart } = getStepCountLabel(
+                      stepIdx,
+                      stepsPerMeasure,
+                      activeMeasureSubdivision,
+                      timeSignature
+                    );
                     const hit = notes.find((n) => n.step === globalStep && (n.drumVoice === row.voice || (row.voice === 'hihat' && n.drumVoice === 'hihat_closed') || (row.voice === 'floor_tom' && n.drumVoice === 'granadero')));
 
                     const isKickTrack =
@@ -5031,6 +5053,8 @@ export const ExerciseBuilder: React.FC = () => {
                         onClick={() => handleCellClick(stepIdx, undefined, row.voice)}
                         className={`h-full flex items-center justify-center transition-all relative ${
                           isPlayback ? 'bg-cyan-500/15' : 'hover:bg-slate-100/50 dark:hover:bg-white/5'
+                        } ${
+                          isBeatStart && stepIdx > 0 ? 'border-l border-white/10' : ''
                         }`}
                       >
                         {hit ? (

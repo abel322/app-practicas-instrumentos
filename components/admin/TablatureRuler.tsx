@@ -1,94 +1,22 @@
 import React from 'react';
+import { getStepCountLabel } from '@/lib/music-theory/rhythmSubdivisions';
 export { getStepLabel, getStepsPerBeat, isStepMainBeat, isStepBeatEnd } from './PianoRollBuilder';
+export { getStepCountLabel };
 
 /**
- * Retorna la etiqueta rítmica y si es pulso a tierra (beat)
+ * Retorna la etiqueta rítmica estándar y si es pulso a tierra (beat)
  * según el índice del paso y el total de pasos del compás.
  */
-export function getStepRhythmLabel(stepIndex: number, totalSteps: number = 16): { label: string; isBeat: boolean } {
-  if (totalSteps === 4) {
-    return {
-      label: (stepIndex + 1).toString(),
-      isBeat: true,
-    };
-  }
-
-  if (totalSteps === 8) {
-    // 4/4 en corcheas (8 pasos: 1 y 2 y 3 y 4 y)
-    const beatNumber = Math.floor(stepIndex / 2) + 1;
-    const subIndex = stepIndex % 2;
-    return {
-      label: subIndex === 0 ? beatNumber.toString() : 'y',
-      isBeat: subIndex === 0,
-    };
-  }
-
-  if (totalSteps === 12) {
-    // 4/4 en tresillos de corchea (12 pasos: 1 2 3 | 2 2 3 | 3 2 3 | 4 2 3)
-    const beatNumber = Math.floor(stepIndex / 3) + 1;
-    const subIndex = stepIndex % 3;
-    const subLabels = [beatNumber.toString(), '2', '3'];
-    return {
-      label: subLabels[subIndex],
-      isBeat: subIndex === 0,
-    };
-  }
-
-  if (totalSteps === 16) {
-    // 4/4 en semicorcheas (16 pasos: 1 e y a 2 e y a...)
-    const beatNumber = Math.floor(stepIndex / 4) + 1;
-    const subIndex = stepIndex % 4;
-    const subLabels = [beatNumber.toString(), 'e', 'y', 'a'];
-    return {
-      label: subLabels[subIndex],
-      isBeat: subIndex === 0,
-    };
-  }
-
-  if (totalSteps === 20) {
-    // Quintillos (5:4 - 20 pasos: 1 2 3 4 5 por cada pulso)
-    const beatNumber = Math.floor(stepIndex / 5) + 1;
-    const subIndex = stepIndex % 5;
-    return {
-      label: subIndex === 0 ? beatNumber.toString() : (subIndex + 1).toString(),
-      isBeat: subIndex === 0,
-    };
-  }
-
-  if (totalSteps === 24) {
-    // Tresillos de semicorchea / Seisillos (24 pasos: 1 2 3 4 5 6 por cada pulso)
-    const beatNumber = Math.floor(stepIndex / 6) + 1;
-    const subIndex = stepIndex % 6;
-    return {
-      label: subIndex === 0 ? beatNumber.toString() : (subIndex + 1).toString(),
-      isBeat: subIndex === 0,
-    };
-  }
-
-  if (totalSteps === 28) {
-    // Septillos (7:4 - 28 pasos: 7 por tiempo)
-    const beatNumber = Math.floor(stepIndex / 7) + 1;
-    const subIndex = stepIndex % 7;
-    return {
-      label: subIndex === 0 ? beatNumber.toString() : '•',
-      isBeat: subIndex === 0,
-    };
-  }
-
-  if (totalSteps === 32) {
-    // Fusas (32 pasos: 8 por tiempo)
-    const beatNumber = Math.floor(stepIndex / 8) + 1;
-    const subIndex = stepIndex % 8;
-    return {
-      label: subIndex === 0 ? beatNumber.toString() : '•',
-      isBeat: subIndex === 0,
-    };
-  }
-
-  // Por defecto
+export function getStepRhythmLabel(
+  stepIndex: number,
+  totalSteps: number = 16,
+  subdivision?: string,
+  timeSignature?: string
+): { label: string; isBeat: boolean } {
+  const info = getStepCountLabel(stepIndex, totalSteps, subdivision, timeSignature);
   return {
-    label: (stepIndex + 1).toString(),
-    isBeat: stepIndex % 4 === 0,
+    label: info.label,
+    isBeat: info.isBeatStart,
   };
 }
 

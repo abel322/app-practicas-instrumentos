@@ -8,6 +8,7 @@ import {
   getPatternStyle,
   inferSubdivisionFromSteps,
 } from '@/lib/music/measureFingerprint';
+import { getStepCountLabel } from '@/lib/music-theory/rhythmSubdivisions';
 
 export interface DrumScoreProps {
   measure?: any;
@@ -109,8 +110,8 @@ export function DrumScoreRenderer({
                 n.stepIndex !== undefined
                   ? n.stepIndex
                   : n.step !== undefined
-                  ? n.step % mSteps
-                  : 0,
+                    ? n.step % mSteps
+                    : 0,
               step:
                 n.step !== undefined
                   ? n.step
@@ -163,8 +164,8 @@ export function DrumScoreRenderer({
                 n.stepIndex !== undefined
                   ? n.stepIndex
                   : n.step !== undefined
-                  ? n.step % mSteps
-                  : 0,
+                    ? n.step % mSteps
+                    : 0,
               instrument: inst,
               accent: Boolean(n.accent && !n.ghost),
               ghost: Boolean(n.ghost),
@@ -181,12 +182,12 @@ export function DrumScoreRenderer({
       totalMeasuresProp ||
       (hits && hits.length > 0
         ? Math.max(
-            1,
-            Math.ceil(
-              Math.max(...hits.map((h: any) => (h.step || 0) + 1)) /
-                stepsPerMeasure
-            )
+          1,
+          Math.ceil(
+            Math.max(...hits.map((h: any) => (h.step || 0) + 1)) /
+            stepsPerMeasure
           )
+        )
         : 1);
 
     const allHits = hits || [];
@@ -202,8 +203,8 @@ export function DrumScoreRenderer({
             h.step !== undefined
               ? h.step
               : h.stepIndex !== undefined
-              ? h.stepIndex
-              : 0;
+                ? h.stepIndex
+                : 0;
           return s >= mStart && s < mEnd;
         })
         .map((h: any) => {
@@ -211,8 +212,8 @@ export function DrumScoreRenderer({
             h.step !== undefined
               ? h.step
               : h.stepIndex !== undefined
-              ? h.stepIndex
-              : 0;
+                ? h.stepIndex
+                : 0;
           const inst =
             h.instrument || h.drumVoice || h.drumType || h.instrumentKey || 'snare';
           const isKick =
@@ -299,45 +300,6 @@ export function DrumScoreRenderer({
   // Generar etiquetas de pasos dinámicas según el stepsPerMeasure propio de cada compás
   const getStepLabelsForMeasure = useCallback(
     (mSteps: number) => {
-      if (mSteps === 12 && timeSignature === '4/4') {
-        // 1/8T (Tresillos de corchea): 1 2 3 | 2 2 3 | 3 2 3 | 4 2 3
-        return [
-          { label: '1', isMainBeat: true },
-          { label: '2', isMainBeat: false },
-          { label: '3', isMainBeat: false },
-          { label: '2', isMainBeat: true },
-          { label: '2', isMainBeat: false },
-          { label: '3', isMainBeat: false },
-          { label: '3', isMainBeat: true },
-          { label: '2', isMainBeat: false },
-          { label: '3', isMainBeat: false },
-          { label: '4', isMainBeat: true },
-          { label: '2', isMainBeat: false },
-          { label: '3', isMainBeat: false },
-        ];
-      }
-      if (mSteps === 24 && timeSignature === '4/4') {
-        // 1/16T (Seisillos): 6 notas por tiempo
-        return Array.from({ length: 24 }).map((_, sIdx) => ({
-          label:
-            sIdx % 6 === 0
-              ? String(Math.floor(sIdx / 6) + 1)
-              : String((sIdx % 6) + 1),
-          isMainBeat: sIdx % 6 === 0,
-        }));
-      }
-      if (mSteps === 8) {
-        return ['1', 'y', '2', 'y', '3', 'y', '4', 'y'].map((l, sIdx) => ({
-          label: l,
-          isMainBeat: sIdx % 2 === 0,
-        }));
-      }
-      if (mSteps === 4) {
-        return ['1', '2', '3', '4'].map((l) => ({
-          label: l,
-          isMainBeat: true,
-        }));
-      }
       if (timeSignature === '6/8') {
         return (
           mSteps === 6
@@ -348,37 +310,10 @@ export function DrumScoreRenderer({
           isMainBeat: mSteps === 6 ? sIdx % 3 === 0 : sIdx % 6 === 0,
         }));
       }
-      if (mSteps === 16) {
-        return [
-          '1',
-          'e',
-          '&',
-          'a',
-          '2',
-          'e',
-          '&',
-          'a',
-          '3',
-          'e',
-          '&',
-          'a',
-          '4',
-          'e',
-          '&',
-          'a',
-        ].map((l, sIdx) => ({
-          label: l,
-          isMainBeat: sIdx % 4 === 0,
-        }));
-      }
-      const stepsPerBeat = Math.max(1, Math.round(mSteps / 4));
-      return Array.from({ length: mSteps }).map((_, sIdx) => ({
-        label:
-          sIdx % stepsPerBeat === 0
-            ? String(Math.floor(sIdx / stepsPerBeat) + 1)
-            : String((sIdx % stepsPerBeat) + 1),
-        isMainBeat: sIdx % stepsPerBeat === 0,
-      }));
+      return Array.from({ length: mSteps }).map((_, sIdx) => {
+        const res = getStepCountLabel(sIdx, mSteps, undefined, timeSignature);
+        return { label: res.label, isMainBeat: res.isBeatStart };
+      });
     },
     [timeSignature]
   );
@@ -563,15 +498,14 @@ export function DrumScoreRenderer({
                 data-pill-index={idx}
                 type="button"
                 onClick={() => handleMeasurePillClick(idx)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 shrink-0 transition-all cursor-pointer border ${
-                  isCurrent
-                    ? 'border-cyan-400 bg-cyan-500/20 text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.35)]'
-                    : isDup
+                className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 shrink-0 transition-all cursor-pointer border ${isCurrent
+                  ? 'border-cyan-400 bg-cyan-500/20 text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.35)]'
+                  : isDup
                     ? 'text-amber-300 border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20'
                     : isNext
-                    ? 'border-slate-700 bg-slate-800/80 text-slate-300 hover:border-slate-600'
-                    : 'border-slate-800/80 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:text-slate-300'
-                }`}
+                      ? 'border-slate-700 bg-slate-800/80 text-slate-300 hover:border-slate-600'
+                      : 'border-slate-800/80 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:text-slate-300'
+                  }`}
                 title={`Compás ${idx + 1}: [${analysis?.patternCode}] ${analysis?.patternName} (${pillSub})`}
               >
                 <span>C.{idx + 1}</span>
@@ -620,9 +554,8 @@ export function DrumScoreRenderer({
       {/* ============================================================== */}
       <div
         ref={scrollContainerRef}
-        className={`w-full overflow-x-auto relative rounded-2xl bg-[#0c0e14] border border-slate-800/90 shadow-2xl custom-scrollbar ${
-          isFullscreen ? 'max-h-[75vh]' : ''
-        }`}
+        className={`w-full overflow-x-auto relative rounded-2xl bg-[#0c0e14] border border-slate-800/90 shadow-2xl custom-scrollbar ${isFullscreen ? 'max-h-[75vh]' : ''
+          }`}
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         <div className="inline-flex min-w-full relative">
@@ -733,8 +666,8 @@ export function DrumScoreRenderer({
               const opacityClass = isCurrent
                 ? 'opacity-100'
                 : isNext
-                ? 'opacity-90'
-                : 'opacity-65';
+                  ? 'opacity-90'
+                  : 'opacity-65';
 
               // Pasos y subdivisión propios de ESTE compás
               const mSteps =
@@ -760,8 +693,8 @@ export function DrumScoreRenderer({
                   n.stepIndex !== undefined
                     ? n.stepIndex
                     : n.step !== undefined
-                    ? n.step % mSteps
-                    : 0;
+                      ? n.step % mSteps
+                      : 0;
                 if (s >= 0 && s < mSteps) {
                   notesByStep.get(s)?.push(n);
                 }
@@ -771,13 +704,12 @@ export function DrumScoreRenderer({
                 <div
                   key={`measure-block-${mIdx}`}
                   onClick={() => handleMeasurePillClick(mIdx)}
-                  className={`w-[520px] min-w-[520px] shrink-0 flex flex-col border-r border-slate-800/80 relative transition-opacity duration-300 cursor-pointer ${opacityClass} ${
-                    isCurrent
-                      ? 'bg-cyan-950/10'
-                      : isNext
+                  className={`w-[520px] min-w-[520px] shrink-0 flex flex-col border-r border-slate-800/80 relative transition-opacity duration-300 cursor-pointer ${opacityClass} ${isCurrent
+                    ? 'bg-cyan-950/10'
+                    : isNext
                       ? 'bg-slate-900/20'
                       : 'bg-transparent'
-                  }`}
+                    }`}
                 >
                   {/* Encabezado Visual Dentro de Cada Compás en el Pentagrama */}
                   <div className="h-9 px-2.5 bg-slate-900/90 border-b border-slate-800/80 flex items-center justify-between gap-1 text-xs select-none">
@@ -878,8 +810,8 @@ export function DrumScoreRenderer({
                               isStepActive
                                 ? '#22d3ee'
                                 : isMainBeat
-                                ? '#64748b'
-                                : '#334155'
+                                  ? '#64748b'
+                                  : '#334155'
                             }
                             strokeWidth={isMainBeat ? 1.5 : 1}
                           />
@@ -894,8 +826,8 @@ export function DrumScoreRenderer({
                               isStepActive
                                 ? '#22d3ee'
                                 : isMainBeat
-                                ? '#f8fafc'
-                                : '#64748b'
+                                  ? '#f8fafc'
+                                  : '#64748b'
                             }
                           >
                             {item.label}
@@ -1014,10 +946,10 @@ export function DrumScoreRenderer({
                         const kickNote = stepNotes.find((n: any) => {
                           const v = String(
                             n.instrumentKey ||
-                              n.drumType ||
-                              n.instrument ||
-                              n.drumVoice ||
-                              ''
+                            n.drumType ||
+                            n.instrument ||
+                            n.drumVoice ||
+                            ''
                           )
                             .toLowerCase()
                             .trim();
@@ -1028,10 +960,10 @@ export function DrumScoreRenderer({
                         const handNote = stepNotes.find((n: any) => {
                           const v = String(
                             n.instrumentKey ||
-                              n.drumType ||
-                              n.instrument ||
-                              n.drumVoice ||
-                              ''
+                            n.drumType ||
+                            n.instrument ||
+                            n.drumVoice ||
+                            ''
                           )
                             .toLowerCase()
                             .trim();
@@ -1045,8 +977,8 @@ export function DrumScoreRenderer({
                         const primarySticking = handNote
                           ? handNote.sticking
                           : kickNote
-                          ? 'K'
-                          : stepNotes.find((n: any) => n.sticking)?.sticking;
+                            ? 'K'
+                            : stepNotes.find((n: any) => n.sticking)?.sticking;
 
                         return (
                           <g key={`step-col-${mIdx}-${sIdx}`}>
@@ -1064,9 +996,8 @@ export function DrumScoreRenderer({
                             {/* Símbolo de Acento ('>') sobre la plica */}
                             {accentNote && (
                               <path
-                                d={`M ${cx - 5} ${stemTop - 8} L ${
-                                  cx + 5
-                                } ${stemTop - 5} L ${cx - 5} ${stemTop - 2}`}
+                                d={`M ${cx - 5} ${stemTop - 8} L ${cx + 5
+                                  } ${stemTop - 5} L ${cx - 5} ${stemTop - 2}`}
                                 stroke={isStepActive ? '#00f0ff' : '#f8fafc'}
                                 strokeWidth="2.2"
                                 fill="none"
@@ -1128,15 +1059,11 @@ export function DrumScoreRenderer({
                                   {isCymbal ? (
                                     <g>
                                       <path
-                                        d={`M ${cx - (isNoteGhost ? 4.2 : 5.5)} ${
-                                          cy - (isNoteGhost ? 4.2 : 5.5)
-                                        } L ${cx + (isNoteGhost ? 4.2 : 5.5)} ${
-                                          cy + (isNoteGhost ? 4.2 : 5.5)
-                                        } M ${cx + (isNoteGhost ? 4.2 : 5.5)} ${
-                                          cy - (isNoteGhost ? 4.2 : 5.5)
-                                        } L ${cx - (isNoteGhost ? 4.2 : 5.5)} ${
-                                          cy + (isNoteGhost ? 4.2 : 5.5)
-                                        }`}
+                                        d={`M ${cx - (isNoteGhost ? 4.2 : 5.5)} ${cy - (isNoteGhost ? 4.2 : 5.5)
+                                          } L ${cx + (isNoteGhost ? 4.2 : 5.5)} ${cy + (isNoteGhost ? 4.2 : 5.5)
+                                          } M ${cx + (isNoteGhost ? 4.2 : 5.5)} ${cy - (isNoteGhost ? 4.2 : 5.5)
+                                          } L ${cx - (isNoteGhost ? 4.2 : 5.5)} ${cy + (isNoteGhost ? 4.2 : 5.5)
+                                          }`}
                                         stroke={
                                           isStepActive ? '#22d3ee' : '#38bdf8'
                                         }
@@ -1145,19 +1072,19 @@ export function DrumScoreRenderer({
                                       />
                                       {voice.toLowerCase() ===
                                         'hihat_open' && (
-                                        <circle
-                                          cx={cx}
-                                          cy={cy - 9}
-                                          r="3"
-                                          stroke={
-                                            isStepActive
-                                              ? '#22d3ee'
-                                              : '#38bdf8'
-                                          }
-                                          strokeWidth="1.2"
-                                          fill="none"
-                                        />
-                                      )}
+                                          <circle
+                                            cx={cx}
+                                            cy={cy - 9}
+                                            r="3"
+                                            stroke={
+                                              isStepActive
+                                                ? '#22d3ee'
+                                                : '#38bdf8'
+                                            }
+                                            strokeWidth="1.2"
+                                            fill="none"
+                                          />
+                                        )}
                                     </g>
                                   ) : (
                                     <ellipse
@@ -1169,8 +1096,8 @@ export function DrumScoreRenderer({
                                         isStepActive
                                           ? '#22d3ee'
                                           : isNoteGhost
-                                          ? '#94a3b8'
-                                          : '#38bdf8'
+                                            ? '#94a3b8'
+                                            : '#38bdf8'
                                       }
                                       transform={`rotate(-15, ${cx}, ${cy})`}
                                       filter={
@@ -1222,8 +1149,8 @@ export function DrumScoreRenderer({
                                   primarySticking === 'R'
                                     ? '#ef4444' // R en Rojo
                                     : primarySticking === 'L'
-                                    ? '#3b82f6' // L en Azul
-                                    : '#34d399' // K / Otros en Esmeralda
+                                      ? '#3b82f6' // L en Azul
+                                      : '#34d399' // K / Otros en Esmeralda
                                 }
                                 opacity={ghostNote ? 0.8 : 1}
                                 fontSize={ghostNote ? '11.5' : '13'}
