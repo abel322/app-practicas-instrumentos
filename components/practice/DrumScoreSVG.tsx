@@ -13,6 +13,12 @@ import {
   getStepCountLabelForTimeSignature,
   calculateStepsForMeasure,
 } from '@/lib/music/timeSignatures';
+import {
+  DynamicMarking,
+  DrumStrokeType,
+  getDynamicSpec,
+  getDrumStrokeSpec,
+} from '@/lib/music/dynamicsAndStrokes';
 
 export interface DrumScoreProps {
   measure?: any;
@@ -1046,9 +1052,22 @@ export function DrumScoreRenderer({
                       );
                     })}
 
-                    {/* Notas, Plicas, Sticking (R en rojo, L en azul, K en esmeralda) y Acentos (>) */}
-                    {Array.from(notesByStep.entries()).map(
-                      ([sIdx, stepNotes]) => {
+                    {/* Notas, Plicas, Sticking (R en rojo, L en azul, K en esmeralda), Dinámicas y Técnicas */}
+                    {(() => {
+                      let prevDyn: string | null = null;
+                      const dynamicChanges = new Map<number, string>();
+                      for (let s = 0; s < mSteps; s++) {
+                        const sNotes = notesByStep.get(s) || [];
+                        if (sNotes.length > 0) {
+                          const noteDyn = sNotes.find((n: any) => n.dynamic)?.dynamic || 'mf';
+                          if (prevDyn === null || noteDyn !== prevDyn) {
+                            dynamicChanges.set(s, noteDyn);
+                            prevDyn = noteDyn;
+                          }
+                        }
+                      }
+
+                      return Array.from(notesByStep.entries()).map(([sIdx, stepNotes]) => {
                         if (!stepNotes || stepNotes.length === 0) return null;
                         const cx = getXForMeasureStep(sIdx);
                         const isStepActive =
@@ -1071,6 +1090,12 @@ export function DrumScoreRenderer({
                         const syncopatedNote = stepNotes.find(
                           (n: any) => n.syncopated
                         );
+                        const strokeNote = stepNotes.find(
+                          (n: any) => n.strokeType && n.strokeType !== 'normal'
+                        );
+                        const strokeType: DrumStrokeType | undefined = strokeNote?.strokeType;
+                        const dynMarking = dynamicChanges.get(sIdx);
+
                         const kickNote = stepNotes.find((n: any) => {
                           const v = String(
                             n.instrumentKey ||
@@ -1108,6 +1133,21 @@ export function DrumScoreRenderer({
                             ? 'K'
                             : stepNotes.find((n: any) => n.sticking)?.sticking;
 
+                        let displayPrimarySticking = primarySticking;
+                        if (strokeType === 'flam') {
+                          displayPrimarySticking = primarySticking === 'R' ? 'lR' : primarySticking === 'L' ? 'rL' : 'fl';
+                        } else if (strokeType === 'drag') {
+                          displayPrimarySticking = primarySticking === 'R' ? 'llR' : primarySticking === 'L' ? 'rrL' : 'dr';
+                        } else if (strokeType === 'buzz') {
+                          displayPrimarySticking = `z${primarySticking || ''}`;
+                        } else if (strokeType === 'rimshot') {
+                          displayPrimarySticking = `RS`;
+                        } else if (strokeType === 'cross_stick') {
+                          displayPrimarySticking = `CS`;
+                        } else if (strokeType === 'choke') {
+                          displayPrimarySticking = `Ch`;
+                        }
+
                         return (
                           <g key={`step-col-${mIdx}-${sIdx}`}>
                             {/* Plica vertical */}
@@ -1120,6 +1160,37 @@ export function DrumScoreRenderer({
                               strokeWidth="1.6"
                               opacity={ghostNote && stepNotes.length === 1 ? 0.65 : 1}
                             />
+
+                            {/* 'z' cruzando la plica para Buzz (redoble cerrado) */}
+                            {strokeType === 'buzz' && (
+                              <text
+                                x={cx + 6}
+                                y={(stemTop + maxY) / 2 + 4}
+                                textAnchor="middle"
+                                fill={isStepActive ? '#22d3ee' : '#cbd5e1'}
+                                fontSize="13"
+                                fontWeight="900"
+                                fontStyle="italic"
+                                fontFamily="sans-serif"
+                              >
+                                z
+                              </text>
+                            )}
+
+                            {/* Símbolo de Choke (^ Ch) sobre la plica */}
+                            {strokeType === 'choke' && (
+                              <text
+                                x={cx + 6}
+                                y={stemTop - 12}
+                                textAnchor="middle"
+                                fill="#f43f5e"
+                                fontSize="10"
+                                fontWeight="900"
+                                fontFamily="monospace"
+                              >
+                                Ch ^
+                              </text>
+                            )}
 
                             {/* Símbolo de Acento ('>') sobre la plica */}
                             {accentNote && (
@@ -1149,7 +1220,7 @@ export function DrumScoreRenderer({
                               </text>
                             )}
 
-                            {/* Cabezas de notas: ● para tambores y × para platos, con ( ) en Ghost Notes */}
+                            {/* Cabezas de notas: ● para tambores, × para platos, ◆ para Rimshot, ⊗ para Cross-Stick */}
                             {stepNotes.map((note: any, nIdx: number) => {
                               const voice =
                                 note.instrumentKey ||
@@ -1165,6 +1236,10 @@ export function DrumScoreRenderer({
                                 'crash',
                                 'ride',
                               ].includes(voice.toLowerCase());
+                              const isRimshot = note.strokeType === 'rimshot';
+                              const isCrossStick = note.strokeType === 'cross_stick';
+                              const isFlam = note.strokeType === 'flam';
+                              const isDrag = note.strokeType === 'drag';
 
                               return (
                                 <g
@@ -1183,8 +1258,82 @@ export function DrumScoreRenderer({
                                     />
                                   )}
 
-                                  {/* Cabeza de nota cian: cruz (×) para platos o elipse (●) para tambores */}
-                                  {isCymbal ? (
+                                  {/* Nota de Gracia para Flam */}
+                                  {isFlam && (
+                                    <g opacity={0.88}>
+                                      <ellipse
+                                        cx={cx - 12}
+                                        cy={cy}
+                                        rx="3.8"
+                                        ry="2.8"
+                                        fill={isStepActive ? '#22d3ee' : '#38bdf8'}
+                                        transform={`rotate(-15, ${cx - 12}, ${cy})`}
+                                      />
+                                      <line
+                                        x1={cx - 12 + 3.8}
+                                        y1={cy}
+                                        x2={cx - 12 + 3.8}
+                                        y2={stemTop + 6}
+                                        stroke="#64748b"
+                                        strokeWidth="1.2"
+                                      />
+                                      <path
+                                        d={`M ${cx - 12} ${cy + 5} Q ${cx - 6} ${cy + 9} ${cx - 1} ${cy + 5}`}
+                                        fill="none"
+                                        stroke="#38bdf8"
+                                        strokeWidth="1.2"
+                                      />
+                                    </g>
+                                  )}
+
+                                  {/* Dos Notas de Gracia para Drag / Ruff */}
+                                  {isDrag && (
+                                    <g opacity={0.88}>
+                                      <ellipse cx={cx - 18} cy={cy} rx="3.4" ry="2.4" fill={isStepActive ? '#22d3ee' : '#38bdf8'} transform={`rotate(-15, ${cx - 18}, ${cy})`} />
+                                      <line x1={cx - 18 + 3.4} y1={cy} x2={cx - 18 + 3.4} y2={stemTop + 6} stroke="#64748b" strokeWidth="1.1" />
+                                      <ellipse cx={cx - 10} cy={cy} rx="3.4" ry="2.4" fill={isStepActive ? '#22d3ee' : '#38bdf8'} transform={`rotate(-15, ${cx - 10}, ${cy})`} />
+                                      <line x1={cx - 10 + 3.4} y1={cy} x2={cx - 10 + 3.4} y2={stemTop + 6} stroke="#64748b" strokeWidth="1.1" />
+                                      <line x1={cx - 18 + 3.4} y1={stemTop + 6} x2={cx - 10 + 3.4} y2={stemTop + 6} stroke="#64748b" strokeWidth="2" />
+                                      <line x1={cx - 18 + 3.4} y1={stemTop + 9} x2={cx - 10 + 3.4} y2={stemTop + 9} stroke="#64748b" strokeWidth="1.5" />
+                                      <path d={`M ${cx - 16} ${cy + 5} Q ${cx - 6} ${cy + 9} ${cx - 1} ${cy + 5}`} fill="none" stroke="#38bdf8" strokeWidth="1.2" />
+                                    </g>
+                                  )}
+
+                                  {/* Cabeza de nota según instrumento y técnica */}
+                                  {isCrossStick ? (
+                                    <g>
+                                      <circle
+                                        cx={cx}
+                                        cy={cy}
+                                        r="6"
+                                        stroke={isStepActive ? '#22d3ee' : '#38bdf8'}
+                                        strokeWidth="1.8"
+                                        fill="#0c0e14"
+                                      />
+                                      <line
+                                        x1={cx - 4.2}
+                                        y1={cy - 4.2}
+                                        x2={cx + 4.2}
+                                        y2={cy + 4.2}
+                                        stroke={isStepActive ? '#22d3ee' : '#38bdf8'}
+                                        strokeWidth="1.6"
+                                      />
+                                      <line
+                                        x1={cx + 4.2}
+                                        y1={cy - 4.2}
+                                        x2={cx - 4.2}
+                                        y2={cy + 4.2}
+                                        stroke={isStepActive ? '#22d3ee' : '#38bdf8'}
+                                        strokeWidth="1.6"
+                                      />
+                                    </g>
+                                  ) : isRimshot ? (
+                                    <polygon
+                                      points={`${cx},${cy - 6.5} ${cx + 7},${cy} ${cx},${cy + 6.5} ${cx - 7},${cy}`}
+                                      fill={isStepActive ? '#22d3ee' : isNoteGhost ? '#94a3b8' : '#38bdf8'}
+                                      filter={isStepActive ? `url(#drumScanGlow-${mIdx})` : undefined}
+                                    />
+                                  ) : isCymbal ? (
                                     <g>
                                       <path
                                         d={`M ${cx - (isNoteGhost ? 4.2 : 5.5)} ${cy - (isNoteGhost ? 4.2 : 5.5)
@@ -1268,7 +1417,7 @@ export function DrumScoreRenderer({
                             })}
 
                             {/* Etiqueta de Sticking debajo de cada nota: R en rojo, L en azul, K en esmeralda */}
-                            {primarySticking && (
+                            {displayPrimarySticking && (
                               <text
                                 x={cx}
                                 y="176"
@@ -1293,8 +1442,8 @@ export function DrumScoreRenderer({
                                 }}
                               >
                                 {ghostNote
-                                  ? `(${primarySticking})`
-                                  : primarySticking}
+                                  ? `(${displayPrimarySticking})`
+                                  : displayPrimarySticking}
                               </text>
                             )}
 
@@ -1339,10 +1488,27 @@ export function DrumScoreRenderer({
                                 ~
                               </text>
                             ) : null}
+
+                            {/* Marca de Dinámica (pp, p, mp, mf, f, ff) en cursiva negrita cuando cambia de nivel */}
+                            {dynMarking && (
+                              <text
+                                x={cx}
+                                y={accentNote || syncopatedNote ? 212 : 195}
+                                textAnchor="middle"
+                                fill="#e2e8f0"
+                                fontStyle="italic"
+                                fontSize="12"
+                                fontWeight="900"
+                                fontFamily="'Times New Roman', Georgia, serif"
+                                className="select-none"
+                              >
+                                {dynMarking}
+                              </text>
+                            )}
                           </g>
                         );
-                      }
-                    )}
+                      });
+                    })()}
                   </svg>
                 </div>
               );

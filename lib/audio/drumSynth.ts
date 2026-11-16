@@ -1,5 +1,12 @@
 // lib/audio/drumSynth.ts
-// Motor de Batería Acústica Blindado con Respaldo en Memoria, Muestras Locales/CDN y Choke de Hi-Hat
+// Motor de Batería Acústica Blindado con Respaldo en Memoria, Muestras Locales/CDN, Choke de Hi-Hat,
+// Dinámicas Musicales (pp a ff) y Tipos de Golpe (Flam, Drag, Buzz, Rimshot, Cross-Stick, Choke)
+
+import {
+  DynamicMarking,
+  DrumStrokeType,
+  getDynamicSpec,
+} from '@/lib/music/dynamicsAndStrokes';
 
 export type DrumPiece =
   | 'kick'
@@ -28,6 +35,8 @@ export interface DrumHitOptions {
   ghost?: boolean;
   syncopated?: boolean;
   isDoubleRebound?: boolean;
+  dynamic?: DynamicMarking;
+  strokeType?: DrumStrokeType;
 }
 
 interface SampleConfig {
@@ -237,6 +246,39 @@ class AcousticDrumEngine {
     const isRight = options.sticking === 'R';
     const isLeft = options.sticking === 'L';
 
+    // 1. Manejo especializado de Cross-Stick (sidestick de madera seco a 1.4 kHz)
+    if (options.strokeType === 'cross_stick') {
+      const osc = ctx.createOscillator();
+      const clickGain = ctx.createGain();
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(1400, hitTime);
+      bp.Q.setValueAtTime(4.0, hitTime);
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1400, hitTime);
+      osc.frequency.exponentialRampToValueAtTime(750, hitTime + 0.045);
+
+      const dynSpec = getDynamicSpec(options.dynamic);
+      const rawV =
+        options.velocity !== undefined
+          ? options.velocity > 1
+            ? options.velocity / 100
+            : options.velocity
+          : 0.9;
+      const clickVel = (isGhost ? 0.28 : rawV) * dynSpec.gainScale;
+      clickGain.gain.setValueAtTime(clickVel * 0.9, hitTime);
+      clickGain.gain.exponentialRampToValueAtTime(0.0001, hitTime + 0.045);
+
+      osc.connect(bp);
+      bp.connect(clickGain);
+      clickGain.connect(this.masterGain);
+
+      osc.start(hitTime);
+      osc.stop(hitTime + 0.05);
+      return;
+    }
+
     const config = this.resolveConfig(options.instrument, isAccented);
     const isCymbal =
       config.key === 'hihat_closed' ||
@@ -268,6 +310,63 @@ class AcousticDrumEngine {
       this.activeOpenHiHatNodes = [];
     }
 
+    const rawVel =
+      options.velocity !== undefined
+        ? options.velocity > 1
+          ? options.velocity / 100
+          : options.velocity
+        : 0.9;
+
+    // 2. Manejo de Notas de Gracia para Flam y Drag
+    if (options.strokeType === 'flam') {
+      const graceTime = Math.max(ctx.currentTime, hitTime - 0.028);
+      const graceSticking = options.sticking === 'R' ? 'L' : 'R';
+      this.playHit({
+        ...options,
+        time: graceTime,
+        velocity: (rawVel * 0.42) * 100,
+        sticking: graceSticking,
+        strokeType: 'normal',
+        accent: false,
+        ghost: true,
+      });
+    } else if (options.strokeType === 'drag') {
+      const g1Time = Math.max(ctx.currentTime, hitTime - 0.052);
+      const g2Time = Math.max(ctx.currentTime, hitTime - 0.026);
+      const dragSticking = options.sticking === 'R' ? 'L' : 'R';
+      this.playHit({
+        ...options,
+        time: g1Time,
+        velocity: (rawVel * 0.34) * 100,
+        sticking: dragSticking,
+        strokeType: 'normal',
+        accent: false,
+        ghost: true,
+      });
+      this.playHit({
+        ...options,
+        time: g2Time,
+        velocity: (rawVel * 0.38) * 100,
+        sticking: dragSticking,
+        strokeType: 'normal',
+        accent: false,
+        ghost: true,
+      });
+    } else if (options.strokeType === 'buzz') {
+      // Ráfaga de 3 micro-rebotes decrescentes cada 24ms
+      const rebGains = [0.62, 0.38, 0.22];
+      rebGains.forEach((gScale, idx) => {
+        this.playHit({
+          ...options,
+          time: hitTime + (idx + 1) * 0.024,
+          velocity: (rawVel * gScale) * 100,
+          strokeType: 'normal',
+          accent: false,
+          isDoubleRebound: true,
+        });
+      });
+    }
+
     const source = ctx.createBufferSource();
     source.buffer = buffer;
 
@@ -277,12 +376,6 @@ class AcousticDrumEngine {
     const gainNode = ctx.createGain();
     const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
 
-    const rawVel =
-      options.velocity !== undefined
-        ? options.velocity > 1
-          ? options.velocity / 100
-          : options.velocity
-        : 0.9;
     const velNorm = isGhost ? 0.9 : Math.min(1.15, Math.max(0.2, rawVel));
 
     let finalGain = config.baseGain * velNorm;
@@ -325,9 +418,47 @@ class AcousticDrumEngine {
       lowpassFreq = Math.min(lowpassFreq, isCymbal ? 6800 : 4200);
       duration *= 0.8;
     } else if (isSyncopated) {
-      // Empuje rítmico definido para contratiempo sincopado
       finalGain *= 1.14;
       lowpassFreq = 18500;
+    }
+
+    // 3. Modulación por Dinámica (pp a ff)
+    const dynSpec = getDynamicSpec(options.dynamic);
+    finalGain *= dynSpec.gainScale;
+    lowpassFreq = Math.min(lowpassFreq, dynSpec.brightnessHz);
+
+    // 4. Modulación por Rimshot (transitorio metálico agudo de aro)
+    if (options.strokeType === 'rimshot') {
+      finalGain *= 1.22;
+      playbackRate = 1.025;
+      lowpassFreq = 20000;
+
+      try {
+        const rimOsc = ctx.createOscillator();
+        const rimGain = ctx.createGain();
+        const rimFilter = ctx.createBiquadFilter();
+        rimFilter.type = 'bandpass';
+        rimFilter.frequency.setValueAtTime(2200, hitTime);
+        rimFilter.Q.setValueAtTime(3.2, hitTime);
+
+        rimOsc.type = 'square';
+        rimOsc.frequency.setValueAtTime(2200, hitTime);
+        rimGain.gain.setValueAtTime(finalGain * 0.45, hitTime);
+        rimGain.gain.exponentialRampToValueAtTime(0.0001, hitTime + 0.065);
+
+        rimOsc.connect(rimFilter);
+        rimFilter.connect(rimGain);
+        rimGain.connect(this.masterGain);
+
+        rimOsc.start(hitTime);
+        rimOsc.stop(hitTime + 0.07);
+      } catch {}
+    }
+
+    // 5. Choke de platos (silenciado rápido de la cola)
+    const isChoke = options.strokeType === 'choke';
+    if (isChoke) {
+      duration = Math.min(duration, 0.22);
     }
 
     source.playbackRate.setValueAtTime(playbackRate, hitTime);
@@ -337,7 +468,10 @@ class AcousticDrumEngine {
     }
 
     gainNode.gain.setValueAtTime(finalGain, hitTime);
-    if (config.key === 'hihat_open') {
+    if (isChoke) {
+      gainNode.gain.setValueAtTime(finalGain * 0.9, hitTime + 0.06);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, hitTime + 0.22);
+    } else if (config.key === 'hihat_open') {
       gainNode.gain.setValueAtTime(finalGain, hitTime + 0.35);
       gainNode.gain.exponentialRampToValueAtTime(0.0001, hitTime + duration);
       this.activeOpenHiHatNodes.push({ gain: gainNode, source });

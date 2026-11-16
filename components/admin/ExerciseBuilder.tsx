@@ -8,6 +8,14 @@ import { DrumVoice, StickingType } from '@/types/drum';
 import { StringTechnique, BendType, BendAmount } from '@/types/strings';
 import { getAudioEngine } from '@/lib/drumAudioEngine';
 import { drumSampler, playDrumHit, drumSynth } from '@/lib/audio/drumSynth';
+import {
+  DynamicMarking,
+  DrumStrokeType,
+  DYNAMIC_LEVELS,
+  DRUM_STROKE_OPTIONS,
+  getDynamicSpec,
+  getDrumStrokeSpec,
+} from '@/lib/music/dynamicsAndStrokes';
 import { getStringsAudioEngine } from '@/lib/stringsAudioEngine';
 import { getPianoAudioEngine } from '@/lib/audio/pianoAudioEngine';
 import { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
@@ -121,6 +129,8 @@ interface EditorNote {
   ghost?: boolean;
   syncopated?: boolean;
   sticking?: StickingType;
+  dynamic?: DynamicMarking;
+  strokeType?: DrumStrokeType;
   midiNumber?: number; // Para piano (24 a 108)
   velocity?: number;
   durationSteps?: number;
@@ -584,6 +594,8 @@ export const ExerciseBuilder: React.FC = () => {
   const [selectedAccent, setSelectedAccent] = useState<boolean>(false);
   const [selectedGhost, setSelectedGhost] = useState<boolean>(false);
   const [selectedSyncopated, setSelectedSyncopated] = useState<boolean>(false);
+  const [activeDynamic, setActiveDynamic] = useState<DynamicMarking>('mf');
+  const [activeStrokeType, setActiveStrokeType] = useState<DrumStrokeType>('normal');
 
   // Atajos de teclado rápidos para articulación de batería (G = Ghost Note, S = Sincopado)
   useEffect(() => {
@@ -2323,6 +2335,102 @@ export const ExerciseBuilder: React.FC = () => {
     toast.success('⚡ Síncopa y Ghost Notes aplicadas en los contratiempos del compás.');
   }, [activeMeasureStart, stepsPerMeasure]);
 
+  // Rampa de Dinámica Progresiva en el compás activo (Crescendo o Decrescendo)
+  const handleApplyDynamicRamp = useCallback(
+    (direction: 'crescendo' | 'decrescendo') => {
+      const rampLevels: DynamicMarking[] =
+        direction === 'crescendo'
+          ? ['pp', 'p', 'mp', 'mf', 'f', 'ff']
+          : ['ff', 'f', 'mf', 'mp', 'p', 'pp'];
+
+      const mStart = activeMeasureStart;
+      const mEnd = mStart + stepsPerMeasure;
+
+      // Obtener pasos únicos en orden ascendente que contengan notas en el compás activo
+      const activeStepsWithNotes = Array.from(
+        new Set(
+          notes
+            .filter((n) => n.step >= mStart && n.step < mEnd)
+            .map((n) => n.step)
+        )
+      ).sort((a, b) => a - b);
+
+      if (activeStepsWithNotes.length === 0) {
+        toast.info('No hay notas en el compás activo para aplicar dinámicas.');
+        return;
+      }
+
+      setNotes((prev) => {
+        const next = prev.map((note) => {
+          if (note.step < mStart || note.step >= mEnd) return note;
+          const stepOrderIdx = activeStepsWithNotes.indexOf(note.step);
+          if (stepOrderIdx < 0) return note;
+
+          const fraction =
+            activeStepsWithNotes.length <= 1
+              ? 0
+              : stepOrderIdx / (activeStepsWithNotes.length - 1);
+          const rampIdx = Math.min(
+            rampLevels.length - 1,
+            Math.floor(fraction * rampLevels.length)
+          );
+          const assignedDyn = rampLevels[rampIdx];
+          const dynSpec = getDynamicSpec(assignedDyn);
+
+          return {
+            ...note,
+            dynamic: assignedDyn,
+            velocity: note.ghost ? 0.32 : note.accent ? 1.0 : dynSpec.velocity,
+          };
+        });
+
+        activeNotesRef.current = next;
+        return next;
+      });
+
+      // Sincronizar el banco de patrones
+      const targetCode = activeMeasureConfig.patternCode;
+      if (targetCode) {
+        setPatternBank((prevBank) =>
+          prevBank.map((p) => {
+            if (p.code !== targetCode) return p;
+            const pNotes = p.notes || [];
+            const pSteps = Array.from(
+              new Set(pNotes.map((n: any) => n.step ?? n.stepIndex ?? 0))
+            ).sort((a: number, b: number) => a - b);
+            if (pSteps.length === 0) return p;
+
+            const updatedPNotes = pNotes.map((note: any) => {
+              const s = note.step ?? note.stepIndex ?? 0;
+              const stepOrderIdx = pSteps.indexOf(s);
+              if (stepOrderIdx < 0) return note;
+              const fraction =
+                pSteps.length <= 1 ? 0 : stepOrderIdx / (pSteps.length - 1);
+              const rampIdx = Math.min(
+                rampLevels.length - 1,
+                Math.floor(fraction * rampLevels.length)
+              );
+              const assignedDyn = rampLevels[rampIdx];
+              return {
+                ...note,
+                dynamic: assignedDyn,
+                velocity: note.ghost ? 0.32 : note.accent ? 1.0 : getDynamicSpec(assignedDyn).velocity,
+              };
+            });
+            return { ...p, notes: updatedPNotes };
+          })
+        );
+      }
+
+      toast.success(
+        direction === 'crescendo'
+          ? '📈 Crescendo (pp ➔ ff) aplicado al compás activo'
+          : '📉 Decrescendo (ff ➔ pp) aplicado al compás activo'
+      );
+    },
+    [activeMeasureStart, stepsPerMeasure, notes, activeMeasureConfig.patternCode]
+  );
+
   const handleAddMeasure = useCallback(() => {
     const nextIdx = totalMeasuresRef.current;
     const activePat =
@@ -2450,16 +2558,20 @@ export const ExerciseBuilder: React.FC = () => {
 
       if (existingIdx >= 0) {
         const existing = notes[existingIdx];
-        // Si el usuario tiene activado Ghost Note o Sincopado y el golpe existente aún no tiene ese estado, alternarlo;
-        // si ya coincide exactamente con las herramientas activas, eliminar el golpe.
+        // Si el usuario tiene activado Ghost Note, Sincopado, Acento, Dinámica o Técnica distinta, actualizar
         const shouldToggleGhost = selectedGhost && !existing.ghost;
         const shouldToggleSync = selectedSyncopated && !existing.syncopated;
         const shouldToggleAccent = selectedAccent && !existing.accent && !selectedGhost;
+        const shouldToggleDynamic = existing.dynamic !== activeDynamic;
+        const shouldToggleStroke = (existing.strokeType || 'normal') !== activeStrokeType;
 
-        if (shouldToggleGhost || shouldToggleSync || shouldToggleAccent) {
+        if (shouldToggleGhost || shouldToggleSync || shouldToggleAccent || shouldToggleDynamic || shouldToggleStroke) {
           const nextGhost = selectedGhost ? !existing.ghost : Boolean(existing.ghost && !selectedAccent);
           const nextAccent = nextGhost ? false : selectedAccent ? true : Boolean(existing.accent);
           const nextSync = selectedSyncopated ? !existing.syncopated : Boolean(existing.syncopated);
+          const nextDynamic = activeDynamic;
+          const nextStroke = activeStrokeType;
+          const dynSpec = getDynamicSpec(nextDynamic);
 
           setNotes((prev) => {
             const next = prev.map((n, idx) =>
@@ -2470,7 +2582,9 @@ export const ExerciseBuilder: React.FC = () => {
                   accent: nextAccent,
                   syncopated: nextSync,
                   sticking: effectiveSticking,
-                  velocity: nextGhost ? 0.32 : nextAccent ? 1.0 : 0.8,
+                  dynamic: nextDynamic,
+                  strokeType: nextStroke,
+                  velocity: nextGhost ? 0.32 : nextAccent ? 1.0 : dynSpec.velocity,
                 }
                 : n
             );
@@ -2481,12 +2595,14 @@ export const ExerciseBuilder: React.FC = () => {
           const targetInstrument = drumVoice === 'hihat' ? 'hihat_closed' : drumVoice!;
           playDrumHit({
             instrument: targetInstrument,
-            velocity: nextGhost ? 32 : nextAccent ? 100 : 85,
+            velocity: nextGhost ? 32 : nextAccent ? 100 : Math.round(dynSpec.velocity * 100),
             accent: nextAccent,
             ghost: nextGhost,
             syncopated: nextSync,
             sticking: isKickTrack ? 'K' : (selectedSticking as 'R' | 'L') || 'R',
             isDoubleRebound: false,
+            dynamic: nextDynamic,
+            strokeType: nextStroke,
           });
         } else {
           // Eliminar nota existente
@@ -2497,10 +2613,11 @@ export const ExerciseBuilder: React.FC = () => {
           });
         }
       } else {
-        // Agregar nueva nota de batería con soporte para Ghost Note, Acento, Sincopado y K automático en Bombo
+        // Agregar nueva nota de batería con soporte para Ghost Note, Acento, Sincopado, Dinámica y Técnica
         const isGhostNote = selectedGhost;
         const isAccentNote = isGhostNote ? false : selectedAccent;
         const isSyncNote = selectedSyncopated;
+        const dynSpec = getDynamicSpec(activeDynamic);
 
         const newNote: EditorNote = {
           step: globalStep,
@@ -2510,7 +2627,9 @@ export const ExerciseBuilder: React.FC = () => {
           ghost: isGhostNote,
           syncopated: isSyncNote,
           sticking: effectiveSticking,
-          velocity: isGhostNote ? 0.32 : isAccentNote ? 1.0 : 0.8,
+          dynamic: activeDynamic,
+          strokeType: activeStrokeType,
+          velocity: isGhostNote ? 0.32 : isAccentNote ? 1.0 : dynSpec.velocity,
         };
         setNotes((prev) => {
           const next = [...prev, newNote];
@@ -2518,16 +2637,18 @@ export const ExerciseBuilder: React.FC = () => {
           return next;
         });
 
-        // Sonido de prueba inmediato con DSP de Ghost Note / Sincopado / Acento
+        // Sonido de prueba inmediato con DSP de Ghost Note / Sincopado / Acento / Dinámica y Técnica
         const targetInstrument = drumVoice === 'hihat' ? 'hihat_closed' : drumVoice!;
         playDrumHit({
           instrument: targetInstrument,
-          velocity: isGhostNote ? 32 : isAccentNote ? 100 : 85,
+          velocity: isGhostNote ? 32 : isAccentNote ? 100 : Math.round(dynSpec.velocity * 100),
           accent: isAccentNote,
           ghost: isGhostNote,
           syncopated: isSyncNote,
           sticking: isKickTrack ? 'K' : (selectedSticking as 'R' | 'L') || 'R',
           isDoubleRebound: false,
+          dynamic: activeDynamic,
+          strokeType: activeStrokeType,
         });
       }
     } else {
@@ -2565,6 +2686,7 @@ export const ExerciseBuilder: React.FC = () => {
               : existingNote.slideDirection;
 
         // Actualizar técnica/dedo si el usuario seleccionó otra articulación activa
+        const dynSpec = getDynamicSpec(activeDynamic);
         setNotes((prev) => {
           const next = prev.map((n, idx) =>
             idx === existingIdx
@@ -2575,6 +2697,8 @@ export const ExerciseBuilder: React.FC = () => {
                 bendType: targetBendType,
                 bendAmount: targetBendAmount,
                 finger: selectedFinger,
+                dynamic: activeDynamic,
+                velocity: dynSpec.velocity,
               }
               : n
           );
@@ -2589,17 +2713,19 @@ export const ExerciseBuilder: React.FC = () => {
         if (instrument === 'bass') {
           const calculatedMidi = getBassMidiFromString(stringNum!, targetFret);
           const bassTech = (noteTech === 'pull' ? 'pulloff' : noteTech) as BassTechnique;
+          const baseBassVel = noteTech === 'pop' || noteTech === 'slap' ? 120 : 95;
           bassPreviewSynth.playNote({
             midi: calculatedMidi,
             technique: bassTech || 'normal',
             slideDirection: targetSlideDirection,
             stringIndex: Math.max(0, (stringNum || 4) - 1),
             duration: (60 / bpmRef.current) * 0.8,
-            velocity: noteTech === 'pop' || noteTech === 'slap' ? 120 : 95,
+            velocity: Math.round(baseBassVel * dynSpec.gainScale),
           });
         } else if (instrument === 'guitar') {
           const calculatedMidi = getGuitarMidiFromString(stringNum!, targetFret);
           const guitarTech = (noteTech === 'pull' ? 'pulloff' : noteTech) as GuitarTechnique;
+          const baseGtrVel = noteTech === 'natural_harmonic' || noteTech === 'pinch_harmonic' ? 115 : 100;
           guitarPreviewSynth.playNote({
             midi: calculatedMidi,
             technique: guitarTech || 'normal',
@@ -2607,7 +2733,7 @@ export const ExerciseBuilder: React.FC = () => {
             bendType: guitarTech === 'bend' ? targetBendType : undefined,
             bendAmount: guitarTech === 'bend' ? targetBendAmount : undefined,
             duration: (60 / bpmRef.current) * 0.8,
-            velocity: noteTech === 'natural_harmonic' || noteTech === 'pinch_harmonic' ? 115 : 100,
+            velocity: Math.round(baseGtrVel * dynSpec.gainScale),
           });
         } else {
           const engine = getStringsAudioEngine();
@@ -2618,7 +2744,7 @@ export const ExerciseBuilder: React.FC = () => {
             targetFret,
             undefined,
             noteTech === 'pm' ? 'normal' : noteTech,
-            0.85
+            0.85 * dynSpec.gainScale
           );
         }
       } else {
@@ -2643,7 +2769,8 @@ export const ExerciseBuilder: React.FC = () => {
         const targetSlideDirection =
           noteTech === 'slide_up' ? 'up' : noteTech === 'slide_down' ? 'down' : undefined;
 
-        // Agregar nota con el traste y técnica activos
+        // Agregar nota con el traste, técnica y dinámica activos
+        const dynSpec = getDynamicSpec(activeDynamic);
         const newNote: EditorNote = {
           step: globalStep,
           string: stringNum,
@@ -2653,6 +2780,8 @@ export const ExerciseBuilder: React.FC = () => {
           bendType: noteTech === 'bend' ? selectedBendType : undefined,
           bendAmount: noteTech === 'bend' ? selectedBendAmount : undefined,
           finger: selectedFinger,
+          dynamic: activeDynamic,
+          velocity: dynSpec.velocity,
         };
         setNotes((prev) => {
           const next = [...prev, newNote];
@@ -2665,17 +2794,19 @@ export const ExerciseBuilder: React.FC = () => {
         if (instrument === 'bass') {
           const calculatedMidi = getBassMidiFromString(stringNum!, selectedFret);
           const bassTech = (noteTech === 'pull' ? 'pulloff' : noteTech) as BassTechnique;
+          const baseBassVel = noteTech === 'pop' || noteTech === 'slap' ? 120 : 95;
           bassPreviewSynth.playNote({
             midi: calculatedMidi,
             technique: bassTech || 'normal',
             slideDirection: targetSlideDirection,
             stringIndex: Math.max(0, (stringNum || 4) - 1),
             duration: (60 / bpmRef.current) * 0.8,
-            velocity: noteTech === 'pop' || noteTech === 'slap' ? 120 : 95,
+            velocity: Math.round(baseBassVel * dynSpec.gainScale),
           });
         } else if (instrument === 'guitar') {
           const calculatedMidi = getGuitarMidiFromString(stringNum!, selectedFret);
           const guitarTech = (noteTech === 'pull' ? 'pulloff' : noteTech) as GuitarTechnique;
+          const baseGtrVel = noteTech === 'natural_harmonic' || noteTech === 'pinch_harmonic' ? 115 : 100;
           guitarPreviewSynth.playNote({
             midi: calculatedMidi,
             technique: guitarTech || 'normal',
@@ -2683,7 +2814,7 @@ export const ExerciseBuilder: React.FC = () => {
             bendType: guitarTech === 'bend' ? selectedBendType : undefined,
             bendAmount: guitarTech === 'bend' ? selectedBendAmount : undefined,
             duration: (60 / bpmRef.current) * 0.8,
-            velocity: noteTech === 'natural_harmonic' || noteTech === 'pinch_harmonic' ? 115 : 100,
+            velocity: Math.round(baseGtrVel * dynSpec.gainScale),
           });
         } else {
           const engine = getStringsAudioEngine();
@@ -2694,7 +2825,7 @@ export const ExerciseBuilder: React.FC = () => {
             selectedFret,
             undefined,
             noteTech === 'pm' ? 'normal' : noteTech,
-            0.85
+            0.85 * dynSpec.gainScale
           );
         }
       }
@@ -2738,6 +2869,8 @@ export const ExerciseBuilder: React.FC = () => {
               bendType: noteTech === 'bend' ? (existing?.bendType || selectedBendType) : undefined,
               bendAmount: noteTech === 'bend' ? (existing?.bendAmount || selectedBendAmount) : undefined,
               finger: existing?.finger || selectedFinger,
+              dynamic: existing?.dynamic || activeDynamic,
+              velocity: existing?.velocity || getDynamicSpec(existing?.dynamic || activeDynamic).velocity,
             },
           ];
       activeNotesRef.current = next;
@@ -3439,12 +3572,23 @@ export const ExerciseBuilder: React.FC = () => {
           playDrumHit({
             instrument: targetInstrument,
             time,
-            velocity: h.ghost ? 32 : h.accent ? 100 : 85,
+            velocity:
+              h.ghost
+                ? 32
+                : h.accent
+                  ? 100
+                  : h.velocity !== undefined
+                    ? h.velocity > 1
+                      ? h.velocity
+                      : Math.round(h.velocity * 100)
+                    : 85,
             accent: !!h.accent && !h.ghost,
             ghost: !!h.ghost,
             syncopated: !!h.syncopated,
             sticking: isFoot ? null : (h.sticking as 'R' | 'L') || 'R',
             isDoubleRebound,
+            dynamic: h.dynamic,
+            strokeType: h.strokeType,
           });
         });
         if (isBeatStep(stepNumber)) {
@@ -4880,7 +5024,61 @@ export const ExerciseBuilder: React.FC = () => {
         )}
       </div>
 
-      {/* 4. Paleta de Articulaciones y Técnicas */}
+      {/* 4. Barra Universal de Dinámicas Musicales (pp a ff + Crescendo / Decrescendo) */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl glass-panel border border-white/5 text-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">
+            Dinámica:
+          </span>
+
+          <div className="flex items-center gap-1 p-0.5 rounded-xl bg-zinc-900 border border-white/10 font-serif">
+            {DYNAMIC_LEVELS.map((dyn) => {
+              const isSelected = activeDynamic === dyn.id;
+              return (
+                <button
+                  key={`dyn-btn-${dyn.id}`}
+                  type="button"
+                  onClick={() => setActiveDynamic(dyn.id)}
+                  className={`px-2.5 py-1 rounded-lg font-black text-xs transition-all cursor-pointer ${
+                    isSelected
+                      ? `${dyn.badgeColor} ring-1 ring-white/30 scale-105 shadow-sm`
+                      : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                  }`}
+                  title={`Dinámica ${dyn.id.toUpperCase()} (Velocity: ${Math.round(dyn.velocity * 100)}%)`}
+                >
+                  {dyn.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Rampas de Dinámica Rápida */}
+          <div className="flex items-center gap-1.5 ml-1">
+            <button
+              type="button"
+              onClick={() => handleApplyDynamicRamp('crescendo')}
+              className="px-2.5 py-1 rounded-xl font-bold bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-500/40 text-cyan-200 flex items-center gap-1 transition-all cursor-pointer text-[11px]"
+              title="Rampa Progresiva de Dinámica: pp ➔ p ➔ mp ➔ mf ➔ f ➔ ff de izquierda a derecha"
+            >
+              <span>📈 Crescendo (pp ➔ ff)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleApplyDynamicRamp('decrescendo')}
+              className="px-2.5 py-1 rounded-xl font-bold bg-amber-950/60 hover:bg-amber-900/80 border border-amber-500/40 text-amber-200 flex items-center gap-1 transition-all cursor-pointer text-[11px]"
+              title="Rampa Progresiva de Dinámica: ff ➔ f ➔ mf ➔ mp ➔ p ➔ pp de izquierda a derecha"
+            >
+              <span>📉 Decrescendo (ff ➔ pp)</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="text-[11px] font-mono text-zinc-400">
+          Nivel activo: <span className="text-cyan-300 font-bold">{activeDynamic.toUpperCase()}</span> ({Math.round(getDynamicSpec(activeDynamic).velocity * 100)}% vel)
+        </div>
+      </div>
+
+      {/* 5. Paleta de Articulaciones y Técnicas */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl glass-panel border border-white/5 text-xs">
         {instrument === 'drums' ? (
           // Controles de Articulación para Batería
@@ -4961,6 +5159,29 @@ export const ExerciseBuilder: React.FC = () => {
               </button>
             </div>
 
+            {/* Tipo de Golpe / Técnica de Baqueta */}
+            <div className="flex flex-wrap items-center gap-1 p-0.5 rounded-xl bg-zinc-900 border border-white/10 font-sans">
+              <span className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider px-2">Tipo:</span>
+              {DRUM_STROKE_OPTIONS.map((st) => {
+                const isSelected = activeStrokeType === st.id;
+                return (
+                  <button
+                    key={`stroke-opt-${st.id}`}
+                    type="button"
+                    onClick={() => setActiveStrokeType(st.id)}
+                    className={`px-2 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-cyan-500 text-zinc-950 font-black shadow-sm'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                    }`}
+                    title={st.description}
+                  >
+                    {st.label}
+                  </button>
+                );
+              })}
+            </div>
+
             {/* Botón rápido ⚡ Aplicar Síncopa al Compás */}
             <button
               type="button"
@@ -4998,6 +5219,8 @@ export const ExerciseBuilder: React.FC = () => {
                       velocity: 95,
                       accent: selectedAccent,
                       sticking: isFoot ? null : (selectedSticking as 'R' | 'L') || 'R',
+                      dynamic: activeDynamic,
+                      strokeType: activeStrokeType,
                     });
                   }}
                   className={`px-2 py-1 rounded-lg bg-zinc-900 border border-white/10 text-[11px] font-semibold text-zinc-300 active:scale-95 transition-all ${pad.color}`}
@@ -5339,6 +5562,8 @@ export const ExerciseBuilder: React.FC = () => {
                         velocity: 95,
                         accent: selectedAccent,
                         sticking: isFoot ? null : (selectedSticking as 'R' | 'L') || 'R',
+                        dynamic: activeDynamic,
+                        strokeType: activeStrokeType,
                       });
                     }}
                     title={`Probar sonido de ${row.label}`}
@@ -5371,9 +5596,20 @@ export const ExerciseBuilder: React.FC = () => {
                         (row.voice as string) === 'bombo' ||
                         hit?.drumVoice === 'kick' ||
                         (hit?.drumVoice as string) === 'bombo';
-                      const displaySticking = isKickTrack
+
+                      const rawSticking = isKickTrack
                         ? 'K'
                         : hit?.sticking || (row.voice === 'hihat' ? '×' : '•');
+
+                      let displaySticking = rawSticking;
+                      if (hit?.strokeType && hit.strokeType !== 'normal') {
+                        if (hit.strokeType === 'flam') displaySticking = `fl${rawSticking}`;
+                        else if (hit.strokeType === 'drag') displaySticking = `dr${rawSticking}`;
+                        else if (hit.strokeType === 'buzz') displaySticking = `z${rawSticking}`;
+                        else if (hit.strokeType === 'rimshot') displaySticking = 'RS';
+                        else if (hit.strokeType === 'cross_stick') displaySticking = 'CS';
+                        else if (hit.strokeType === 'choke') displaySticking = 'Ch';
+                      }
 
                       const cellBorder =
                         stepIdx === 0
@@ -5411,7 +5647,7 @@ export const ExerciseBuilder: React.FC = () => {
                                   className="w-5 h-5 rounded-full bg-slate-800/90 border border-cyan-400/50 text-cyan-200 font-mono font-bold flex items-center justify-center text-[10px] opacity-75 shadow-inner"
                                   title="Ghost Note (Nota Fantasma)"
                                 >
-                                  ({isKickTrack ? 'K' : hit.sticking || '●'})
+                                  ({displaySticking})
                                 </div>
                               ) : row.voice === 'hihat_open' || hit.drumVoice === 'hihat_open' ? (
                                 <div
@@ -5429,6 +5665,13 @@ export const ExerciseBuilder: React.FC = () => {
                                 >
                                   {displaySticking}
                                 </div>
+                              )}
+
+                              {/* Indicador discreto de dinámica cuando es diferente de mf */}
+                              {hit.dynamic && hit.dynamic !== 'mf' && (
+                                <span className="absolute -bottom-3 text-[9px] font-mono font-black italic tracking-tighter text-amber-300">
+                                  {hit.dynamic}
+                                </span>
                               )}
                             </div>
                           ) : (
@@ -5725,6 +5968,16 @@ export const ExerciseBuilder: React.FC = () => {
                               {note.finger && (
                                 <span className="absolute -bottom-3 text-[8px] font-mono text-amber-300 font-bold">
                                   {note.finger}
+                                </span>
+                              )}
+
+                              {/* Dinámica si es distinta de mf */}
+                              {note.dynamic && note.dynamic !== 'mf' && (
+                                <span
+                                  className="absolute -bottom-3.5 right-0 text-[8px] font-mono font-black italic text-amber-300 drop-shadow-sm pointer-events-none"
+                                  title={`Dinámica: ${note.dynamic}`}
+                                >
+                                  {note.dynamic}
                                 </span>
                               )}
                             </div>

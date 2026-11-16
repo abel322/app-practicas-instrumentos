@@ -561,6 +561,8 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
           syncopated: Boolean(hit.syncopated),
           sticking: isFoot ? null : (hit.sticking as 'R' | 'L') || 'R',
           isDoubleRebound,
+          dynamic: (hit as any).dynamic,
+          strokeType: (hit as any).strokeType,
         });
       });
 
