@@ -98,9 +98,11 @@ export function DrumScoreRenderer({
                 : idx * stepsPerMeasure + (n.stepIndex || 0),
             instrument:
               n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare',
-            accent: Boolean(n.accent),
+            accent: Boolean(n.accent && !n.ghost),
+            ghost: Boolean(n.ghost),
+            syncopated: Boolean(n.syncopated),
             sticking: n.sticking || 'R',
-            velocity: n.velocity ?? 0.8,
+            velocity: n.ghost ? 0.32 : (n.velocity ?? 0.8),
           })),
         };
       });
@@ -128,9 +130,11 @@ export function DrumScoreRenderer({
                 : 0,
             instrument:
               n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare',
-            accent: Boolean(n.accent),
+            accent: Boolean(n.accent && !n.ghost),
+            ghost: Boolean(n.ghost),
+            syncopated: Boolean(n.syncopated),
             sticking: n.sticking || 'R',
-            velocity: n.velocity ?? 0.8,
+            velocity: n.ghost ? 0.32 : (n.velocity ?? 0.8),
           })),
         },
       ];
@@ -175,9 +179,11 @@ export function DrumScoreRenderer({
             stepIndex: s - mStart,
             instrument:
               h.instrument || h.drumVoice || h.drumType || h.instrumentKey || 'snare',
-            accent: Boolean(h.accent),
+            accent: Boolean(h.accent && !h.ghost),
+            ghost: Boolean(h.ghost),
+            syncopated: Boolean(h.syncopated),
             sticking: h.sticking || 'R',
-            velocity: h.velocity ?? 0.8,
+            velocity: h.ghost ? 0.32 : (h.velocity ?? 0.8),
           };
         });
 
@@ -833,7 +839,13 @@ export function DrumScoreRenderer({
                         const maxY = Math.max(...yPositions);
                         const stemTop = 38;
 
-                        const accentNote = stepNotes.find((n: any) => n.accent);
+                        const accentNote = stepNotes.find(
+                          (n: any) => n.accent && !n.ghost
+                        );
+                        const ghostNote = stepNotes.find((n: any) => n.ghost);
+                        const syncopatedNote = stepNotes.find(
+                          (n: any) => n.syncopated
+                        );
                         const stickingNote = stepNotes.find(
                           (n: any) => n.sticking
                         );
@@ -848,6 +860,7 @@ export function DrumScoreRenderer({
                               y2={maxY}
                               stroke={isStepActive ? '#22d3ee' : '#64748b'}
                               strokeWidth="1.6"
+                              opacity={ghostNote && stepNotes.length === 1 ? 0.65 : 1}
                             />
 
                             {/* Símbolo de Acento ('>') sobre la plica */}
@@ -864,7 +877,22 @@ export function DrumScoreRenderer({
                               />
                             )}
 
-                            {/* Cabezas de notas: ● para tambores y × para platos */}
+                            {/* Símbolo de Síncopa ('~' / '⚡') sobre la nota */}
+                            {syncopatedNote && (
+                              <text
+                                x={accentNote ? cx + 10 : cx}
+                                y={stemTop - 6}
+                                textAnchor="middle"
+                                fill={isStepActive ? '#e879f9' : '#c084fc'}
+                                fontSize="11"
+                                fontWeight="900"
+                                fontFamily="monospace"
+                              >
+                                ~⚡
+                              </text>
+                            )}
+
+                            {/* Cabezas de notas: ● para tambores y × para platos, con ( ) en Ghost Notes */}
                             {stepNotes.map((note: any, nIdx: number) => {
                               const voice =
                                 note.instrumentKey ||
@@ -872,6 +900,7 @@ export function DrumScoreRenderer({
                                 note.instrument ||
                                 'snare';
                               const cy = getDrumYPosition(voice);
+                              const isNoteGhost = Boolean(note.ghost);
                               const isCymbal = [
                                 'hihat',
                                 'hihat_open',
@@ -881,7 +910,10 @@ export function DrumScoreRenderer({
                               ].includes(voice.toLowerCase());
 
                               return (
-                                <g key={`note-${mIdx}-${sIdx}-${nIdx}`}>
+                                <g
+                                  key={`note-${mIdx}-${sIdx}-${nIdx}`}
+                                  opacity={isNoteGhost ? 0.72 : 1}
+                                >
                                   {/* Línea adicional superior para Crash */}
                                   {cy <= 40 && (
                                     <line
@@ -898,15 +930,19 @@ export function DrumScoreRenderer({
                                   {isCymbal ? (
                                     <g>
                                       <path
-                                        d={`M ${cx - 5.5} ${cy - 5.5} L ${
-                                          cx + 5.5
-                                        } ${cy + 5.5} M ${cx + 5.5} ${
-                                          cy - 5.5
-                                        } L ${cx - 5.5} ${cy + 5.5}`}
+                                        d={`M ${cx - (isNoteGhost ? 4.2 : 5.5)} ${
+                                          cy - (isNoteGhost ? 4.2 : 5.5)
+                                        } L ${cx + (isNoteGhost ? 4.2 : 5.5)} ${
+                                          cy + (isNoteGhost ? 4.2 : 5.5)
+                                        } M ${cx + (isNoteGhost ? 4.2 : 5.5)} ${
+                                          cy - (isNoteGhost ? 4.2 : 5.5)
+                                        } L ${cx - (isNoteGhost ? 4.2 : 5.5)} ${
+                                          cy + (isNoteGhost ? 4.2 : 5.5)
+                                        }`}
                                         stroke={
                                           isStepActive ? '#22d3ee' : '#38bdf8'
                                         }
-                                        strokeWidth="2.5"
+                                        strokeWidth={isNoteGhost ? '2' : '2.5'}
                                         strokeLinecap="round"
                                       />
                                       {voice.toLowerCase() ===
@@ -929,10 +965,14 @@ export function DrumScoreRenderer({
                                     <ellipse
                                       cx={cx}
                                       cy={cy}
-                                      rx="6.5"
-                                      ry="5"
+                                      rx={isNoteGhost ? '5' : '6.5'}
+                                      ry={isNoteGhost ? '3.8' : '5'}
                                       fill={
-                                        isStepActive ? '#22d3ee' : '#38bdf8'
+                                        isStepActive
+                                          ? '#22d3ee'
+                                          : isNoteGhost
+                                          ? '#94a3b8'
+                                          : '#38bdf8'
                                       }
                                       transform={`rotate(-15, ${cx}, ${cy})`}
                                       filter={
@@ -942,11 +982,39 @@ export function DrumScoreRenderer({
                                       }
                                     />
                                   )}
+
+                                  {/* Paréntesis '( )' alrededor de la cabeza de nota si es Ghost Note */}
+                                  {isNoteGhost && (
+                                    <g>
+                                      <text
+                                        x={cx - 9}
+                                        y={cy + 3.5}
+                                        textAnchor="middle"
+                                        fill={isStepActive ? '#22d3ee' : '#cbd5e1'}
+                                        fontSize="11"
+                                        fontWeight="bold"
+                                        fontFamily="monospace"
+                                      >
+                                        (
+                                      </text>
+                                      <text
+                                        x={cx + 9}
+                                        y={cy + 3.5}
+                                        textAnchor="middle"
+                                        fill={isStepActive ? '#22d3ee' : '#cbd5e1'}
+                                        fontSize="11"
+                                        fontWeight="bold"
+                                        fontFamily="monospace"
+                                      >
+                                        )
+                                      </text>
+                                    </g>
+                                  )}
                                 </g>
                               );
                             })}
 
-                            {/* Etiqueta de Sticking debajo de cada nota: R en rojo, L en azul */}
+                            {/* Etiqueta de Sticking debajo de cada nota: R en rojo, L en azul, entre paréntesis (R)/(L) si es Ghost Note */}
                             {stickingNote && stickingNote.sticking && (
                               <text
                                 x={cx}
@@ -959,7 +1027,8 @@ export function DrumScoreRenderer({
                                     ? '#3b82f6' // L en Azul
                                     : '#34d399' // Otros (K, B) en Esmeralda
                                 }
-                                fontSize="13"
+                                opacity={ghostNote ? 0.8 : 1}
+                                fontSize={ghostNote ? '11.5' : '13'}
                                 fontWeight="bold"
                                 fontFamily="monospace"
                                 className="transition-transform duration-75"
@@ -970,12 +1039,14 @@ export function DrumScoreRenderer({
                                   transformOrigin: `${cx}px 176px`,
                                 }}
                               >
-                                {stickingNote.sticking}
+                                {ghostNote
+                                  ? `(${stickingNote.sticking})`
+                                  : stickingNote.sticking}
                               </text>
                             )}
 
-                            {/* Etiqueta de Acento (>) debajo de la nota */}
-                            {accentNote && (
+                            {/* Etiqueta de Acento (>) o Síncopa (~) debajo de la nota */}
+                            {accentNote ? (
                               <text
                                 x={cx}
                                 y="194"
@@ -987,7 +1058,19 @@ export function DrumScoreRenderer({
                               >
                                 &gt;
                               </text>
-                            )}
+                            ) : syncopatedNote ? (
+                              <text
+                                x={cx}
+                                y="194"
+                                textAnchor="middle"
+                                fill={isStepActive ? '#e879f9' : '#c084fc'}
+                                fontSize="11"
+                                fontWeight="900"
+                                fontFamily="monospace"
+                              >
+                                ~
+                              </text>
+                            ) : null}
                           </g>
                         );
                       }

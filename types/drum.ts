@@ -18,8 +18,10 @@ export interface DrumHit {
   step: number;               // 0 to totalSteps - 1
   instrument: DrumVoice;
   accent?: boolean;
+  ghost?: boolean;
+  syncopated?: boolean;
   sticking?: StickingType;
-  velocity?: number;          // 0.0 to 1.0 (default 0.8, accents 1.0)
+  velocity?: number;          // 0.0 to 1.0 (default 0.8, accents 1.0, ghost 0.32)
   duration?: string;          // e.g. "16n", "8n"
 }
 

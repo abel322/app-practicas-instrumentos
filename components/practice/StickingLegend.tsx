@@ -43,6 +43,22 @@ export const StickingLegend: React.FC = () => {
         <span className="text-zinc-400">Acento</span>
       </div>
 
+      {/* Ghost Note */}
+      <div className="flex items-center gap-1.5">
+        <span className="inline-flex items-center justify-center px-1.5 h-5 rounded-md bg-slate-800/90 border border-slate-500 text-cyan-200 font-mono font-bold text-[10px]">
+          (R)
+        </span>
+        <span className="text-zinc-400">Ghost Note</span>
+      </div>
+
+      {/* Sincopado */}
+      <div className="flex items-center gap-1.5">
+        <span className="inline-flex items-center justify-center px-1.5 h-5 rounded-md bg-violet-500/20 border border-violet-500/50 text-violet-300 font-mono font-bold text-[10px]">
+          ~⚡
+        </span>
+        <span className="text-zinc-400">Sincopado</span>
+      </div>
+
       {/* HiHat cross */}
       <div className="flex items-center gap-1.5">
         <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-white/5 border border-white/10 text-zinc-300 font-bold text-xs">

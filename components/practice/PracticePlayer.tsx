@@ -144,9 +144,11 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
                 : idx * stepsPerMeasure + (n.stepIndex || 0),
             instrument:
               n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare',
-            accent: !!n.accent,
+            accent: Boolean(n.accent && !n.ghost),
+            ghost: Boolean(n.ghost),
+            syncopated: Boolean(n.syncopated),
             sticking: n.sticking || 'R',
-            velocity: n.velocity ?? 0.8,
+            velocity: n.ghost ? 0.32 : (n.velocity ?? 0.8),
           })),
         };
       });
@@ -179,9 +181,11 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
             stepIndex: s - mStart,
             instrument:
               h.instrument || h.drumVoice || h.drumType || h.instrumentKey || 'snare',
-            accent: !!h.accent,
+            accent: Boolean(h.accent && !h.ghost),
+            ghost: Boolean(h.ghost),
+            syncopated: Boolean(h.syncopated),
             sticking: h.sticking || 'R',
-            velocity: h.velocity ?? 0.8,
+            velocity: h.ghost ? 0.32 : (h.velocity ?? 0.8),
           };
         });
 
@@ -229,9 +233,11 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
             stepIndex: relStep,
             instrument:
               n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare',
-            accent: !!n.accent,
+            accent: Boolean(n.accent && !n.ghost),
+            ghost: Boolean(n.ghost),
+            syncopated: Boolean(n.syncopated),
             sticking: n.sticking || 'R',
-            velocity: n.velocity ?? 0.8,
+            velocity: n.ghost ? 0.32 : (n.velocity ?? 0.8),
             patternCode: targetPat.code,
             patternName: targetPat.name,
             patternColor: targetPat.color,
@@ -317,9 +323,11 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
               hit.drumType ||
               hit.instrumentKey ||
               'snare',
-            accent: !!hit.accent,
+            accent: Boolean(hit.accent && !hit.ghost),
+            ghost: Boolean(hit.ghost),
+            syncopated: Boolean(hit.syncopated),
             sticking: hit.sticking || 'R',
-            velocity: hit.velocity ?? 0.8,
+            velocity: hit.ghost ? 0.32 : (hit.velocity ?? 0.8),
           });
         }
       });
@@ -356,8 +364,17 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
         playDrumHit({
           instrument: targetInstrument,
           time,
-          velocity: hit.velocity !== undefined ? (hit.velocity > 1 ? hit.velocity : hit.velocity * 100) : 80,
-          accent: !!hit.accent,
+          velocity:
+            hit.ghost
+              ? 32
+              : hit.velocity !== undefined
+              ? hit.velocity > 1
+                ? hit.velocity
+                : hit.velocity * 100
+              : 80,
+          accent: Boolean(hit.accent && !hit.ghost),
+          ghost: Boolean(hit.ghost),
+          syncopated: Boolean(hit.syncopated),
           sticking: isFoot ? null : (hit.sticking as 'R' | 'L') || 'R',
           isDoubleRebound,
         });

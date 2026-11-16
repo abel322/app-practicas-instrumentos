@@ -97,6 +97,8 @@ export function computeMeasureFingerprint(measure: any): string {
         .trim(),
       k: String(n.sticking || '').toUpperCase().trim(),
       a: Boolean(n.accent),
+      g: Boolean(n.ghost),
+      sy: Boolean(n.syncopated),
       t: String(n.technique || ''),
     }))
     .sort(

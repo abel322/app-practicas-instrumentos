@@ -92,6 +92,8 @@ interface EditorNote {
   finger?: string;     // '1', '2', '3', '4', 'T'
   drumVoice?: DrumVoice; // Para batería
   accent?: boolean;
+  ghost?: boolean;
+  syncopated?: boolean;
   sticking?: StickingType;
   midiNumber?: number; // Para piano (24 a 108)
   velocity?: number;
@@ -415,9 +417,11 @@ export const ExerciseBuilder: React.FC = () => {
               loadedNotes = hits.map((h: any) => ({
                 step: h.step !== undefined ? h.step : h.stepIndex !== undefined ? h.stepIndex : 0,
                 drumVoice: normalizeDrumVoice(h.instrument || h.drumType || h.instrumentKey || 'snare'),
-                accent: !!h.accent,
+                accent: !!h.accent && !h.ghost,
+                ghost: !!h.ghost,
+                syncopated: !!h.syncopated,
                 sticking: h.sticking || 'R',
-                velocity: h.velocity ?? 0.8,
+                velocity: h.ghost ? 0.32 : (h.velocity ?? 0.8),
               }));
             } else if (resolvedInstrument === 'piano' && Array.isArray(exerciseData.notesData || exerciseData.tabData || exerciseData.data)) {
               const pNotes = exerciseData.notesData || exerciseData.tabData || exerciseData.data;
@@ -473,6 +477,35 @@ export const ExerciseBuilder: React.FC = () => {
   const [selectedDrumVoice, setSelectedDrumVoice] = useState<DrumVoice>('snare');
   const [selectedSticking, setSelectedSticking] = useState<StickingType>('R');
   const [selectedAccent, setSelectedAccent] = useState<boolean>(false);
+  const [selectedGhost, setSelectedGhost] = useState<boolean>(false);
+  const [selectedSyncopated, setSelectedSyncopated] = useState<boolean>(false);
+
+  // Atajos de teclado rápidos para articulación de batería (G = Ghost Note, S = Sincopado)
+  useEffect(() => {
+    if (instrument !== 'drums') return;
+    const handleArticulationHotkeys = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+      if (e.code === 'KeyG' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setSelectedGhost((prev) => {
+          const next = !prev;
+          if (next) setSelectedAccent(false);
+          return next;
+        });
+      } else if (e.code === 'KeyS' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setSelectedSyncopated((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleArticulationHotkeys);
+    return () => window.removeEventListener('keydown', handleArticulationHotkeys);
+  }, [instrument]);
 
   // Notas almacenadas del ejercicio (adaptadas por defecto al instrumento seleccionado)
   const [notes, setNotes] = useState<EditorNote[]>(() => {
@@ -1249,6 +1282,205 @@ export const ExerciseBuilder: React.FC = () => {
     );
   }, [patternBank, totalMeasures, stepsPerMeasure]);
 
+  // Eliminar un patrón del Banco de Patrones Reutilizables (P1, P2, P3, P4...) y limpiar la secuencia
+  const handleDeletePattern = useCallback(
+    (codeToDelete: string) => {
+      if (patternBank.length <= 1) {
+        // Si solo queda 1 patrón en el banco, limpiar sus notas
+        setPatternBank((prev) =>
+          prev.map((p) => (p.code === codeToDelete ? { ...p, notes: [] } : p))
+        );
+        setNotes([]);
+        activeNotesRef.current = [];
+        toast.info(`Notas de ${codeToDelete} limpiadas.`);
+        return;
+      }
+
+      const remainingBank = patternBank.filter((p) => p.code !== codeToDelete);
+      const fallbackPat = remainingBank[0];
+
+      // Identificar qué compases de la secuencia NO usaban el patrón eliminado
+      const keptMeasureIndices: number[] = [];
+      for (let mIdx = 0; mIdx < totalMeasures; mIdx++) {
+        const assignedCode =
+          measureAssignments[mIdx]?.patternCode || (mIdx === 0 ? remainingBank[0].code : '');
+        if (assignedCode !== codeToDelete) {
+          keptMeasureIndices.push(mIdx);
+        }
+      }
+
+      const nextAssignments: Record<
+        number,
+        { patternCode: string; patternName: string; patternColor: string }
+      > = {};
+      const rebuiltNotes: EditorNote[] = [];
+      let nextTotalMeasures = 1;
+
+      if (keptMeasureIndices.length > 0) {
+        nextTotalMeasures = keptMeasureIndices.length;
+        keptMeasureIndices.forEach((oldIdx, newIdx) => {
+          const oldAssign = measureAssignments[oldIdx] || {
+            patternCode: fallbackPat.code,
+            patternName: fallbackPat.name,
+            patternColor: fallbackPat.color,
+          };
+          nextAssignments[newIdx] = oldAssign;
+
+          const oldStart = oldIdx * stepsPerMeasure;
+          const oldEnd = oldStart + stepsPerMeasure;
+          const newStart = newIdx * stepsPerMeasure;
+
+          notes
+            .filter((n) => n.step >= oldStart && n.step < oldEnd)
+            .forEach((n) => {
+              const relStep = n.step - oldStart;
+              rebuiltNotes.push({
+                ...n,
+                step: newStart + relStep,
+                stepIndex: relStep,
+              });
+            });
+        });
+      } else {
+        // Si todos los compases usaban el patrón eliminado, dejar 1 compás con el primer patrón restante
+        nextTotalMeasures = 1;
+        nextAssignments[0] = {
+          patternCode: fallbackPat.code,
+          patternName: fallbackPat.name,
+          patternColor: fallbackPat.color,
+        };
+        (fallbackPat.notes || []).forEach((n: any) => {
+          const relStep =
+            n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % stepsPerMeasure;
+          rebuiltNotes.push({
+            ...JSON.parse(JSON.stringify(n)),
+            step: relStep,
+            stepIndex: relStep,
+            drumVoice: n.drumVoice || n.instrument || 'snare',
+          });
+        });
+      }
+
+      if (isPlaying && previewingPatternCode === codeToDelete) {
+        handleStop();
+      }
+
+      totalMeasuresRef.current = nextTotalMeasures;
+      const nextCurrentMeasure = Math.max(
+        0,
+        Math.min(currentMeasure, nextTotalMeasures - 1)
+      );
+      currentMeasureRef.current = nextCurrentMeasure;
+      activeNotesRef.current = rebuiltNotes;
+
+      setPatternBank(remainingBank);
+      setMeasureAssignments(nextAssignments);
+      setTotalMeasures(nextTotalMeasures);
+      setCurrentMeasure(nextCurrentMeasure);
+      setNotes(rebuiltNotes);
+
+      if (editingPatternCode === codeToDelete) {
+        setEditingPatternCode(fallbackPat.code);
+      }
+      if (activeBrushPatternCode === codeToDelete) {
+        setActiveBrushPatternCode(fallbackPat.code);
+      }
+
+      toast.info(`Patrón ${codeToDelete} eliminado del banco y de la secuencia.`);
+    },
+    [
+      patternBank,
+      totalMeasures,
+      measureAssignments,
+      stepsPerMeasure,
+      notes,
+      currentMeasure,
+      editingPatternCode,
+      activeBrushPatternCode,
+      isPlaying,
+      previewingPatternCode,
+    ]
+  );
+
+  // Aplicar síncopa automática con Ghost Notes en los contratiempos débiles ("e" y "a") del compás actual
+  const handleApplySyncopation = useCallback(() => {
+    const mStart = currentMeasure * stepsPerMeasure;
+    const mEnd = mStart + stepsPerMeasure;
+
+    setNotes((prev) => {
+      const otherMeasuresNotes = prev.filter((n) => n.step < mStart || n.step >= mEnd);
+      const currentNotes = prev.filter((n) => n.step >= mStart && n.step < mEnd);
+
+      const syncSteps =
+        stepsPerMeasure >= 16
+          ? [1, 3, 6, 7, 11, 14]
+          : stepsPerMeasure >= 8
+          ? [1, 3, 5, 7]
+          : [1, 3];
+      const ghostSnareSteps =
+        stepsPerMeasure >= 16 ? [1, 7, 9, 15] : [1, 5];
+
+      // Marcar notas existentes en contratiempos como sincopadas
+      const updatedExisting = currentNotes.map((n) => {
+        const rel = n.step - mStart;
+        if (syncSteps.includes(rel) || rel % 2 === 1) {
+          return { ...n, syncopated: true };
+        }
+        return n;
+      });
+
+      const resultMeasureNotes = [...updatedExisting];
+
+      // Si el compás estaba vacío, sembrar un groove base sincopado con bombo, caja y hi-hat
+      if (resultMeasureNotes.length === 0 && stepsPerMeasure >= 8) {
+        const baseGroove: EditorNote[] = [
+          { step: mStart + 0, drumVoice: 'kick', sticking: 'R', accent: true, velocity: 1.0 },
+          { step: mStart + 0, drumVoice: 'hihat', sticking: 'R', accent: true, velocity: 0.9 },
+          { step: mStart + 3, drumVoice: 'kick', sticking: 'R', syncopated: true, velocity: 0.9 },
+          { step: mStart + 4, drumVoice: 'snare', sticking: 'L', accent: true, velocity: 1.0 },
+          { step: mStart + 6, drumVoice: 'hihat_open', sticking: 'R', syncopated: true, accent: true, velocity: 0.95 },
+        ];
+        if (stepsPerMeasure >= 16) {
+          baseGroove.push(
+            { step: mStart + 10, drumVoice: 'kick', sticking: 'R', syncopated: true, velocity: 0.9 },
+            { step: mStart + 11, drumVoice: 'snare', sticking: 'L', syncopated: true, accent: true, velocity: 0.95 },
+            { step: mStart + 12, drumVoice: 'hihat', sticking: 'R', accent: false, velocity: 0.8 },
+            { step: mStart + 14, drumVoice: 'snare', sticking: 'R', syncopated: true, velocity: 0.85 }
+          );
+        }
+        resultMeasureNotes.push(...baseGroove);
+      }
+
+      // Añadir Ghost Notes suaves en redoblante en los huecos débiles
+      ghostSnareSteps.forEach((relStep) => {
+        if (relStep < stepsPerMeasure) {
+          const targetGlobal = mStart + relStep;
+          const existsSnare = resultMeasureNotes.some(
+            (n) => n.step === targetGlobal && n.drumVoice === 'snare'
+          );
+          if (!existsSnare) {
+            resultMeasureNotes.push({
+              step: targetGlobal,
+              stepIndex: relStep,
+              drumVoice: 'snare',
+              sticking: 'L',
+              ghost: true,
+              accent: false,
+              syncopated: true,
+              velocity: 0.32,
+            });
+          }
+        }
+      });
+
+      const next = [...otherMeasuresNotes, ...resultMeasureNotes];
+      activeNotesRef.current = next;
+      return next;
+    });
+
+    toast.success('⚡ Síncopa y Ghost Notes aplicadas en los contratiempos del compás.');
+  }, [currentMeasure, stepsPerMeasure]);
+
   const handleAddMeasure = useCallback(() => {
     const nextIdx = totalMeasuresRef.current;
     const activePat =
@@ -1282,6 +1514,14 @@ export const ExerciseBuilder: React.FC = () => {
       step: targetStart + (n.step - sourceStart),
     }));
 
+    const sourceAssign = measureAssignments[currentMeasure];
+    if (sourceAssign) {
+      setMeasureAssignments((prev) => ({
+        ...prev,
+        [newMeasureIdx]: { ...sourceAssign },
+      }));
+    }
+
     totalMeasuresRef.current = newMeasureIdx + 1;
     currentMeasureRef.current = newMeasureIdx;
     setTotalMeasures((prev) => prev + 1);
@@ -1309,6 +1549,22 @@ export const ExerciseBuilder: React.FC = () => {
         return n;
       });
 
+    // Desplazar asignaciones de patrones para que no queden desfasadas
+    setMeasureAssignments((prev) => {
+      const next: Record<
+        number,
+        { patternCode: string; patternName: string; patternColor: string }
+      > = {};
+      for (let i = 0; i < totalMeasures; i++) {
+        if (i < measureIdxToDelete && prev[i]) {
+          next[i] = prev[i];
+        } else if (i > measureIdxToDelete && prev[i]) {
+          next[i - 1] = prev[i];
+        }
+      }
+      return next;
+    });
+
     totalMeasuresRef.current = Math.max(1, totalMeasures - 1);
     activeNotesRef.current = updatedNotes;
     setNotes(updatedNotes);
@@ -1323,35 +1579,95 @@ export const ExerciseBuilder: React.FC = () => {
     const globalStep = currentMeasure * stepsPerMeasure + stepInMeasure;
 
     if (instrument === 'drums') {
-      // Toggle drum note
-      const existingIdx = notes.findIndex((n) => n.step === globalStep && n.drumVoice === drumVoice);
+      // Buscar golpe existente en este paso y voz
+      const existingIdx = notes.findIndex(
+        (n) =>
+          n.step === globalStep &&
+          (n.drumVoice === drumVoice ||
+            (drumVoice === 'hihat' && n.drumVoice === 'hihat_closed') ||
+            (drumVoice === 'floor_tom' && n.drumVoice === 'granadero'))
+      );
+
       if (existingIdx >= 0) {
-        // Eliminar nota existente
-        setNotes((prev) => {
-          const next = prev.filter((_, idx) => idx !== existingIdx);
-          activeNotesRef.current = next;
-          return next;
-        });
+        const existing = notes[existingIdx];
+        // Si el usuario tiene activado Ghost Note o Sincopado y el golpe existente aún no tiene ese estado, alternarlo;
+        // si ya coincide exactamente con las herramientas activas, eliminar el golpe.
+        const shouldToggleGhost = selectedGhost && !existing.ghost;
+        const shouldToggleSync = selectedSyncopated && !existing.syncopated;
+        const shouldToggleAccent = selectedAccent && !existing.accent && !selectedGhost;
+
+        if (shouldToggleGhost || shouldToggleSync || shouldToggleAccent) {
+          const nextGhost = selectedGhost ? !existing.ghost : Boolean(existing.ghost && !selectedAccent);
+          const nextAccent = nextGhost ? false : selectedAccent ? true : Boolean(existing.accent);
+          const nextSync = selectedSyncopated ? !existing.syncopated : Boolean(existing.syncopated);
+
+          setNotes((prev) => {
+            const next = prev.map((n, idx) =>
+              idx === existingIdx
+                ? {
+                    ...n,
+                    ghost: nextGhost,
+                    accent: nextAccent,
+                    syncopated: nextSync,
+                    sticking: selectedSticking,
+                    velocity: nextGhost ? 0.32 : nextAccent ? 1.0 : 0.8,
+                  }
+                : n
+            );
+            activeNotesRef.current = next;
+            return next;
+          });
+
+          const isFoot = drumVoice === 'kick';
+          const targetInstrument = drumVoice === 'hihat' ? 'hihat_closed' : drumVoice!;
+          playDrumHit({
+            instrument: targetInstrument,
+            velocity: nextGhost ? 32 : nextAccent ? 100 : 85,
+            accent: nextAccent,
+            ghost: nextGhost,
+            syncopated: nextSync,
+            sticking: isFoot ? null : (selectedSticking as 'R' | 'L') || 'R',
+            isDoubleRebound: false,
+          });
+        } else {
+          // Eliminar nota existente
+          setNotes((prev) => {
+            const next = prev.filter((_, idx) => idx !== existingIdx);
+            activeNotesRef.current = next;
+            return next;
+          });
+        }
       } else {
-        // Agregar nota de batería
+        // Agregar nueva nota de batería con soporte para Ghost Note, Acento y Sincopado
+        const isGhostNote = selectedGhost;
+        const isAccentNote = isGhostNote ? false : selectedAccent;
+        const isSyncNote = selectedSyncopated;
+
         const newNote: EditorNote = {
           step: globalStep,
+          stepIndex: stepInMeasure,
           drumVoice,
-          accent: selectedAccent,
+          accent: isAccentNote,
+          ghost: isGhostNote,
+          syncopated: isSyncNote,
           sticking: selectedSticking,
+          velocity: isGhostNote ? 0.32 : isAccentNote ? 1.0 : 0.8,
         };
         setNotes((prev) => {
           const next = [...prev, newNote];
           activeNotesRef.current = next;
           return next;
         });
-        // Sonido de prueba inmediato con muestras acústicas reales, panorama y sticking
+
+        // Sonido de prueba inmediato con DSP de Ghost Note / Sincopado / Acento
         const isFoot = drumVoice === 'kick';
         const targetInstrument = drumVoice === 'hihat' ? 'hihat_closed' : drumVoice!;
         playDrumHit({
           instrument: targetInstrument,
-          velocity: 90,
-          accent: selectedAccent,
+          velocity: isGhostNote ? 32 : isAccentNote ? 100 : 85,
+          accent: isAccentNote,
+          ghost: isGhostNote,
+          syncopated: isSyncNote,
           sticking: isFoot ? null : (selectedSticking as 'R' | 'L') || 'R',
           isDoubleRebound: false,
         });
@@ -2223,8 +2539,10 @@ export const ExerciseBuilder: React.FC = () => {
           playDrumHit({
             instrument: targetInstrument,
             time,
-            velocity: 85,
-            accent: !!h.accent,
+            velocity: h.ghost ? 32 : h.accent ? 100 : 85,
+            accent: !!h.accent && !h.ghost,
+            ghost: !!h.ghost,
+            syncopated: !!h.syncopated,
             sticking: isFoot ? null : (h.sticking as 'R' | 'L') || 'R',
             isDoubleRebound,
           });
@@ -2514,9 +2832,11 @@ export const ExerciseBuilder: React.FC = () => {
             step: n.step,
             stepIndex: n.step - mIdx * stepsPerMeasure,
             instrument: n.drumVoice,
-            accent: n.accent ?? false,
+            accent: Boolean(n.accent && !n.ghost),
+            ghost: Boolean(n.ghost),
+            syncopated: Boolean(n.syncopated),
             sticking: n.sticking ?? 'R',
-            velocity: n.accent ? 1.0 : 0.8,
+            velocity: n.ghost ? 0.32 : n.accent ? 1.0 : 0.8,
             patternCode: assign.patternCode,
             patternName: assign.patternName,
             patternColor: assign.patternColor,
@@ -3178,7 +3498,7 @@ export const ExerciseBuilder: React.FC = () => {
                           : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
                       }`}
                     >
-                      {/* Cabecera de la tarjeta: Badge P1 + Input Nombre + Uso */}
+                      {/* Cabecera de la tarjeta: Badge P1 + Input Nombre + Uso + Eliminar */}
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                           <span
@@ -3195,9 +3515,25 @@ export const ExerciseBuilder: React.FC = () => {
                           />
                         </div>
 
-                        <span className="text-[10px] font-mono text-slate-400 shrink-0 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
-                          {patNoteCount}n • {assignedCount}c
-                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[10px] font-mono text-slate-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                            {patNoteCount}n • {assignedCount}c
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePattern(pat.code)}
+                            className="px-2 py-1 rounded-lg bg-rose-950/60 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1"
+                            title={
+                              patternBank.length > 1
+                                ? `Eliminar ${pat.code} (${pat.name}) del banco y de la secuencia`
+                                : `Limpiar las notas de ${pat.code}`
+                            }
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>{patternBank.length > 1 ? '🗑️ Eliminar' : 'Limpiar'}</span>
+                          </button>
+                        </div>
                       </div>
 
                       {/* Botones de Acción del Patrón */}
@@ -3343,11 +3679,10 @@ export const ExerciseBuilder: React.FC = () => {
                   const noteCount = m.notes?.length || 0;
 
                   return (
-                    <button
+                    <div
                       key={`arranger-cell-${idx}`}
-                      type="button"
                       onClick={() => handleAssignPatternToMeasure(idx, activeBrushPatternCode)}
-                      className={`p-2 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 ${
+                      className={`p-2 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 relative group ${
                         isSelected
                           ? 'bg-slate-800 border-cyan-400 ring-1 ring-cyan-400/50 shadow-md'
                           : 'bg-slate-900/90 hover:bg-slate-800/80 border-slate-800'
@@ -3358,9 +3693,24 @@ export const ExerciseBuilder: React.FC = () => {
                         <span className="text-[11px] font-mono font-black text-white">
                           C.{idx + 1}
                         </span>
-                        <span className="text-[9px] font-mono text-slate-400">
-                          {noteCount}n
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[9px] font-mono text-slate-400">
+                            {noteCount}n
+                          </span>
+                          {measures.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteMeasure(idx);
+                              }}
+                              className="w-4 h-4 rounded bg-rose-950/70 hover:bg-rose-600 text-rose-300 hover:text-white flex items-center justify-center text-[10px] font-bold transition-colors cursor-pointer"
+                              title={`Eliminar Compás C.${idx + 1}`}
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <div
@@ -3368,7 +3718,7 @@ export const ExerciseBuilder: React.FC = () => {
                       >
                         [{m.patternCode}] {m.patternName}
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -3388,17 +3738,30 @@ export const ExerciseBuilder: React.FC = () => {
                 </span>
               </div>
 
-              <button
-                type="button"
-                onClick={() =>
-                  handleSyncPatternToSequence(
-                    measures[currentMeasure]?.patternCode || editingPatternCode
-                  )
-                }
-                className="px-3 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/50 text-cyan-200 font-bold text-xs transition-all cursor-pointer"
-              >
-                🔄 Sincronizar {measures[currentMeasure]?.patternCode || editingPatternCode} en Secuencia
-              </button>
+              <div className="flex items-center gap-2">
+                {instrument === 'drums' && (
+                  <button
+                    type="button"
+                    onClick={handleApplySyncopation}
+                    className="px-3 py-1 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 border border-violet-400/50 text-violet-200 font-bold text-xs transition-all cursor-pointer flex items-center gap-1"
+                    title="Aplicar golpes sincopados en los contratiempos ('e' y 'a') con Ghost Notes en redoblante"
+                  >
+                    <span>⚡ Aplicar Síncopa</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleSyncPatternToSequence(
+                      measures[currentMeasure]?.patternCode || editingPatternCode
+                    )
+                  }
+                  className="px-3 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/50 text-cyan-200 font-bold text-xs transition-all cursor-pointer"
+                >
+                  🔄 Sincronizar {measures[currentMeasure]?.patternCode || editingPatternCode} en Secuencia
+                </button>
+              </div>
             </div>
           </div>
         ) : (
@@ -3484,27 +3847,68 @@ export const ExerciseBuilder: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl glass-panel border border-white/5 text-xs">
         {instrument === 'drums' ? (
           // Controles de Articulación para Batería
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <span className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">Articulación:</span>
 
-            {/* Acento */}
+            {/* > Acento (mutuamente excluyente con Ghost Note) */}
             <button
-              onClick={() => setSelectedAccent(!selectedAccent)}
-              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 border transition-all ${
+              type="button"
+              onClick={() => {
+                const next = !selectedAccent;
+                setSelectedAccent(next);
+                if (next) setSelectedGhost(false);
+              }}
+              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
                 selectedAccent
                   ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.3)]'
                   : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white'
               }`}
+              title="Acento dinámico (>)"
             >
               <span className="text-sm font-black">&gt;</span>
               <span>Acento</span>
             </button>
 
+            {/* ( ) Ghost Note (mutuamente excluyente con Acento, atajo G) */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = !selectedGhost;
+                setSelectedGhost(next);
+                if (next) setSelectedAccent(false);
+              }}
+              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                selectedGhost
+                  ? 'border-slate-400 bg-slate-800/90 text-cyan-200 shadow-[0_0_10px_rgba(148,163,184,0.35)] ring-1 ring-cyan-400/40'
+                  : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white'
+              }`}
+              title="Nota Fantasma suave a baja altura (Atajo: tecla G)"
+            >
+              <span className="font-mono font-black text-xs">( )</span>
+              <span>Ghost Note</span>
+            </button>
+
+            {/* ⚡ Sincopado (atajo S) */}
+            <button
+              type="button"
+              onClick={() => setSelectedSyncopated(!selectedSyncopated)}
+              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                selectedSyncopated
+                  ? 'border-violet-500/60 bg-violet-500/20 text-violet-200 shadow-[0_0_12px_rgba(139,92,246,0.35)]'
+                  : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white'
+              }`}
+              title="Marcar golpe como Sincopado en contratiempo (Atajo: tecla S)"
+            >
+              <span className="text-amber-300 font-black">⚡</span>
+              <span>Sincopado</span>
+            </button>
+
             {/* Sticking R / L */}
             <div className="flex items-center gap-1 p-0.5 rounded-xl bg-zinc-900 border border-white/10 font-mono">
               <button
+                type="button"
                 onClick={() => setSelectedSticking('R')}
-                className={`px-2.5 py-1 rounded-lg font-bold text-xs ${
+                className={`px-2.5 py-1 rounded-lg font-bold text-xs cursor-pointer ${
                   selectedSticking === 'R'
                     ? 'bg-cyan-500 text-zinc-950 font-black'
                     : 'text-cyan-400 hover:bg-white/5'
@@ -3513,8 +3917,9 @@ export const ExerciseBuilder: React.FC = () => {
                 R (Der)
               </button>
               <button
+                type="button"
                 onClick={() => setSelectedSticking('L')}
-                className={`px-2.5 py-1 rounded-lg font-bold text-xs ${
+                className={`px-2.5 py-1 rounded-lg font-bold text-xs cursor-pointer ${
                   selectedSticking === 'L'
                     ? 'bg-fuchsia-500 text-zinc-950 font-black'
                     : 'text-fuchsia-400 hover:bg-white/5'
@@ -3523,6 +3928,16 @@ export const ExerciseBuilder: React.FC = () => {
                 L (Izq)
               </button>
             </div>
+
+            {/* Botón rápido ⚡ Aplicar Síncopa al Compás */}
+            <button
+              type="button"
+              onClick={handleApplySyncopation}
+              className="px-2.5 py-1.5 rounded-xl font-bold bg-violet-950/60 hover:bg-violet-900/70 border border-violet-500/40 text-violet-200 flex items-center gap-1 transition-all cursor-pointer"
+              title="Colocar/desplazar golpes sincopados en los contratiempos ('e' y 'a') con Ghost Notes"
+            >
+              <span>⚡ Aplicar Síncopa</span>
+            </button>
 
             {/* Separador vertical */}
             <div className="h-5 w-px bg-white/10 hidden sm:block" />
@@ -3911,15 +4326,42 @@ export const ExerciseBuilder: React.FC = () => {
                       >
                         {hit ? (
                           <div className="relative flex flex-col items-center">
-                            {hit.accent && (
-                              <span className="absolute -top-3 text-[11px] font-black text-cyan-500 dark:text-cyan-400">&gt;</span>
+                            {hit.accent && !hit.ghost && (
+                              <span className="absolute -top-3.5 text-[11px] font-black text-cyan-500 dark:text-cyan-400">
+                                &gt;
+                              </span>
                             )}
-                            {row.voice === 'hihat_open' || hit.drumVoice === 'hihat_open' ? (
-                              <div className="w-6 h-6 rounded-full bg-amber-400 text-zinc-950 font-bold flex items-center justify-center text-xs shadow-[0_0_14px_rgba(251,191,36,0.7)] ring-2 ring-amber-300 ring-offset-1 ring-offset-black">
+                            {hit.syncopated && (
+                              <span
+                                className="absolute -top-3.5 -right-2 text-[10px] font-black text-violet-300 drop-shadow-[0_0_6px_rgba(139,92,246,0.8)]"
+                                title="Golpe Sincopado"
+                              >
+                                ⚡
+                              </span>
+                            )}
+                            {hit.ghost ? (
+                              <div
+                                className="w-5 h-5 rounded-full bg-slate-800/90 border border-cyan-400/50 text-cyan-200 font-mono font-bold flex items-center justify-center text-[10px] opacity-75 shadow-inner"
+                                title="Ghost Note (Nota Fantasma)"
+                              >
+                                ({hit.sticking || '●'})
+                              </div>
+                            ) : row.voice === 'hihat_open' || hit.drumVoice === 'hihat_open' ? (
+                              <div
+                                className={`w-7 h-7 rounded-full bg-amber-400 text-zinc-950 font-bold flex items-center justify-center text-xs shadow-[0_0_14px_rgba(251,191,36,0.7)] ring-2 ${
+                                  hit.syncopated
+                                    ? 'ring-violet-400 ring-offset-1 ring-offset-black'
+                                    : 'ring-amber-300 ring-offset-1 ring-offset-black'
+                                }`}
+                              >
                                 {hit.sticking || '○'}
                               </div>
                             ) : (
-                              <div className="w-6 h-6 rounded-full bg-cyan-400 text-zinc-950 font-bold flex items-center justify-center text-xs shadow-[0_0_12px_rgba(34,211,238,0.5)]">
+                              <div
+                                className={`w-7 h-7 rounded-full bg-cyan-400 text-zinc-950 font-bold flex items-center justify-center text-xs shadow-[0_0_12px_rgba(34,211,238,0.5)] ${
+                                  hit.syncopated ? 'ring-2 ring-violet-400 ring-offset-1 ring-offset-black' : ''
+                                }`}
+                              >
                                 {hit.sticking || (row.voice === 'hihat' ? '×' : '•')}
                               </div>
                             )}

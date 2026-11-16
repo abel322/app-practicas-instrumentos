@@ -25,6 +25,8 @@ export interface DrumHitOptions {
   velocity?: number;
   sticking?: 'R' | 'L' | null;
   accent?: boolean;
+  ghost?: boolean;
+  syncopated?: boolean;
   isDoubleRebound?: boolean;
 }
 
@@ -229,11 +231,18 @@ class AcousticDrumEngine {
     if (!ctx || !this.masterGain) return;
 
     const hitTime = Math.max(ctx.currentTime, options.time ?? ctx.currentTime);
-    const isAccented = Boolean(options.accent);
+    const isGhost = Boolean(options.ghost);
+    const isSyncopated = Boolean(options.syncopated);
+    const isAccented = Boolean(options.accent) && !isGhost;
     const isRight = options.sticking === 'R';
     const isLeft = options.sticking === 'L';
 
     const config = this.resolveConfig(options.instrument, isAccented);
+    const isCymbal =
+      config.key === 'hihat_closed' ||
+      config.key === 'hihat_open' ||
+      config.key === 'ride' ||
+      config.key === 'crash';
 
     // Asegurar que exista un buffer (de samples descargados o síntesis acústica en memoria)
     let buffer =
@@ -268,8 +277,13 @@ class AcousticDrumEngine {
     const gainNode = ctx.createGain();
     const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
 
-    const velNorm =
-      options.velocity !== undefined ? Math.min(1.15, Math.max(0.2, options.velocity / 100)) : 1.0;
+    const rawVel =
+      options.velocity !== undefined
+        ? options.velocity > 1
+          ? options.velocity / 100
+          : options.velocity
+        : 0.9;
+    const velNorm = isGhost ? 0.9 : Math.min(1.15, Math.max(0.2, rawVel));
 
     let finalGain = config.baseGain * velNorm;
     let panValue = config.pan;
@@ -296,6 +310,17 @@ class AcousticDrumEngine {
       if (options.isDoubleRebound && !isAccented) {
         finalGain *= 0.85;
       }
+    }
+
+    // Calibración DSP para Ghost Note (toque fantasma controlado a baja altura)
+    if (isGhost) {
+      finalGain *= 0.34;
+      lowpassFreq = Math.min(lowpassFreq, isCymbal ? 6800 : 4200);
+      duration *= 0.8;
+    } else if (isSyncopated) {
+      // Empuje rítmico definido para contratiempo sincopado
+      finalGain *= 1.14;
+      lowpassFreq = 18500;
     }
 
     source.playbackRate.setValueAtTime(playbackRate, hitTime);
