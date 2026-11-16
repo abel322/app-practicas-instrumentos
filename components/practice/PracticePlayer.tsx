@@ -550,7 +550,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
           time,
           velocity:
             hit.ghost
-              ? 32
+              ? 22
               : hit.velocity !== undefined
                 ? hit.velocity > 1
                   ? hit.velocity

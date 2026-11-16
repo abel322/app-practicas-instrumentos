@@ -37,6 +37,9 @@ export interface DrumHitOptions {
   isDoubleRebound?: boolean;
   dynamic?: DynamicMarking;
   strokeType?: DrumStrokeType;
+  isGraceNote?: boolean;
+  customLowpassHz?: number;
+  customPan?: number;
 }
 
 interface SampleConfig {
@@ -266,7 +269,7 @@ class AcousticDrumEngine {
             ? options.velocity / 100
             : options.velocity
           : 0.9;
-      const clickVel = (isGhost ? 0.28 : rawV) * dynSpec.gainScale;
+      const clickVel = isGhost ? 0.20 : rawV * dynSpec.gainScale;
       clickGain.gain.setValueAtTime(clickVel * 0.9, hitTime);
       clickGain.gain.exponentialRampToValueAtTime(0.0001, hitTime + 0.045);
 
@@ -317,54 +320,127 @@ class AcousticDrumEngine {
           : options.velocity
         : 0.9;
 
-    // 2. Manejo de Notas de Gracia para Flam y Drag
+    // 2. Manejo de Notas de Gracia para Flam, Drag y Buzz con tiempos estrictamente positivos
     if (options.strokeType === 'flam') {
-      const graceTime = Math.max(ctx.currentTime, hitTime - 0.028);
-      const graceSticking = options.sticking === 'R' ? 'L' : 'R';
+      const now = ctx.currentTime;
+      const startTime = Math.max(now, options.time ?? now);
+      const isRightHand = options.sticking === 'R' || !options.sticking;
+      const graceSticking = isRightHand ? 'L' : 'R';
+
+      const dynSpec = getDynamicSpec(options.dynamic);
+      const baseVel = rawVel * dynSpec.gainScale;
+
+      const gracePan = isRightHand
+        ? Math.max(-0.6, config.pan - 0.18)
+        : Math.min(0.6, config.pan + 0.18);
+      const mainPan = isRightHand
+        ? Math.min(0.6, config.pan + 0.18)
+        : Math.max(-0.6, config.pan - 0.18);
+
+      // 1. Nota de gracia en startTime (mano opuesta, ganancia 42%, filtro 4800 Hz, paneo opuesto)
       this.playHit({
         ...options,
-        time: graceTime,
-        velocity: (rawVel * 0.42) * 100,
+        time: startTime,
+        velocity: baseVel * 0.42,
         sticking: graceSticking,
         strokeType: 'normal',
         accent: false,
-        ghost: true,
+        ghost: false,
+        isGraceNote: true,
+        customLowpassHz: 4800,
+        customPan: gracePan,
       });
+
+      // 2. Golpe principal en startTime + 0.032 (32 ms después, ganancia 105%, brillo completo, paneo principal)
+      this.playHit({
+        ...options,
+        time: startTime + 0.032,
+        velocity: baseVel * 1.05,
+        sticking: isRightHand ? 'R' : 'L',
+        strokeType: 'normal',
+        accent: options.accent,
+        ghost: false,
+        customPan: mainPan,
+      });
+
+      return;
     } else if (options.strokeType === 'drag') {
-      const g1Time = Math.max(ctx.currentTime, hitTime - 0.052);
-      const g2Time = Math.max(ctx.currentTime, hitTime - 0.026);
-      const dragSticking = options.sticking === 'R' ? 'L' : 'R';
+      const now = ctx.currentTime;
+      const startTime = Math.max(now, options.time ?? now);
+      const isRightHand = options.sticking === 'R' || !options.sticking;
+      const dragSticking = isRightHand ? 'L' : 'R';
+
+      const dynSpec = getDynamicSpec(options.dynamic);
+      const baseVel = rawVel * dynSpec.gainScale;
+
+      const gracePan = isRightHand
+        ? Math.max(-0.6, config.pan - 0.18)
+        : Math.min(0.6, config.pan + 0.18);
+      const mainPan = isRightHand
+        ? Math.min(0.6, config.pan + 0.18)
+        : Math.max(-0.6, config.pan - 0.18);
+
+      // Gracia 1 en startTime (ganancia 34%, filtro 4500 Hz)
       this.playHit({
         ...options,
-        time: g1Time,
-        velocity: (rawVel * 0.34) * 100,
+        time: startTime,
+        velocity: baseVel * 0.34,
         sticking: dragSticking,
         strokeType: 'normal',
         accent: false,
-        ghost: true,
+        ghost: false,
+        isGraceNote: true,
+        customLowpassHz: 4500,
+        customPan: gracePan,
       });
+
+      // Gracia 2 en startTime + 0.028 (28 ms después, ganancia 38%, filtro 4800 Hz)
       this.playHit({
         ...options,
-        time: g2Time,
-        velocity: (rawVel * 0.38) * 100,
+        time: startTime + 0.028,
+        velocity: baseVel * 0.38,
         sticking: dragSticking,
         strokeType: 'normal',
         accent: false,
-        ghost: true,
+        ghost: false,
+        isGraceNote: true,
+        customLowpassHz: 4800,
+        customPan: gracePan,
       });
+
+      // Golpe principal en startTime + 0.058 (58 ms después, ganancia 108%, brillo completo)
+      this.playHit({
+        ...options,
+        time: startTime + 0.058,
+        velocity: baseVel * 1.08,
+        sticking: isRightHand ? 'R' : 'L',
+        strokeType: 'normal',
+        accent: options.accent,
+        ghost: false,
+        customPan: mainPan,
+      });
+
+      return;
     } else if (options.strokeType === 'buzz') {
-      // Ráfaga de 3 micro-rebotes decrescentes cada 24ms
+      const now = ctx.currentTime;
+      const startTime = Math.max(now, options.time ?? now);
       const rebGains = [0.62, 0.38, 0.22];
       rebGains.forEach((gScale, idx) => {
         this.playHit({
           ...options,
-          time: hitTime + (idx + 1) * 0.024,
-          velocity: (rawVel * gScale) * 100,
+          time: startTime + (idx + 1) * 0.024,
+          velocity: rawVel * gScale,
           strokeType: 'normal',
           accent: false,
           isDoubleRebound: true,
         });
       });
+      this.playHit({
+        ...options,
+        time: startTime,
+        strokeType: 'normal',
+      });
+      return;
     }
 
     const source = ctx.createBufferSource();
@@ -376,12 +452,12 @@ class AcousticDrumEngine {
     const gainNode = ctx.createGain();
     const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
 
-    const velNorm = isGhost ? 0.9 : Math.min(1.15, Math.max(0.2, rawVel));
+    const velNorm = isGhost ? 0.22 : Math.min(1.2, Math.max(0.15, rawVel));
 
     let finalGain = config.baseGain * velNorm;
-    let panValue = config.pan;
+    let panValue = options.customPan !== undefined ? options.customPan : config.pan;
     let playbackRate = 1.0;
-    let lowpassFreq = 18000;
+    let lowpassFreq = options.customLowpassHz ?? 18000;
     let duration = config.maxDuration;
 
     const isKickHit = Boolean(config.isFootPiece || options.sticking === 'K');
@@ -396,15 +472,17 @@ class AcousticDrumEngine {
       if (isAccented) {
         finalGain *= 1.18;
         playbackRate = 1.01;
-      } else if (isRight) {
-        finalGain *= 1.0;
-        playbackRate = 1.018;
-        panValue = Math.min(0.6, config.pan + 0.12);
-      } else if (isLeft) {
-        finalGain *= 0.72;
-        lowpassFreq = 8500;
-        playbackRate = 0.98;
-        panValue = Math.max(-0.6, config.pan - 0.12);
+      } else if (options.customPan === undefined) {
+        if (isRight) {
+          finalGain *= 1.0;
+          playbackRate = 1.018;
+          panValue = Math.min(0.6, config.pan + 0.18);
+        } else if (isLeft) {
+          finalGain *= 0.72;
+          lowpassFreq = options.customLowpassHz ?? 8500;
+          playbackRate = 0.98;
+          panValue = Math.max(-0.6, config.pan - 0.18);
+        }
       }
 
       if (options.isDoubleRebound && !isAccented) {
@@ -412,20 +490,23 @@ class AcousticDrumEngine {
       }
     }
 
-    // Calibración DSP para Ghost Note (toque fantasma controlado a baja altura)
+    // Calibración DSP para Ghost Note (prioridad absoluta a nivel pp real ~22% ganancia y ataque suave)
     if (isGhost) {
-      finalGain *= 0.34;
-      lowpassFreq = Math.min(lowpassFreq, isCymbal ? 6800 : 4200);
-      duration *= 0.8;
-    } else if (isSyncopated) {
-      finalGain *= 1.14;
-      lowpassFreq = 18500;
+      finalGain = config.baseGain * 0.22;
+      lowpassFreq = Math.min(lowpassFreq, isCymbal ? 4800 : 3400);
+      duration *= 0.72;
+    } else if (options.isGraceNote) {
+      duration *= 0.65;
+    } else {
+      if (isSyncopated) {
+        finalGain *= 1.14;
+        lowpassFreq = Math.max(lowpassFreq, 18500);
+      }
+      // 3. Modulación por Dinámica (pp a ff) solo para notas no-fantasma
+      const dynSpec = getDynamicSpec(options.dynamic);
+      finalGain *= dynSpec.gainScale;
+      lowpassFreq = Math.min(lowpassFreq, dynSpec.brightnessHz);
     }
-
-    // 3. Modulación por Dinámica (pp a ff)
-    const dynSpec = getDynamicSpec(options.dynamic);
-    finalGain *= dynSpec.gainScale;
-    lowpassFreq = Math.min(lowpassFreq, dynSpec.brightnessHz);
 
     // 4. Modulación por Rimshot (transitorio metálico agudo de aro)
     if (options.strokeType === 'rimshot') {

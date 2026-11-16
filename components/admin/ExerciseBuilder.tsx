@@ -596,6 +596,9 @@ export const ExerciseBuilder: React.FC = () => {
   const [selectedSyncopated, setSelectedSyncopated] = useState<boolean>(false);
   const [activeDynamic, setActiveDynamic] = useState<DynamicMarking>('mf');
   const [activeStrokeType, setActiveStrokeType] = useState<DrumStrokeType>('normal');
+  const [rampFromDynamic, setRampFromDynamic] = useState<DynamicMarking>('p');
+  const [rampToDynamic, setRampToDynamic] = useState<DynamicMarking>('f');
+  const [rampScope, setRampScope] = useState<'measure' | 'sequence'>('measure');
 
   // Atajos de teclado rápidos para articulación de batería (G = Ghost Note, S = Sincopado)
   useEffect(() => {
@@ -2335,52 +2338,73 @@ export const ExerciseBuilder: React.FC = () => {
     toast.success('⚡ Síncopa y Ghost Notes aplicadas en los contratiempos del compás.');
   }, [activeMeasureStart, stepsPerMeasure]);
 
-  // Rampa de Dinámica Progresiva en el compás activo (Crescendo o Decrescendo)
+  // Rampa de Dinámica Progresiva (Crescendo o Decrescendo Configurable: Desde ➔ Hasta + Alcance)
   const handleApplyDynamicRamp = useCallback(
-    (direction: 'crescendo' | 'decrescendo') => {
-      const rampLevels: DynamicMarking[] =
-        direction === 'crescendo'
-          ? ['pp', 'p', 'mp', 'mf', 'f', 'ff']
-          : ['ff', 'f', 'mf', 'mp', 'p', 'pp'];
+    (customFrom?: DynamicMarking, customTo?: DynamicMarking, customScope?: 'measure' | 'sequence') => {
+      const fromDyn = customFrom || rampFromDynamic;
+      const toDyn = customTo || rampToDynamic;
+      const scope = customScope || rampScope;
 
-      const mStart = activeMeasureStart;
-      const mEnd = mStart + stepsPerMeasure;
+      const DYNAMIC_ORDER: DynamicMarking[] = ['pp', 'p', 'mp', 'mf', 'f', 'ff'];
+      const fromIdx = DYNAMIC_ORDER.indexOf(fromDyn);
+      const toIdx = DYNAMIC_ORDER.indexOf(toDyn);
 
-      // Obtener pasos únicos en orden ascendente que contengan notas en el compás activo
-      const activeStepsWithNotes = Array.from(
+      const isCrescendo = toIdx > fromIdx;
+      const isDecrescendo = toIdx < fromIdx;
+
+      let startStep = 0;
+      let endStep = totalSteps;
+
+      if (scope === 'measure') {
+        startStep = activeMeasureStart;
+        endStep = startStep + stepsPerMeasure;
+      }
+
+      // Obtener pasos únicos que contengan notas NO-GHOST en el rango seleccionado
+      const candidateSteps = Array.from(
         new Set(
           notes
-            .filter((n) => n.step >= mStart && n.step < mEnd)
+            .filter((n) => n.step >= startStep && n.step < endStep && !n.ghost)
             .map((n) => n.step)
         )
       ).sort((a, b) => a - b);
 
-      if (activeStepsWithNotes.length === 0) {
-        toast.info('No hay notas en el compás activo para aplicar dinámicas.');
+      if (candidateSteps.length === 0) {
+        toast.info(
+          scope === 'measure'
+            ? 'No hay notas (no-fantasma) en el compás activo para aplicar dinámicas.'
+            : 'No hay notas (no-fantasma) en la secuencia para aplicar dinámicas.'
+        );
         return;
       }
 
       setNotes((prev) => {
         const next = prev.map((note) => {
-          if (note.step < mStart || note.step >= mEnd) return note;
-          const stepOrderIdx = activeStepsWithNotes.indexOf(note.step);
+          if (note.step < startStep || note.step >= endStep) return note;
+          // Si es ghost note, preservar su toque suave pp
+          if (note.ghost) {
+            return {
+              ...note,
+              dynamic: 'pp' as DynamicMarking,
+              velocity: 0.22,
+            };
+          }
+          const stepOrderIdx = candidateSteps.indexOf(note.step);
           if (stepOrderIdx < 0) return note;
 
           const fraction =
-            activeStepsWithNotes.length <= 1
+            candidateSteps.length <= 1
               ? 0
-              : stepOrderIdx / (activeStepsWithNotes.length - 1);
-          const rampIdx = Math.min(
-            rampLevels.length - 1,
-            Math.floor(fraction * rampLevels.length)
-          );
-          const assignedDyn = rampLevels[rampIdx];
+              : stepOrderIdx / (candidateSteps.length - 1);
+          const interpolatedIdx = Math.round(fromIdx + fraction * (toIdx - fromIdx));
+          const clampedIdx = Math.max(0, Math.min(DYNAMIC_ORDER.length - 1, interpolatedIdx));
+          const assignedDyn = DYNAMIC_ORDER[clampedIdx];
           const dynSpec = getDynamicSpec(assignedDyn);
 
           return {
             ...note,
             dynamic: assignedDyn,
-            velocity: note.ghost ? 0.32 : note.accent ? 1.0 : dynSpec.velocity,
+            velocity: note.accent ? 1.0 : dynSpec.velocity,
           };
         });
 
@@ -2388,47 +2412,72 @@ export const ExerciseBuilder: React.FC = () => {
         return next;
       });
 
-      // Sincronizar el banco de patrones
-      const targetCode = activeMeasureConfig.patternCode;
-      if (targetCode) {
-        setPatternBank((prevBank) =>
-          prevBank.map((p) => {
-            if (p.code !== targetCode) return p;
-            const pNotes = p.notes || [];
-            const pSteps = Array.from(
-              new Set(pNotes.map((n: any) => n.step ?? n.stepIndex ?? 0))
-            ).sort((a: number, b: number) => a - b);
-            if (pSteps.length === 0) return p;
+      // Sincronizar el banco de patrones si el alcance fue 'measure'
+      if (scope === 'measure') {
+        const targetCode = activeMeasureConfig.patternCode;
+        if (targetCode) {
+          setPatternBank((prevBank) =>
+            prevBank.map((p) => {
+              if (p.code !== targetCode) return p;
+              const pNotes = p.notes || [];
+              const pCandidateSteps = Array.from(
+                new Set(
+                  pNotes
+                    .filter((n: any) => !n.ghost)
+                    .map((n: any) => n.step ?? n.stepIndex ?? 0)
+                )
+              ).sort((a: number, b: number) => a - b);
+              if (pCandidateSteps.length === 0) return p;
 
-            const updatedPNotes = pNotes.map((note: any) => {
-              const s = note.step ?? note.stepIndex ?? 0;
-              const stepOrderIdx = pSteps.indexOf(s);
-              if (stepOrderIdx < 0) return note;
-              const fraction =
-                pSteps.length <= 1 ? 0 : stepOrderIdx / (pSteps.length - 1);
-              const rampIdx = Math.min(
-                rampLevels.length - 1,
-                Math.floor(fraction * rampLevels.length)
-              );
-              const assignedDyn = rampLevels[rampIdx];
-              return {
-                ...note,
-                dynamic: assignedDyn,
-                velocity: note.ghost ? 0.32 : note.accent ? 1.0 : getDynamicSpec(assignedDyn).velocity,
-              };
-            });
-            return { ...p, notes: updatedPNotes };
-          })
-        );
+              const updatedPNotes = pNotes.map((note: any) => {
+                if (note.ghost) {
+                  return { ...note, dynamic: 'pp' as DynamicMarking, velocity: 0.22 };
+                }
+                const s = note.step ?? note.stepIndex ?? 0;
+                const stepOrderIdx = pCandidateSteps.indexOf(s);
+                if (stepOrderIdx < 0) return note;
+                const fraction =
+                  pCandidateSteps.length <= 1 ? 0 : stepOrderIdx / (pCandidateSteps.length - 1);
+                const interpolatedIdx = Math.round(fromIdx + fraction * (toIdx - fromIdx));
+                const clampedIdx = Math.max(0, Math.min(DYNAMIC_ORDER.length - 1, interpolatedIdx));
+                const assignedDyn = DYNAMIC_ORDER[clampedIdx];
+                return {
+                  ...note,
+                  dynamic: assignedDyn,
+                  velocity: note.accent ? 1.0 : getDynamicSpec(assignedDyn).velocity,
+                };
+              });
+              return { ...p, notes: updatedPNotes };
+            })
+          );
+        }
       }
 
-      toast.success(
-        direction === 'crescendo'
-          ? '📈 Crescendo (pp ➔ ff) aplicado al compás activo'
-          : '📉 Decrescendo (ff ➔ pp) aplicado al compás activo'
-      );
+      const directionLabel = isCrescendo
+        ? `📈 Crescendo (${fromDyn} ➔ ${toDyn})`
+        : isDecrescendo
+        ? `📉 Decrescendo (${fromDyn} ➔ ${toDyn})`
+        : `Dinámica uniforme (${fromDyn})`;
+
+      const scopeLabel =
+        scope === 'measure'
+          ? `en el compás ${currentMeasure + 1}`
+          : `en toda la secuencia (${totalMeasures} compases)`;
+
+      toast.success(`${directionLabel} aplicado ${scopeLabel}.`);
     },
-    [activeMeasureStart, stepsPerMeasure, notes, activeMeasureConfig.patternCode]
+    [
+      rampFromDynamic,
+      rampToDynamic,
+      rampScope,
+      activeMeasureStart,
+      stepsPerMeasure,
+      totalSteps,
+      notes,
+      activeMeasureConfig.patternCode,
+      currentMeasure,
+      totalMeasures,
+    ]
   );
 
   const handleAddMeasure = useCallback(() => {
@@ -2584,7 +2633,7 @@ export const ExerciseBuilder: React.FC = () => {
                   sticking: effectiveSticking,
                   dynamic: nextDynamic,
                   strokeType: nextStroke,
-                  velocity: nextGhost ? 0.32 : nextAccent ? 1.0 : dynSpec.velocity,
+                  velocity: nextGhost ? 0.22 : nextAccent ? 1.0 : dynSpec.velocity,
                 }
                 : n
             );
@@ -2595,7 +2644,7 @@ export const ExerciseBuilder: React.FC = () => {
           const targetInstrument = drumVoice === 'hihat' ? 'hihat_closed' : drumVoice!;
           playDrumHit({
             instrument: targetInstrument,
-            velocity: nextGhost ? 32 : nextAccent ? 100 : Math.round(dynSpec.velocity * 100),
+            velocity: nextGhost ? 22 : nextAccent ? 100 : Math.round(dynSpec.velocity * 100),
             accent: nextAccent,
             ghost: nextGhost,
             syncopated: nextSync,
@@ -2629,7 +2678,7 @@ export const ExerciseBuilder: React.FC = () => {
           sticking: effectiveSticking,
           dynamic: activeDynamic,
           strokeType: activeStrokeType,
-          velocity: isGhostNote ? 0.32 : isAccentNote ? 1.0 : dynSpec.velocity,
+          velocity: isGhostNote ? 0.22 : isAccentNote ? 1.0 : dynSpec.velocity,
         };
         setNotes((prev) => {
           const next = [...prev, newNote];
@@ -2641,7 +2690,7 @@ export const ExerciseBuilder: React.FC = () => {
         const targetInstrument = drumVoice === 'hihat' ? 'hihat_closed' : drumVoice!;
         playDrumHit({
           instrument: targetInstrument,
-          velocity: isGhostNote ? 32 : isAccentNote ? 100 : Math.round(dynSpec.velocity * 100),
+          velocity: isGhostNote ? 22 : isAccentNote ? 100 : Math.round(dynSpec.velocity * 100),
           accent: isAccentNote,
           ghost: isGhostNote,
           syncopated: isSyncNote,
@@ -3574,7 +3623,7 @@ export const ExerciseBuilder: React.FC = () => {
             time,
             velocity:
               h.ghost
-                ? 32
+                ? 22
                 : h.accent
                   ? 100
                   : h.velocity !== undefined
@@ -5052,24 +5101,79 @@ export const ExerciseBuilder: React.FC = () => {
             })}
           </div>
 
-          {/* Rampas de Dinámica Rápida */}
-          <div className="flex items-center gap-1.5 ml-1">
-            <button
-              type="button"
-              onClick={() => handleApplyDynamicRamp('crescendo')}
-              className="px-2.5 py-1 rounded-xl font-bold bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-500/40 text-cyan-200 flex items-center gap-1 transition-all cursor-pointer text-[11px]"
-              title="Rampa Progresiva de Dinámica: pp ➔ p ➔ mp ➔ mf ➔ f ➔ ff de izquierda a derecha"
+          {/* Regulador Dinámico Configurable (Desde ➔ Hasta + Alcance) */}
+          <div className="flex flex-wrap items-center gap-1.5 ml-1 bg-zinc-950/70 p-1 rounded-xl border border-white/10">
+            <span className="text-[10px] text-zinc-400 font-bold uppercase ml-1">Regulador:</span>
+
+            <div className="flex items-center gap-1 text-[11px]">
+              <span className="text-zinc-400">Desde:</span>
+              <select
+                value={rampFromDynamic}
+                onChange={(e) => setRampFromDynamic(e.target.value as DynamicMarking)}
+                className="bg-zinc-900 border border-white/15 rounded-lg px-1.5 py-0.5 text-zinc-200 font-black font-mono text-xs focus:ring-1 focus:ring-cyan-400"
+              >
+                {DYNAMIC_LEVELS.map((d) => (
+                  <option key={`ramp-from-${d.id}`} value={d.id}>
+                    {d.label} ({Math.round(d.velocity * 100)}%)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <span className="text-zinc-500 font-bold">➔</span>
+
+            <div className="flex items-center gap-1 text-[11px]">
+              <span className="text-zinc-400">Hasta:</span>
+              <select
+                value={rampToDynamic}
+                onChange={(e) => setRampToDynamic(e.target.value as DynamicMarking)}
+                className="bg-zinc-900 border border-white/15 rounded-lg px-1.5 py-0.5 text-zinc-200 font-black font-mono text-xs focus:ring-1 focus:ring-cyan-400"
+              >
+                {DYNAMIC_LEVELS.map((d) => (
+                  <option key={`ramp-to-${d.id}`} value={d.id}>
+                    {d.label} ({Math.round(d.velocity * 100)}%)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <select
+              value={rampScope}
+              onChange={(e) => setRampScope(e.target.value as 'measure' | 'sequence')}
+              className="bg-zinc-900 border border-white/15 rounded-lg px-2 py-0.5 text-zinc-300 font-semibold text-[11px] focus:ring-1 focus:ring-cyan-400"
             >
-              <span>📈 Crescendo (pp ➔ ff)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleApplyDynamicRamp('decrescendo')}
-              className="px-2.5 py-1 rounded-xl font-bold bg-amber-950/60 hover:bg-amber-900/80 border border-amber-500/40 text-amber-200 flex items-center gap-1 transition-all cursor-pointer text-[11px]"
-              title="Rampa Progresiva de Dinámica: ff ➔ f ➔ mf ➔ mp ➔ p ➔ pp de izquierda a derecha"
-            >
-              <span>📉 Decrescendo (ff ➔ pp)</span>
-            </button>
+              <option value="measure">En este Patrón / Compás</option>
+              <option value="sequence">En Toda la Secuencia (C.1 ➔ Fin)</option>
+            </select>
+
+            {(() => {
+              const DYN_ORDER: DynamicMarking[] = ['pp', 'p', 'mp', 'mf', 'f', 'ff'];
+              const fIdx = DYN_ORDER.indexOf(rampFromDynamic);
+              const tIdx = DYN_ORDER.indexOf(rampToDynamic);
+              const isCres = tIdx > fIdx;
+              const isDecres = tIdx < fIdx;
+
+              return (
+                <button
+                  type="button"
+                  onClick={() => handleApplyDynamicRamp()}
+                  className={`px-2.5 py-1 rounded-xl font-bold border flex items-center gap-1 transition-all cursor-pointer text-[11px] active:scale-95 ${
+                    isDecres
+                      ? 'bg-amber-950/70 hover:bg-amber-900/90 border-amber-500/40 text-amber-200'
+                      : 'bg-cyan-950/70 hover:bg-cyan-900/90 border-cyan-500/40 text-cyan-200'
+                  }`}
+                  title="Aplica la rampa progresiva de dinámicas entre 'Desde' y 'Hasta' en el alcance elegido respetando Ghost Notes"
+                >
+                  <span>
+                    {isCres
+                      ? '📈 Aplicar Regulador (Crescendo)'
+                      : isDecres
+                      ? '📉 Aplicar Regulador (Decrescendo)'
+                      : 'Aplicar Dinámica'}
+                  </span>
+                </button>
+              );
+            })()}
           </div>
         </div>
 
@@ -5216,8 +5320,9 @@ export const ExerciseBuilder: React.FC = () => {
                     const isFoot = pad.voice === 'kick';
                     playDrumHit({
                       instrument: pad.voice,
-                      velocity: 95,
-                      accent: selectedAccent,
+                      velocity: selectedGhost ? 22 : selectedAccent ? 100 : Math.round(getDynamicSpec(activeDynamic).velocity * 100),
+                      accent: selectedAccent && !selectedGhost,
+                      ghost: selectedGhost,
                       sticking: isFoot ? null : (selectedSticking as 'R' | 'L') || 'R',
                       dynamic: activeDynamic,
                       strokeType: activeStrokeType,
@@ -5559,8 +5664,9 @@ export const ExerciseBuilder: React.FC = () => {
                       const targetInstrument = row.voice === 'hihat' ? 'hihat_closed' : row.voice;
                       playDrumHit({
                         instrument: targetInstrument,
-                        velocity: 95,
-                        accent: selectedAccent,
+                        velocity: selectedGhost ? 22 : selectedAccent ? 100 : Math.round(getDynamicSpec(activeDynamic).velocity * 100),
+                        accent: selectedAccent && !selectedGhost,
+                        ghost: selectedGhost,
                         sticking: isFoot ? null : (selectedSticking as 'R' | 'L') || 'R',
                         dynamic: activeDynamic,
                         strokeType: activeStrokeType,
