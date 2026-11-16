@@ -88,7 +88,7 @@ export function DrumScoreRenderer({
         const mSub =
           m.subdivision ||
           firstNoteWithMeta?.subdivision ||
-          inferSubdivisionFromSteps(mSteps, '1/16');
+          inferSubdivisionFromSteps(mSteps ?? 16, '1/16');
         return {
           measureIndex: idx,
           measureNumber: idx + 1,
@@ -141,7 +141,7 @@ export function DrumScoreRenderer({
       const mSub =
         measure.subdivision ||
         firstNoteWithMeta?.subdivision ||
-        inferSubdivisionFromSteps(mSteps, '1/16');
+        inferSubdivisionFromSteps(mSteps ?? 16, '1/16');
       return [
         {
           measureIndex: 0,
@@ -236,7 +236,7 @@ export function DrumScoreRenderer({
       );
       const mSteps = Number(firstWithMeta?.stepsPerMeasure) || stepsPerMeasure || 16;
       const mSub =
-        firstWithMeta?.subdivision || inferSubdivisionFromSteps(mSteps, '1/16');
+        firstWithMeta?.subdivision || inferSubdivisionFromSteps(mSteps ?? 16, '1/16');
       return {
         measureIndex: mIdx,
         measureNumber: mIdx + 1,
@@ -256,8 +256,8 @@ export function DrumScoreRenderer({
   const analysisList = useMemo<MeasureAnalysis[]>(() => {
     return analyzeMeasureDuplicates(
       safeMeasures,
-      inferSubdivisionFromSteps(stepsPerMeasure, '1/16'),
-      stepsPerMeasure
+      inferSubdivisionFromSteps(stepsPerMeasure ?? 16, '1/16'),
+      stepsPerMeasure ?? 16
     );
   }, [safeMeasures, stepsPerMeasure]);
 
@@ -384,7 +384,7 @@ export function DrumScoreRenderer({
   );
 
   const formatSubdivisionLabel = useCallback((sub?: string, mSteps?: number) => {
-    const s = sub || inferSubdivisionFromSteps(mSteps, '1/16');
+    const s = sub || inferSubdivisionFromSteps(mSteps ?? 16, '1/16');
     if (s === '1/8T') return '1/8T (Tresillos)';
     if (s === '1/16') return '1/16 (Semicorcheas)';
     if (s === '1/16T') return '1/16T (Seisillos)';
@@ -745,7 +745,7 @@ export function DrumScoreRenderer({
               const mSub =
                 meas.subdivision ||
                 analysis?.subdivision ||
-                inferSubdivisionFromSteps(mSteps, '1/16');
+                inferSubdivisionFromSteps(mSteps ?? 16, '1/16');
               const mStepLabels = getStepLabelsForMeasure(mSteps);
               const getXForMeasureStep = (sIdx: number) =>
                 ((sIdx + 0.5) / mSteps) * MEASURE_WIDTH;

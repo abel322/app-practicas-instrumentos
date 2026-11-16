@@ -88,9 +88,12 @@ export function getPatternStyle(colorKey?: string) {
 }
 
 export function inferSubdivisionFromSteps(
-  steps: number,
+  steps?: number,
   fallback: string = '1/16'
 ): string {
+  if (steps === undefined || steps === null || isNaN(steps)) {
+    return fallback;
+  }
   switch (steps) {
     case 4:
       return '1/4';

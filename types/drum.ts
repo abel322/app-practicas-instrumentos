@@ -23,6 +23,13 @@ export interface DrumHit {
   sticking?: StickingType;
   velocity?: number;          // 0.0 to 1.0 (default 0.8, accents 1.0, ghost 0.32)
   duration?: string;          // e.g. "16n", "8n"
+  measureIndex?: number;
+  stepIndex?: number;
+  patternCode?: string;
+  patternName?: string;
+  patternColor?: string;
+  subdivision?: string;
+  stepsPerMeasure?: number;
 }
 
 export type ExerciseCategory = 

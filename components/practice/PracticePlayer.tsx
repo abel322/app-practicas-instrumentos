@@ -132,7 +132,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
           m.subdivision ||
             firstNoteWithMeta?.subdivision ||
             inferSubdivisionFromSteps(
-              m.stepsPerMeasure || firstNoteWithMeta?.stepsPerMeasure,
+              m.stepsPerMeasure || firstNoteWithMeta?.stepsPerMeasure || 16,
               normalizedSub
             )
         );
@@ -207,7 +207,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       );
       const mSub = normalizeSubdivisionKey(
         firstWithMeta?.subdivision ||
-          inferSubdivisionFromSteps(firstWithMeta?.stepsPerMeasure, normalizedSub)
+          inferSubdivisionFromSteps(firstWithMeta?.stepsPerMeasure ?? 16, normalizedSub)
       );
       const mSteps =
         Number(firstWithMeta?.stepsPerMeasure) ||
@@ -270,7 +270,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       return (activeExercise as any).patternBank.map((p: any) => {
         const pSub = normalizeSubdivisionKey(
           p.subdivision ||
-            inferSubdivisionFromSteps(p.stepsPerMeasure, normalizedSub)
+            inferSubdivisionFromSteps(p.stepsPerMeasure ?? 16, normalizedSub)
         );
         const pSteps =
           Number(p.stepsPerMeasure) ||
@@ -301,7 +301,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
     }
     const patSub = normalizeSubdivisionKey(
       targetPat.subdivision ||
-        inferSubdivisionFromSteps(targetPat.stepsPerMeasure, normalizedSub)
+        inferSubdivisionFromSteps(targetPat.stepsPerMeasure ?? 16, normalizedSub)
     );
     const patSteps =
       Number(targetPat.stepsPerMeasure) ||

@@ -1010,7 +1010,7 @@ export const ExerciseBuilder: React.FC = () => {
               setPatternBank(
                 parsed.patternBank.map((p: any) => {
                   const pSub = normalizeSubdivisionKey(
-                    p.subdivision || inferSubdivisionFromSteps(p.stepsPerMeasure, defaultSub)
+                    p.subdivision || inferSubdivisionFromSteps(p.stepsPerMeasure ?? 16, defaultSub)
                   );
                   const pSteps =
                     Number(p.stepsPerMeasure) || getStepsForSubdivision(pSub, defaultTimeSig);
