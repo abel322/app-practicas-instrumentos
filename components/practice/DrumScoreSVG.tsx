@@ -84,26 +84,32 @@ export function DrumScoreRenderer({
           patternCode: m.patternCode || firstNoteWithMeta?.patternCode,
           patternName: m.patternName || firstNoteWithMeta?.patternName,
           patternColor: m.patternColor || firstNoteWithMeta?.patternColor,
-          notes: rawNotes.map((n: any) => ({
-            ...n,
-            stepIndex:
-              n.stepIndex !== undefined
-                ? n.stepIndex
-                : n.step !== undefined
-                ? n.step % stepsPerMeasure
-                : 0,
-            step:
-              n.step !== undefined
-                ? n.step
-                : idx * stepsPerMeasure + (n.stepIndex || 0),
-            instrument:
-              n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare',
-            accent: Boolean(n.accent && !n.ghost),
-            ghost: Boolean(n.ghost),
-            syncopated: Boolean(n.syncopated),
-            sticking: n.sticking || 'R',
-            velocity: n.ghost ? 0.32 : (n.velocity ?? 0.8),
-          })),
+          notes: rawNotes.map((n: any) => {
+            const inst =
+              n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare';
+            const isKick =
+              String(inst).toLowerCase().trim() === 'kick' ||
+              String(inst).toLowerCase().trim() === 'bombo';
+            return {
+              ...n,
+              stepIndex:
+                n.stepIndex !== undefined
+                  ? n.stepIndex
+                  : n.step !== undefined
+                  ? n.step % stepsPerMeasure
+                  : 0,
+              step:
+                n.step !== undefined
+                  ? n.step
+                  : idx * stepsPerMeasure + (n.stepIndex || 0),
+              instrument: inst,
+              accent: Boolean(n.accent && !n.ghost),
+              ghost: Boolean(n.ghost),
+              syncopated: Boolean(n.syncopated),
+              sticking: isKick ? 'K' : (n.sticking || 'R'),
+              velocity: n.ghost ? 0.32 : (n.velocity ?? 0.8),
+            };
+          }),
         };
       });
     }
@@ -120,22 +126,28 @@ export function DrumScoreRenderer({
           patternCode: measure.patternCode || firstNoteWithMeta?.patternCode,
           patternName: measure.patternName || firstNoteWithMeta?.patternName,
           patternColor: measure.patternColor || firstNoteWithMeta?.patternColor,
-          notes: rawNotes.map((n: any) => ({
-            ...n,
-            stepIndex:
-              n.stepIndex !== undefined
-                ? n.stepIndex
-                : n.step !== undefined
-                ? n.step % stepsPerMeasure
-                : 0,
-            instrument:
-              n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare',
-            accent: Boolean(n.accent && !n.ghost),
-            ghost: Boolean(n.ghost),
-            syncopated: Boolean(n.syncopated),
-            sticking: n.sticking || 'R',
-            velocity: n.ghost ? 0.32 : (n.velocity ?? 0.8),
-          })),
+          notes: rawNotes.map((n: any) => {
+            const inst =
+              n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare';
+            const isKick =
+              String(inst).toLowerCase().trim() === 'kick' ||
+              String(inst).toLowerCase().trim() === 'bombo';
+            return {
+              ...n,
+              stepIndex:
+                n.stepIndex !== undefined
+                  ? n.stepIndex
+                  : n.step !== undefined
+                  ? n.step % stepsPerMeasure
+                  : 0,
+              instrument: inst,
+              accent: Boolean(n.accent && !n.ghost),
+              ghost: Boolean(n.ghost),
+              syncopated: Boolean(n.syncopated),
+              sticking: isKick ? 'K' : (n.sticking || 'R'),
+              velocity: n.ghost ? 0.32 : (n.velocity ?? 0.8),
+            };
+          }),
         },
       ];
     }
@@ -173,16 +185,20 @@ export function DrumScoreRenderer({
               : h.stepIndex !== undefined
               ? h.stepIndex
               : 0;
+          const inst =
+            h.instrument || h.drumVoice || h.drumType || h.instrumentKey || 'snare';
+          const isKick =
+            String(inst).toLowerCase().trim() === 'kick' ||
+            String(inst).toLowerCase().trim() === 'bombo';
           return {
             ...h,
             step: s,
             stepIndex: s - mStart,
-            instrument:
-              h.instrument || h.drumVoice || h.drumType || h.instrumentKey || 'snare',
+            instrument: inst,
             accent: Boolean(h.accent && !h.ghost),
             ghost: Boolean(h.ghost),
             syncopated: Boolean(h.syncopated),
-            sticking: h.sticking || 'R',
+            sticking: isKick ? 'K' : (h.sticking || 'R'),
             velocity: h.ghost ? 0.32 : (h.velocity ?? 0.8),
           };
         });
@@ -846,9 +862,42 @@ export function DrumScoreRenderer({
                         const syncopatedNote = stepNotes.find(
                           (n: any) => n.syncopated
                         );
-                        const stickingNote = stepNotes.find(
-                          (n: any) => n.sticking
-                        );
+                        const kickNote = stepNotes.find((n: any) => {
+                          const v = String(
+                            n.instrumentKey ||
+                              n.drumType ||
+                              n.instrument ||
+                              n.drumVoice ||
+                              ''
+                          )
+                            .toLowerCase()
+                            .trim();
+                          return (
+                            v === 'kick' || v === 'bombo' || n.sticking === 'K'
+                          );
+                        });
+                        const handNote = stepNotes.find((n: any) => {
+                          const v = String(
+                            n.instrumentKey ||
+                              n.drumType ||
+                              n.instrument ||
+                              n.drumVoice ||
+                              ''
+                          )
+                            .toLowerCase()
+                            .trim();
+                          return (
+                            v !== 'kick' &&
+                            v !== 'bombo' &&
+                            n.sticking &&
+                            n.sticking !== 'K'
+                          );
+                        });
+                        const primarySticking = handNote
+                          ? handNote.sticking
+                          : kickNote
+                          ? 'K'
+                          : stepNotes.find((n: any) => n.sticking)?.sticking;
 
                         return (
                           <g key={`step-col-${mIdx}-${sIdx}`}>
@@ -1014,18 +1063,18 @@ export function DrumScoreRenderer({
                               );
                             })}
 
-                            {/* Etiqueta de Sticking debajo de cada nota: R en rojo, L en azul, entre paréntesis (R)/(L) si es Ghost Note */}
-                            {stickingNote && stickingNote.sticking && (
+                            {/* Etiqueta de Sticking debajo de cada nota: R en rojo, L en azul, K en esmeralda */}
+                            {primarySticking && (
                               <text
                                 x={cx}
                                 y="176"
                                 textAnchor="middle"
                                 fill={
-                                  stickingNote.sticking === 'R'
+                                  primarySticking === 'R'
                                     ? '#ef4444' // R en Rojo
-                                    : stickingNote.sticking === 'L'
+                                    : primarySticking === 'L'
                                     ? '#3b82f6' // L en Azul
-                                    : '#34d399' // Otros (K, B) en Esmeralda
+                                    : '#34d399' // K / Otros en Esmeralda
                                 }
                                 opacity={ghostNote ? 0.8 : 1}
                                 fontSize={ghostNote ? '11.5' : '13'}
@@ -1040,8 +1089,23 @@ export function DrumScoreRenderer({
                                 }}
                               >
                                 {ghostNote
-                                  ? `(${stickingNote.sticking})`
-                                  : stickingNote.sticking}
+                                  ? `(${primarySticking})`
+                                  : primarySticking}
+                              </text>
+                            )}
+
+                            {/* Si hay simultáneamente mano (R/L) y bombo (K) en el mismo paso, mostrar K bajo el bombo */}
+                            {handNote && kickNote && (
+                              <text
+                                x={cx}
+                                y="159"
+                                textAnchor="middle"
+                                fill={isStepActive ? '#22d3ee' : '#34d399'}
+                                fontSize="11"
+                                fontWeight="900"
+                                fontFamily="monospace"
+                              >
+                                K
                               </text>
                             )}
 

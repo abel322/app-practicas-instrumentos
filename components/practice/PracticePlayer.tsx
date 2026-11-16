@@ -130,26 +130,32 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
           patternCode: m.patternCode || firstNoteWithMeta?.patternCode,
           patternName: m.patternName || firstNoteWithMeta?.patternName,
           patternColor: m.patternColor || firstNoteWithMeta?.patternColor,
-          notes: rawNotes.map((n: any) => ({
-            ...n,
-            stepIndex:
-              n.stepIndex !== undefined
-                ? n.stepIndex
-                : n.step !== undefined
-                ? n.step % stepsPerMeasure
-                : 0,
-            step:
-              n.step !== undefined
-                ? n.step
-                : idx * stepsPerMeasure + (n.stepIndex || 0),
-            instrument:
-              n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare',
-            accent: Boolean(n.accent && !n.ghost),
-            ghost: Boolean(n.ghost),
-            syncopated: Boolean(n.syncopated),
-            sticking: n.sticking || 'R',
-            velocity: n.ghost ? 0.32 : (n.velocity ?? 0.8),
-          })),
+          notes: rawNotes.map((n: any) => {
+            const inst =
+              n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare';
+            const isKick =
+              String(inst).toLowerCase().trim() === 'kick' ||
+              String(inst).toLowerCase().trim() === 'bombo';
+            return {
+              ...n,
+              stepIndex:
+                n.stepIndex !== undefined
+                  ? n.stepIndex
+                  : n.step !== undefined
+                  ? n.step % stepsPerMeasure
+                  : 0,
+              step:
+                n.step !== undefined
+                  ? n.step
+                  : idx * stepsPerMeasure + (n.stepIndex || 0),
+              instrument: inst,
+              accent: Boolean(n.accent && !n.ghost),
+              ghost: Boolean(n.ghost),
+              syncopated: Boolean(n.syncopated),
+              sticking: isKick ? 'K' : (n.sticking || 'R'),
+              velocity: n.ghost ? 0.32 : (n.velocity ?? 0.8),
+            };
+          }),
         };
       });
     }
@@ -175,16 +181,20 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
               : h.stepIndex !== undefined
               ? h.stepIndex
               : 0;
+          const inst =
+            h.instrument || h.drumVoice || h.drumType || h.instrumentKey || 'snare';
+          const isKick =
+            String(inst).toLowerCase().trim() === 'kick' ||
+            String(inst).toLowerCase().trim() === 'bombo';
           return {
             ...h,
             step: s,
             stepIndex: s - mStart,
-            instrument:
-              h.instrument || h.drumVoice || h.drumType || h.instrumentKey || 'snare',
+            instrument: inst,
             accent: Boolean(h.accent && !h.ghost),
             ghost: Boolean(h.ghost),
             syncopated: Boolean(h.syncopated),
-            sticking: h.sticking || 'R',
+            sticking: isKick ? 'K' : (h.sticking || 'R'),
             velocity: h.ghost ? 0.32 : (h.velocity ?? 0.8),
           };
         });
@@ -227,16 +237,20 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
             n.stepIndex !== undefined
               ? n.stepIndex
               : (n.step ?? 0) % stepsPerMeasure;
+          const inst =
+            n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare';
+          const isKick =
+            String(inst).toLowerCase().trim() === 'kick' ||
+            String(inst).toLowerCase().trim() === 'bombo';
           return {
             ...n,
             step: relStep,
             stepIndex: relStep,
-            instrument:
-              n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare',
+            instrument: inst,
             accent: Boolean(n.accent && !n.ghost),
             ghost: Boolean(n.ghost),
             syncopated: Boolean(n.syncopated),
-            sticking: n.sticking || 'R',
+            sticking: isKick ? 'K' : (n.sticking || 'R'),
             velocity: n.ghost ? 0.32 : (n.velocity ?? 0.8),
             patternCode: targetPat.code,
             patternName: targetPat.name,

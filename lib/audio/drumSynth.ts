@@ -23,7 +23,7 @@ export interface DrumHitOptions {
   instrument: DrumPiece | string;
   time?: number;
   velocity?: number;
-  sticking?: 'R' | 'L' | null;
+  sticking?: 'R' | 'L' | 'K' | null;
   accent?: boolean;
   ghost?: boolean;
   syncopated?: boolean;
@@ -291,8 +291,15 @@ class AcousticDrumEngine {
     let lowpassFreq = 18000;
     let duration = config.maxDuration;
 
-    // Diferencia entre mano derecha (R) e izquierda (L) en todos los elementos excepto Bombo
-    if (!config.isFootPiece) {
+    const isKickHit = Boolean(config.isFootPiece || options.sticking === 'K');
+
+    // Diferencia entre mano derecha (R) e izquierda (L) en todos los elementos excepto Bombo (K)
+    if (isKickHit) {
+      panValue = 0.0;
+      if (isAccented) {
+        finalGain *= 1.15;
+      }
+    } else {
       if (isAccented) {
         finalGain *= 1.18;
         playbackRate = 1.01;

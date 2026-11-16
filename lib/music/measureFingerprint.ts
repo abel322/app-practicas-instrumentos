@@ -87,20 +87,24 @@ export function computeMeasureFingerprint(measure: any): string {
   const rawNotes = measure?.notes || measure?.hits || [];
   const activeNotes = (Array.isArray(rawNotes) ? rawNotes : [])
     .filter((n: any) => !n.isRest)
-    .map((n: any) => ({
-      s: Number(n.stepIndex ?? (n.step !== undefined ? n.step : 0)),
-      m: Number(n.midiNumber ?? 0),
-      i: String(
+    .map((n: any) => {
+      const inst = String(
         n.instrument || n.drumVoice || n.drumType || n.instrumentKey || 'snare'
       )
         .toLowerCase()
-        .trim(),
-      k: String(n.sticking || '').toUpperCase().trim(),
-      a: Boolean(n.accent),
-      g: Boolean(n.ghost),
-      sy: Boolean(n.syncopated),
-      t: String(n.technique || ''),
-    }))
+        .trim();
+      const isKick = inst === 'kick' || inst === 'bombo';
+      return {
+        s: Number(n.stepIndex ?? (n.step !== undefined ? n.step : 0)),
+        m: Number(n.midiNumber ?? 0),
+        i: inst,
+        k: isKick ? 'K' : String(n.sticking || '').toUpperCase().trim(),
+        a: Boolean(n.accent),
+        g: Boolean(n.ghost),
+        sy: Boolean(n.syncopated),
+        t: String(n.technique || ''),
+      };
+    })
     .sort(
       (a: any, b: any) =>
         a.s - b.s || a.m - b.m || a.i.localeCompare(b.i)

@@ -414,15 +414,19 @@ export const ExerciseBuilder: React.FC = () => {
             let loadedNotes: EditorNote[] = [];
             if (resolvedInstrument === 'drums' && Array.isArray(exerciseData.hitsData || exerciseData.data)) {
               const hits = exerciseData.hitsData || exerciseData.data;
-              loadedNotes = hits.map((h: any) => ({
-                step: h.step !== undefined ? h.step : h.stepIndex !== undefined ? h.stepIndex : 0,
-                drumVoice: normalizeDrumVoice(h.instrument || h.drumType || h.instrumentKey || 'snare'),
-                accent: !!h.accent && !h.ghost,
-                ghost: !!h.ghost,
-                syncopated: !!h.syncopated,
-                sticking: h.sticking || 'R',
-                velocity: h.ghost ? 0.32 : (h.velocity ?? 0.8),
-              }));
+              loadedNotes = hits.map((h: any) => {
+                const voice = normalizeDrumVoice(h.instrument || h.drumType || h.instrumentKey || 'snare');
+                const isKick = voice === 'kick' || (voice as string) === 'bombo';
+                return {
+                  step: h.step !== undefined ? h.step : h.stepIndex !== undefined ? h.stepIndex : 0,
+                  drumVoice: voice,
+                  accent: !!h.accent && !h.ghost,
+                  ghost: !!h.ghost,
+                  syncopated: !!h.syncopated,
+                  sticking: isKick ? 'K' : (h.sticking || 'R'),
+                  velocity: h.ghost ? 0.32 : (h.velocity ?? 0.8),
+                };
+              });
             } else if (resolvedInstrument === 'piano' && Array.isArray(exerciseData.notesData || exerciseData.tabData || exerciseData.data)) {
               const pNotes = exerciseData.notesData || exerciseData.tabData || exerciseData.data;
               loadedNotes = pNotes.map((p: any) => ({
@@ -625,14 +629,19 @@ export const ExerciseBuilder: React.FC = () => {
         patternColor: assign.patternColor,
         notes: notes
           .filter((n) => n.step >= mStart && n.step < mEnd)
-          .map((n) => ({
-            ...n,
-            stepIndex: n.step - mStart,
-            instrument: n.drumVoice || (n as any).instrument || 'snare',
-            patternCode: assign.patternCode,
-            patternName: assign.patternName,
-            patternColor: assign.patternColor,
-          })),
+          .map((n) => {
+            const inst = n.drumVoice || (n as any).instrument || 'snare';
+            const isKick = inst === 'kick' || (inst as string) === 'bombo';
+            return {
+              ...n,
+              stepIndex: n.step - mStart,
+              instrument: inst,
+              sticking: isKick ? ('K' as StickingType) : n.sticking,
+              patternCode: assign.patternCode,
+              patternName: assign.patternName,
+              patternColor: assign.patternColor,
+            };
+          }),
       };
     });
   }, [totalMeasures, stepsPerMeasure, notes, measureAssignments]);
@@ -643,12 +652,17 @@ export const ExerciseBuilder: React.FC = () => {
     const mEnd = mStart + stepsPerMeasure;
     const relNotes = notes
       .filter((n) => n.step >= mStart && n.step < mEnd)
-      .map((n) => ({
-        ...n,
-        step: n.step - mStart,
-        stepIndex: n.step - mStart,
-        instrument: n.drumVoice || (n as any).instrument || 'snare',
-      }));
+      .map((n) => {
+        const inst = n.drumVoice || (n as any).instrument || 'snare';
+        const isKick = inst === 'kick' || (inst as string) === 'bombo';
+        return {
+          ...n,
+          step: n.step - mStart,
+          stepIndex: n.step - mStart,
+          instrument: inst,
+          sticking: isKick ? ('K' as StickingType) : n.sticking,
+        };
+      });
 
     const assignedCode =
       measureAssignments[currentMeasure]?.patternCode || editingPatternCode || 'P1';
@@ -722,14 +736,23 @@ export const ExerciseBuilder: React.FC = () => {
           let loadedNotes: EditorNote[] = [];
 
           if (parsed.notes && Array.isArray(parsed.notes)) {
-            loadedNotes = parsed.notes;
+            loadedNotes = parsed.notes.map((n: any) => {
+              const voice = n.drumVoice || n.instrument;
+              const isKick = voice === 'kick' || voice === 'bombo';
+              return isKick ? { ...n, sticking: 'K' } : n;
+            });
           } else if (parsed.measures && Array.isArray(parsed.measures) && parsed.measures.length > 0) {
             loadedNotes = parsed.measures.flatMap((m: any, mIdx: number) => {
               const mStart = (m.measureIndex ?? mIdx) * stepsPerMeasure;
-              return (m.notes || []).map((n: any) => ({
-                ...n,
-                step: n.step !== undefined ? n.step : mStart + (n.stepIndex ?? 0),
-              }));
+              return (m.notes || []).map((n: any) => {
+                const voice = n.drumVoice || n.instrument;
+                const isKick = voice === 'kick' || voice === 'bombo';
+                return {
+                  ...n,
+                  step: n.step !== undefined ? n.step : mStart + (n.stepIndex ?? 0),
+                  sticking: isKick ? 'K' : n.sticking,
+                };
+              });
             });
           }
 
@@ -1434,15 +1457,15 @@ export const ExerciseBuilder: React.FC = () => {
       // Si el compás estaba vacío, sembrar un groove base sincopado con bombo, caja y hi-hat
       if (resultMeasureNotes.length === 0 && stepsPerMeasure >= 8) {
         const baseGroove: EditorNote[] = [
-          { step: mStart + 0, drumVoice: 'kick', sticking: 'R', accent: true, velocity: 1.0 },
+          { step: mStart + 0, drumVoice: 'kick', sticking: 'K', accent: true, velocity: 1.0 },
           { step: mStart + 0, drumVoice: 'hihat', sticking: 'R', accent: true, velocity: 0.9 },
-          { step: mStart + 3, drumVoice: 'kick', sticking: 'R', syncopated: true, velocity: 0.9 },
+          { step: mStart + 3, drumVoice: 'kick', sticking: 'K', syncopated: true, velocity: 0.9 },
           { step: mStart + 4, drumVoice: 'snare', sticking: 'L', accent: true, velocity: 1.0 },
           { step: mStart + 6, drumVoice: 'hihat_open', sticking: 'R', syncopated: true, accent: true, velocity: 0.95 },
         ];
         if (stepsPerMeasure >= 16) {
           baseGroove.push(
-            { step: mStart + 10, drumVoice: 'kick', sticking: 'R', syncopated: true, velocity: 0.9 },
+            { step: mStart + 10, drumVoice: 'kick', sticking: 'K', syncopated: true, velocity: 0.9 },
             { step: mStart + 11, drumVoice: 'snare', sticking: 'L', syncopated: true, accent: true, velocity: 0.95 },
             { step: mStart + 12, drumVoice: 'hihat', sticking: 'R', accent: false, velocity: 0.8 },
             { step: mStart + 14, drumVoice: 'snare', sticking: 'R', syncopated: true, velocity: 0.85 }
@@ -1579,6 +1602,9 @@ export const ExerciseBuilder: React.FC = () => {
     const globalStep = currentMeasure * stepsPerMeasure + stepInMeasure;
 
     if (instrument === 'drums') {
+      const isKickTrack = drumVoice === 'kick' || (drumVoice as string) === 'bombo';
+      const effectiveSticking: StickingType = isKickTrack ? 'K' : selectedSticking;
+
       // Buscar golpe existente en este paso y voz
       const existingIdx = notes.findIndex(
         (n) =>
@@ -1609,7 +1635,7 @@ export const ExerciseBuilder: React.FC = () => {
                     ghost: nextGhost,
                     accent: nextAccent,
                     syncopated: nextSync,
-                    sticking: selectedSticking,
+                    sticking: effectiveSticking,
                     velocity: nextGhost ? 0.32 : nextAccent ? 1.0 : 0.8,
                   }
                 : n
@@ -1618,7 +1644,6 @@ export const ExerciseBuilder: React.FC = () => {
             return next;
           });
 
-          const isFoot = drumVoice === 'kick';
           const targetInstrument = drumVoice === 'hihat' ? 'hihat_closed' : drumVoice!;
           playDrumHit({
             instrument: targetInstrument,
@@ -1626,7 +1651,7 @@ export const ExerciseBuilder: React.FC = () => {
             accent: nextAccent,
             ghost: nextGhost,
             syncopated: nextSync,
-            sticking: isFoot ? null : (selectedSticking as 'R' | 'L') || 'R',
+            sticking: isKickTrack ? 'K' : (selectedSticking as 'R' | 'L') || 'R',
             isDoubleRebound: false,
           });
         } else {
@@ -1638,7 +1663,7 @@ export const ExerciseBuilder: React.FC = () => {
           });
         }
       } else {
-        // Agregar nueva nota de batería con soporte para Ghost Note, Acento y Sincopado
+        // Agregar nueva nota de batería con soporte para Ghost Note, Acento, Sincopado y K automático en Bombo
         const isGhostNote = selectedGhost;
         const isAccentNote = isGhostNote ? false : selectedAccent;
         const isSyncNote = selectedSyncopated;
@@ -1650,7 +1675,7 @@ export const ExerciseBuilder: React.FC = () => {
           accent: isAccentNote,
           ghost: isGhostNote,
           syncopated: isSyncNote,
-          sticking: selectedSticking,
+          sticking: effectiveSticking,
           velocity: isGhostNote ? 0.32 : isAccentNote ? 1.0 : 0.8,
         };
         setNotes((prev) => {
@@ -1660,7 +1685,6 @@ export const ExerciseBuilder: React.FC = () => {
         });
 
         // Sonido de prueba inmediato con DSP de Ghost Note / Sincopado / Acento
-        const isFoot = drumVoice === 'kick';
         const targetInstrument = drumVoice === 'hihat' ? 'hihat_closed' : drumVoice!;
         playDrumHit({
           instrument: targetInstrument,
@@ -1668,7 +1692,7 @@ export const ExerciseBuilder: React.FC = () => {
           accent: isAccentNote,
           ghost: isGhostNote,
           syncopated: isSyncNote,
-          sticking: isFoot ? null : (selectedSticking as 'R' | 'L') || 'R',
+          sticking: isKickTrack ? 'K' : (selectedSticking as 'R' | 'L') || 'R',
           isDoubleRebound: false,
         });
       }
@@ -2828,6 +2852,7 @@ export const ExerciseBuilder: React.FC = () => {
             patternName: 'Patrón 1',
             patternColor: 'cyan',
           };
+          const isKick = n.drumVoice === 'kick' || (n.drumVoice as string) === 'bombo';
           return {
             step: n.step,
             stepIndex: n.step - mIdx * stepsPerMeasure,
@@ -2835,7 +2860,7 @@ export const ExerciseBuilder: React.FC = () => {
             accent: Boolean(n.accent && !n.ghost),
             ghost: Boolean(n.ghost),
             syncopated: Boolean(n.syncopated),
-            sticking: n.sticking ?? 'R',
+            sticking: isKick ? 'K' : (n.sticking ?? 'R'),
             velocity: n.ghost ? 0.32 : n.accent ? 1.0 : 0.8,
             patternCode: assign.patternCode,
             patternName: assign.patternName,
@@ -4316,6 +4341,15 @@ export const ExerciseBuilder: React.FC = () => {
                     const isPlayback = isPlaying && playbackActiveStep === globalStep;
                     const hit = notes.find((n) => n.step === globalStep && (n.drumVoice === row.voice || (row.voice === 'hihat' && n.drumVoice === 'hihat_closed') || (row.voice === 'floor_tom' && n.drumVoice === 'granadero')));
 
+                    const isKickTrack =
+                      row.voice === 'kick' ||
+                      (row.voice as string) === 'bombo' ||
+                      hit?.drumVoice === 'kick' ||
+                      (hit?.drumVoice as string) === 'bombo';
+                    const displaySticking = isKickTrack
+                      ? 'K'
+                      : hit?.sticking || (row.voice === 'hihat' ? '×' : '•');
+
                     return (
                       <button
                         key={`drum-cell-${row.voice}-${stepIdx}`}
@@ -4344,7 +4378,7 @@ export const ExerciseBuilder: React.FC = () => {
                                 className="w-5 h-5 rounded-full bg-slate-800/90 border border-cyan-400/50 text-cyan-200 font-mono font-bold flex items-center justify-center text-[10px] opacity-75 shadow-inner"
                                 title="Ghost Note (Nota Fantasma)"
                               >
-                                ({hit.sticking || '●'})
+                                ({isKickTrack ? 'K' : hit.sticking || '●'})
                               </div>
                             ) : row.voice === 'hihat_open' || hit.drumVoice === 'hihat_open' ? (
                               <div
@@ -4354,7 +4388,7 @@ export const ExerciseBuilder: React.FC = () => {
                                     : 'ring-amber-300 ring-offset-1 ring-offset-black'
                                 }`}
                               >
-                                {hit.sticking || '○'}
+                                {displaySticking || '○'}
                               </div>
                             ) : (
                               <div
@@ -4362,7 +4396,7 @@ export const ExerciseBuilder: React.FC = () => {
                                   hit.syncopated ? 'ring-2 ring-violet-400 ring-offset-1 ring-offset-black' : ''
                                 }`}
                               >
-                                {hit.sticking || (row.voice === 'hihat' ? '×' : '•')}
+                                {displaySticking}
                               </div>
                             )}
                           </div>
