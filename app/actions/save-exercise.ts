@@ -23,6 +23,7 @@ export interface SaveExercisePayload {
   totalMeasures: number;
   stepsPerMeasure: number;
   subdivision?: string;
+  pickingStyle?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: any[];
   measures?: any[];
@@ -165,6 +166,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
         data: Array.isArray(formData.data) ? formData.data : [],
         measures: Array.isArray(formData.measures) ? formData.measures : [],
         patternBank: Array.isArray(formData.patternBank) ? formData.patternBank : [],
+        pickingStyle: formData.pickingStyle || undefined,
       };
 
       if (formData.id || formData.slug) {

@@ -58,7 +58,11 @@ const DrumPracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       }
 
       // 3. Consultar a la API en segundo plano para obtener siempre los compases y patternBank más recientes de PostgreSQL
-      fetch(`/api/exercises/${exercise.slug}?instrument=drums`, { cache: 'no-store' })
+      const targetInst =
+        (exercise as any).instrument ||
+        (exercise as any).instrumentType ||
+        'drums';
+      fetch(`/api/exercises/${exercise.slug}?instrument=${targetInst}`, { cache: 'no-store' })
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           if (data?.success && data?.exercise) {
@@ -1293,6 +1297,7 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       timeSignature: activeExercise.timeSignature || '4/4',
       measures: activeExercise.measures || activeExercise.sequence || [],
       patternBank: activeExercise.patternBank || [],
+      pickingStyle: (activeExercise as any).pickingStyle,
     };
     return <StringsPracticePlayer exercise={stringExerciseData} />;
   }

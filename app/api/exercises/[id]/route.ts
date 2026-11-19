@@ -109,6 +109,7 @@ export async function GET(request: Request, { params }: RouteParams) {
             notesData: stringEx.instrument === 'piano' ? payload.tabNotes : undefined,
             measures: payload.measures.length > 0 ? payload.measures : undefined,
             patternBank: payload.patternBank.length > 0 ? payload.patternBank : undefined,
+            pickingStyle: payload.pickingStyle || (stringEx.tabData as any)?.pickingStyle,
             createdAt: stringEx.createdAt,
           };
         }
@@ -225,6 +226,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
       totalMeasures: Number(body.totalMeasures) || (Array.isArray(body.measures) ? body.measures.length : 1),
       stepsPerMeasure: Number(body.stepsPerMeasure) || 16,
       subdivision: body.subdivision || '1/16',
+      pickingStyle: body.pickingStyle || body.selectedPickingStyle,
       data: Array.isArray(rawData) ? rawData : [],
       measures: Array.isArray(body.measures) ? body.measures : Array.isArray(body.sequence) ? body.sequence : undefined,
       patternBank: Array.isArray(body.patternBank) ? body.patternBank : undefined,

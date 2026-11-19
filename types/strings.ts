@@ -74,6 +74,7 @@ export interface StringExerciseData {
   tabData: StringTabNote[];
   measures?: any[];
   patternBank?: any[];
+  pickingStyle?: PickingStyle | string;
   description?: string;
   createdAt?: string | Date;
 }

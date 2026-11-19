@@ -566,6 +566,11 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
           <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-zinc-300 font-mono hidden md:inline shrink-0">
             {isBass ? 'Bajo (4C)' : 'Guitarra (6C)'} • {exercise.difficulty}
           </span>
+          {exercise.pickingStyle && (
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-950/80 border border-amber-800/60 text-amber-300 font-mono font-bold shrink-0">
+              {exercise.pickingStyle.toUpperCase().replace(/_/g, ' ')}
+            </span>
+          )}
         </div>
 
         {/* Botón de alternancia de Pantalla Completa */}
@@ -613,6 +618,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
           totalMeasures={totalMeasures}
           stepsPerMeasure={stepsPerMeasure}
           subdivision={subConfig.id}
+          measures={exercise.measures}
         />
       </main>
 

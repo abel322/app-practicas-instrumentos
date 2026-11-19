@@ -439,6 +439,9 @@ export const ExerciseBuilder: React.FC = () => {
             if (exerciseData.bpmDefault || exerciseData.bpm) {
               setBpm(Number(exerciseData.bpmDefault || exerciseData.bpm));
             }
+            if (exerciseData.pickingStyle) {
+              setSelectedPickingStyle(exerciseData.pickingStyle as PickingStyle);
+            }
             const loadedTimeSig = exerciseData.timeSignature || '4/4';
             if (exerciseData.timeSignature) setTimeSignature(exerciseData.timeSignature);
 
@@ -487,6 +490,26 @@ export const ExerciseBuilder: React.FC = () => {
                 duration: p.duration || 'quarter',
                 isRest: !!p.isRest,
               }));
+            } else if (
+              (resolvedInstrument === 'guitar' || resolvedInstrument === 'bass') &&
+              Array.isArray(exerciseData.tabData || exerciseData.stringNotes || exerciseData.tabNotes || exerciseData.data)
+            ) {
+              const sNotes = exerciseData.tabData || exerciseData.stringNotes || exerciseData.tabNotes || exerciseData.data;
+              loadedNotes = sNotes.map((s: any) => ({
+                step: s.step !== undefined ? s.step : s.stepIndex !== undefined ? s.stepIndex : 0,
+                string: s.string,
+                fret: s.fret,
+                technique: s.technique || 'normal',
+                bendType: s.bendType,
+                bendAmount: s.bendAmount,
+                finger: s.finger || '1',
+                velocity: s.velocity ?? 0.85,
+                pickDirection: s.pickDirection ?? null,
+                palmMute: Boolean(s.palmMute),
+                strumDirection: s.strumDirection ?? null,
+                slideDirection: s.slideDirection ?? null,
+                dynamic: s.dynamic,
+              }));
             } else if (Array.isArray(exerciseData.tabData || exerciseData.data)) {
               const sNotes = exerciseData.tabData || exerciseData.data;
               loadedNotes = sNotes.map((s: any) => ({
@@ -498,7 +521,38 @@ export const ExerciseBuilder: React.FC = () => {
                 bendAmount: s.bendAmount,
                 finger: s.finger || '1',
                 velocity: s.velocity ?? 0.85,
+                pickDirection: s.pickDirection ?? null,
+                palmMute: Boolean(s.palmMute),
+                strumDirection: s.strumDirection ?? null,
+                slideDirection: s.slideDirection ?? null,
+                dynamic: s.dynamic,
               }));
+            }
+
+            // Fallback: Si no hay notas sueltas pero hay compases con notas, extraerlas
+            if (loadedNotes.length === 0 && Array.isArray(exerciseData.measures) && exerciseData.measures.length > 0) {
+              let runningStep = 0;
+              loadedNotes = exerciseData.measures.flatMap((m: any) => {
+                const mSub = normalizeSubdivisionKey(m.subdivision || loadedSubKey);
+                const mSteps = Number(m.stepsPerMeasure) || getStepsForSubdivision(mSub, loadedTimeSig);
+                const mStart = runningStep;
+                runningStep += mSteps;
+                return (m.notes || []).map((n: any) => {
+                  const voice = n.drumVoice || n.instrument;
+                  const isKick = voice === 'kick' || (voice as string) === 'bombo';
+                  const rel = n.stepIndex !== undefined ? n.stepIndex : (n.step ?? 0) % mSteps;
+                  return {
+                    ...n,
+                    step: n.step !== undefined && n.step >= mStart ? n.step : mStart + rel,
+                    stepIndex: rel,
+                    sticking: isKick ? 'K' : n.sticking,
+                    pickDirection: n.pickDirection ?? null,
+                    palmMute: Boolean(n.palmMute),
+                    strumDirection: n.strumDirection ?? null,
+                    slideDirection: n.slideDirection ?? null,
+                  };
+                });
+              });
             }
 
             // Restaurar Banco de Patrones Completo (sin perder patrones P2, P3, P4... creados con 0x usos en secuencia)
@@ -1078,6 +1132,10 @@ export const ExerciseBuilder: React.FC = () => {
             });
           }
 
+          if (parsed.pickingStyle) {
+            setSelectedPickingStyle(parsed.pickingStyle as PickingStyle);
+          }
+
           if (loadedNotes.length > 0 || (parsed.title && parsed.title.trim() !== '')) {
             setNotes(loadedNotes);
             activeNotesRef.current = loadedNotes;
@@ -1185,6 +1243,7 @@ export const ExerciseBuilder: React.FC = () => {
           patternBank,
           measureAssignments,
           notes,
+          pickingStyle: selectedPickingStyle,
           updatedAt: new Date().toISOString(),
         };
         localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftPayload));
@@ -1205,6 +1264,7 @@ export const ExerciseBuilder: React.FC = () => {
     timeSignature,
     totalMeasures,
     instrument,
+    selectedPickingStyle,
     isDraftReady,
     editingSlug,
     isSaving,
@@ -4313,6 +4373,7 @@ export const ExerciseBuilder: React.FC = () => {
           totalMeasures,
           stepsPerMeasure,
           subdivision: normalizedSub,
+          pickingStyle: selectedPickingStyle,
           data: formattedData,
           measures: savedMeasures,
           patternBank: currentBank,
@@ -4355,6 +4416,7 @@ export const ExerciseBuilder: React.FC = () => {
         measures: savedMeasures,
         sequence: savedMeasures,
         patternBank: currentBank,
+        pickingStyle: selectedPickingStyle,
       };
 
       let resData: any = null;
@@ -4436,6 +4498,7 @@ export const ExerciseBuilder: React.FC = () => {
         hitsData: instrument === 'drums' ? formattedData : undefined,
         tabData: instrument !== 'drums' && instrument !== 'piano' ? formattedData : undefined,
         notesData: instrument === 'piano' ? formattedData : undefined,
+        pickingStyle: selectedPickingStyle,
         instrument: instrument === 'drums' ? 'drums' : instrument === 'bass' ? 'bass_4' : instrument === 'piano' ? 'piano' : 'guitar_6',
       };
 

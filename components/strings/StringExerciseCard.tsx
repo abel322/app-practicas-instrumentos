@@ -93,6 +93,11 @@ export const StringExerciseCard: React.FC<StringExerciseCardProps> = ({
             >
               {isPiano ? 'Piano' : isBass ? 'Bajo (4 Cuerdas)' : 'Guitarra (6 Cuerdas)'}
             </span>
+            {exercise.pickingStyle && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-300">
+                {exercise.pickingStyle.toUpperCase().replace(/_/g, ' ')}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5">

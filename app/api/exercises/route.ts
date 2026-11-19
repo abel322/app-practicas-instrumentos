@@ -114,6 +114,7 @@ export async function POST(request: Request) {
       totalMeasures: Number(body.totalMeasures) || (Array.isArray(body.measures) ? body.measures.length : 1),
       stepsPerMeasure: Number(body.stepsPerMeasure) || 16,
       subdivision: body.subdivision || '1/16',
+      pickingStyle: body.pickingStyle || body.selectedPickingStyle,
       data: Array.isArray(rawData) ? rawData : [],
       measures: Array.isArray(body.measures) ? body.measures : Array.isArray(body.sequence) ? body.sequence : undefined,
       patternBank: Array.isArray(body.patternBank) ? body.patternBank : undefined,
