@@ -80,6 +80,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
             where: { id: existing.id },
             data: {
               title: formData.title.trim(),
+              instrument: 'drums',
               category: formData.category,
               difficulty: formData.difficulty,
               bpmDefault: Number(formData.bpm) || 100,
@@ -117,6 +118,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
         data: {
           slug,
           title: formData.title.trim(),
+          instrument: 'drums',
           category: formData.category,
           difficulty: formData.difficulty,
           bpmDefault: Number(formData.bpm) || 100,

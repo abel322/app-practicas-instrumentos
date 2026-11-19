@@ -4,7 +4,8 @@ import { getStringExercises } from '@/lib/prisma';
 import { StringsCatalogView } from '@/components/strings/StringsCatalogView';
 import { Music, Sparkles, Sliders, AudioLines } from 'lucide-react';
 
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: 'Strings Lab — Tablatura & Runway para Bajo y Guitarra | SoundLab',

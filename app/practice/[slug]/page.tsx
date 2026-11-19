@@ -3,6 +3,9 @@ import type { Metadata } from 'next';
 import { getExercises, getExerciseBySlug, getStringExerciseBySlug, getPianoExerciseBySlug } from '@/lib/prisma';
 import { PracticePlayer } from '@/components/practice/PracticePlayer';
 
+export const dynamic = 'force-dynamic';
+export const dynamicParams = true;
+
 interface PracticePageProps {
   params: Promise<{ slug: string }>;
 }

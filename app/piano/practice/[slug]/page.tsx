@@ -5,6 +5,9 @@ import { getPianoExercises, getPianoExerciseBySlug, getStringExerciseBySlug, get
 import { KeysPracticePlayer } from '@/components/piano/KeysPracticePlayer';
 import { PianoExerciseData } from '@/types/piano';
 
+export const dynamic = 'force-dynamic';
+export const dynamicParams = true;
+
 interface PianoPracticePageProps {
   params: Promise<{ slug: string }>;
 }

@@ -4,7 +4,8 @@ import { getExercises } from '@/lib/prisma';
 import { CatalogView } from '@/components/catalog/CatalogView';
 import { Drum, Sparkles, Music, Activity, Target, ArrowRight } from 'lucide-react';
 
-export const revalidate = 60; // Regenerar cada 60s si es aplicable
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function HomePage() {
   const exercises = await getExercises();

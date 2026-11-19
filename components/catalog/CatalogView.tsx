@@ -49,7 +49,12 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialExercises }) =>
         const data = await res.json();
         if (data.success && Array.isArray(data.exercises)) {
           const deletedSlugs = getDeletedExerciseSlugs();
-          const filtered = data.exercises.filter((ex: any) => !deletedSlugs.includes(ex.slug));
+          const filtered = data.exercises.filter((ex: any) => {
+            if (deletedSlugs.includes(ex.slug)) return false;
+            const inst = (ex.instrument || ex.instrumentType || '').toLowerCase();
+            if (inst && inst !== 'drums' && inst !== 'bateria') return false;
+            return true;
+          });
           setExercises(filtered);
           return filtered;
         }
@@ -146,10 +151,14 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialExercises }) =>
 
   // Conteo de ejercicios por categoría
   const categoryCounts = useMemo(() => {
+    const validDrums = exercises.filter((ex) => {
+      const inst = (ex.instrument || (ex as any).instrumentType || '').toLowerCase();
+      return !inst || inst === 'drums' || inst === 'bateria';
+    });
     const counts: Record<string, number> = {
-      Todos: exercises.length,
+      Todos: validDrums.length,
     };
-    exercises.forEach((ex) => {
+    validDrums.forEach((ex) => {
       counts[ex.category] = (counts[ex.category] || 0) + 1;
     });
     return counts;
@@ -158,6 +167,9 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialExercises }) =>
   // Filtrado reactivo de ejercicios
   const filteredExercises = useMemo(() => {
     return exercises.filter((ex) => {
+      const inst = (ex.instrument || (ex as any).instrumentType || '').toLowerCase();
+      if (inst && inst !== 'drums' && inst !== 'bateria') return false;
+
       const matchesCategory =
         selectedCategory === 'Todos' || ex.category === selectedCategory;
 

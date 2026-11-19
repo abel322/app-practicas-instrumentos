@@ -5,6 +5,9 @@ import { getStringExercises, getStringExerciseBySlug, getExerciseBySlug, getPian
 import { StringsPracticePlayer } from '@/components/strings/StringsPracticePlayer';
 import { StringExerciseData } from '@/types/strings';
 
+export const dynamic = 'force-dynamic';
+export const dynamicParams = true;
+
 interface StringsPracticePageProps {
   params: Promise<{ slug: string }>;
 }

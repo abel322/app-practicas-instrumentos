@@ -11,6 +11,7 @@ model DrumExercise {
   id            String   @id @default(cuid())
   slug          String   @unique
   title         String
+  instrument    String   @default("drums") // "drums"
   category      String   // "Rudimentos", "Grooves", "Independencia", "Acentos & Síncopas"
   difficulty    String   // "Básico", "Intermedio", "Avanzado"
   bpmDefault    Int      @default(100)

@@ -47,7 +47,12 @@ export const PianoCatalogView: React.FC<PianoCatalogViewProps> = ({ initialExerc
       .then((data) => {
         if (data?.success && Array.isArray(data.exercises)) {
           const deletedSlugs = getDeletedExerciseSlugs();
-          setExercises(data.exercises.filter((ex: any) => !deletedSlugs.includes(ex.slug)));
+          const validPiano = data.exercises.filter((ex: any) => {
+            if (deletedSlugs.includes(ex.slug)) return false;
+            const inst = (ex.instrument || ex.instrumentType || '').toLowerCase();
+            return inst === 'piano';
+          });
+          setExercises(validPiano);
         }
       })
       .catch(() => {});
@@ -128,10 +133,14 @@ export const PianoCatalogView: React.FC<PianoCatalogViewProps> = ({ initialExerc
 
   // Conteo de ejercicios por categoría
   const categoryCounts = useMemo(() => {
+    const validPiano = exercises.filter((ex) => {
+      const inst = (ex.instrument || (ex as any).instrumentType || '').toLowerCase();
+      return !inst || inst === 'piano';
+    });
     const counts: Record<string, number> = {
-      Todas: exercises.length,
+      Todas: validPiano.length,
     };
-    exercises.forEach((ex) => {
+    validPiano.forEach((ex) => {
       counts[ex.category] = (counts[ex.category] || 0) + 1;
     });
     return counts;
@@ -140,6 +149,9 @@ export const PianoCatalogView: React.FC<PianoCatalogViewProps> = ({ initialExerc
   // Filtrado de ejercicios
   const filteredExercises = useMemo(() => {
     return exercises.filter((ex) => {
+      const inst = (ex.instrument || (ex as any).instrumentType || '').toLowerCase();
+      if (inst && inst !== 'piano') return false;
+
       const matchesCategory =
         selectedCategory === 'Todas' || ex.category === selectedCategory;
 

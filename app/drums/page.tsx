@@ -1,4 +1,4 @@
-import HomePage, { revalidate } from '../page';
+import HomePage, { revalidate, dynamic } from '../page';
 
-export { revalidate };
+export { revalidate, dynamic };
 export default HomePage;

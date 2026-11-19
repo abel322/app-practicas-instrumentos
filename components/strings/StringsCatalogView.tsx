@@ -42,25 +42,33 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
 
   // Sincronizar en el cliente con ejercicios locales modificados y omitir los eliminados
   useEffect(() => {
-    fetch(`/api/exercises?instrument=${selectedInstrument}`, { cache: 'no-store' })
+    fetch('/api/exercises?instrument=guitar,bass', { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.success && Array.isArray(data.exercises)) {
           const deletedSlugs = getDeletedExerciseSlugs();
-          setExercises(data.exercises.filter((ex: any) => !deletedSlugs.includes(ex.slug)));
+          const validStrings = data.exercises.filter((ex: any) => {
+            if (deletedSlugs.includes(ex.slug)) return false;
+            const inst = (ex.instrument || ex.instrumentType || '').toLowerCase();
+            if (inst === 'drums' || inst.includes('bater') || inst === 'piano') return false;
+            return true;
+          });
+          setExercises(validStrings);
         }
       })
       .catch(() => {});
 
     try {
       const deletedSlugs = getDeletedExerciseSlugs();
-      const localCustom = getLocalExercises().filter(
-        (ex) =>
-          ex.instrumentType !== 'drums' &&
-          ex.instrumentType !== 'piano' &&
-          ex.instrument !== 'piano' &&
-          (ex.tabData || ex.instrument)
-      );
+      const localCustom = getLocalExercises().filter((ex) => {
+        const inst = (ex.instrument || ex.instrumentType || '').toLowerCase();
+        return (
+          inst !== 'drums' &&
+          !inst.includes('bater') &&
+          inst !== 'piano' &&
+          (ex.tabData || ex.stringNotes || ex.instrument)
+        );
+      });
 
       setExercises((prev) => {
         let list = prev.filter((ex) => !deletedSlugs.includes(ex.slug));
@@ -74,12 +82,9 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
             slug: customEx.slug,
             title: customEx.title,
             instrument:
-              customEx.instrument ||
-              (customEx.instrumentType === 'bass'
+              customEx.instrument === 'bass' || customEx.instrument === 'bass_4' || customEx.instrumentType === 'bass'
                 ? 'bass_4'
-                : customEx.instrumentType === 'piano'
-                ? ('piano' as any)
-                : 'guitar_6'),
+                : 'guitar_6',
             tuning:
               customEx.tuning ||
               (customEx.instrumentType === 'bass' ? 'E A D G' : 'E A D G B E'),
@@ -159,8 +164,21 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
   // Filtrado de ejercicios
   const filteredExercises = useMemo(() => {
     return exercises.filter((ex) => {
-      const matchesInstrument =
-        selectedInstrument === 'all' || ex.instrument === selectedInstrument;
+      const rawInst = (ex.instrument || (ex as any).instrumentType || '').toLowerCase();
+      // Excluir estrictamente batería y piano
+      if (rawInst === 'drums' || rawInst.includes('bater') || rawInst === 'piano') {
+        return false;
+      }
+
+      const isGuitar = rawInst === 'guitar_6' || rawInst === 'guitar';
+      const isBass = rawInst === 'bass_4' || rawInst === 'bass';
+
+      let matchesInstrument = true;
+      if (selectedInstrument === 'guitar_6') {
+        matchesInstrument = isGuitar;
+      } else if (selectedInstrument === 'bass_4') {
+        matchesInstrument = isBass;
+      }
 
       const matchesCategory =
         selectedCategory === 'Todas' || ex.category === selectedCategory;

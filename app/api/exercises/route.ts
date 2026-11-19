@@ -6,24 +6,51 @@ import { normalizeInstrumentKey } from '@/lib/music-theory/instrumentUtils';
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
-    const rawInstrument = url.searchParams.get('instrument') || 'drums';
-    const instrument = normalizeInstrumentKey(rawInstrument);
+    const rawInstrument = (url.searchParams.get('instrument') || '').toLowerCase().trim();
 
     let exercises: any[] = [];
+    let instrument = 'drums';
 
-    if (instrument === 'drums') {
-      exercises = await getExercises();
-    } else if (instrument === 'bass' || instrument === 'guitar') {
-      const stringInst = instrument === 'bass' ? 'bass_4' : 'guitar_6';
-      exercises = await getStringExercises(stringInst);
-    } else if (instrument === 'piano') {
-      exercises = await getPianoExercises();
-    } else if (rawInstrument === 'all') {
-      const drums = await getExercises();
-      const strings = await getStringExercises();
-      const piano = await getPianoExercises();
+    if (rawInstrument === 'all') {
+      instrument = 'all';
+      const [drums, strings, piano] = await Promise.all([
+        getExercises(),
+        getStringExercises(),
+        getPianoExercises(),
+      ]);
       exercises = [...drums, ...strings, ...piano];
+    } else if (
+      rawInstrument === 'guitar,bass' ||
+      rawInstrument === 'bass,guitar' ||
+      rawInstrument === 'strings' ||
+      rawInstrument === 'cuerdas'
+    ) {
+      instrument = 'strings';
+      exercises = await getStringExercises();
+    } else if (
+      rawInstrument === 'guitar' ||
+      rawInstrument === 'guitar_6' ||
+      rawInstrument.includes('guitar')
+    ) {
+      instrument = 'guitar';
+      exercises = await getStringExercises('guitar_6');
+    } else if (
+      rawInstrument === 'bass' ||
+      rawInstrument === 'bass_4' ||
+      rawInstrument.includes('bajo') ||
+      rawInstrument.includes('bass')
+    ) {
+      instrument = 'bass';
+      exercises = await getStringExercises('bass_4');
+    } else if (
+      rawInstrument === 'piano' ||
+      rawInstrument.includes('tecl') ||
+      rawInstrument.includes('key')
+    ) {
+      instrument = 'piano';
+      exercises = await getPianoExercises();
     } else {
+      instrument = 'drums';
       exercises = await getExercises();
     }
 

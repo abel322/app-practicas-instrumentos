@@ -45,6 +45,8 @@ export interface DrumExerciseData {
   id: string;
   slug: string;
   title: string;
+  instrument?: string;
+  instrumentType?: string;
   category: 'Rudimentos' | 'Grooves' | 'Independencia' | 'Acentos & Síncopas';
   difficulty: ExerciseDifficulty;
   bpmDefault: number;
