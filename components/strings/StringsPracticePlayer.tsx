@@ -115,10 +115,10 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
     (exercise.totalSteps === 8
       ? '1/8'
       : exercise.totalSteps === 4
-      ? '1/4'
-      : exercise.totalSteps === 12 && exercise.timeSignature === '4/4'
-      ? '1/8T'
-      : '1/16');
+        ? '1/4'
+        : exercise.totalSteps === 12 && exercise.timeSignature === '4/4'
+          ? '1/8T'
+          : '1/16');
 
   const subConfig = getSubdivisionConfig(subdivisionKey, exercise.timeSignature, exercise.stepsPerMeasure);
   const stepsPerMeasure = subConfig.stepsPerMeasure;
@@ -194,58 +194,84 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
 
       // 1. Disparar notas en este paso
       const notes = notesByStep.current.get(stepNumber) || [];
-      notes.forEach((note) => {
-        if (exercise.instrument === 'bass_4') {
-          const calculatedMidi = getBassMidiFromString(note.string, note.fret || 0);
-          const resolvedStringIndex = Math.max(0, (note.string || 4) - 1); // 0 = G, 1 = D, 2 = A, 3 = E
-          const tech = ((note.technique || 'normal').toLowerCase()) as BassTechnique;
-          const vel =
-            tech === 'pop' || tech === 'slap'
-              ? 120
-              : Math.round((note.velocity ?? 0.85) * 120);
-          const dur = getSecondsPerStep(bpmRef.current) * 3.8;
 
-          bassPreviewSynth.playNote({
-            midi: calculatedMidi,
-            technique: tech,
-            slideDirection: note.slideDirection,
-            stringIndex: resolvedStringIndex,
-            duration: dur,
-            velocity: vel,
-            scheduleTime: time,
-          });
-        } else if (exercise.instrument === 'guitar_6') {
-          const calculatedMidi = getGuitarMidiFromString(note.string, note.fret || 0);
-          const rawTech = (note.technique || 'normal').toLowerCase();
-          const tech = (rawTech === 'pull' ? 'pulloff' : rawTech) as GuitarTechnique;
-          const vel =
-            tech === 'natural_harmonic' || tech === 'pinch_harmonic'
-              ? 115
-              : Math.round((note.velocity ?? 0.85) * 115);
-          const dur = getSecondsPerStep(bpmRef.current) * 3.5;
+      if (exercise.instrument === 'guitar_6' && notes.length >= 2) {
+        // Disparo realista de acorde con dirección de rasgueo (↓ / ↑ / ×)
+        const firstNoteWithStrum = notes.find((n) => n.strumDirection);
+        const strumDir = firstNoteWithStrum?.strumDirection || 'down';
+        const chordNotes = notes.map((n) => ({
+          midi: getGuitarMidiFromString(n.string, n.fret || 0),
+          string: n.string,
+          technique: n.technique,
+          palmMute: n.palmMute,
+          velocity: Math.round((n.velocity ?? 0.85) * 115),
+        }));
+        const dur = getSecondsPerStep(bpmRef.current) * 3.5;
+        guitarPreviewSynth.playChord(chordNotes, {
+          strumDirection: strumDir,
+          duration: dur,
+          velocity: 105,
+          time,
+          scheduleTime: time,
+        });
+      } else {
+        notes.forEach((note) => {
+          if (exercise.instrument === 'bass_4') {
+            const calculatedMidi = getBassMidiFromString(note.string, note.fret || 0);
+            const resolvedStringIndex = Math.max(0, (note.string || 4) - 1); // 0 = G, 1 = D, 2 = A, 3 = E
+            const tech = ((note.technique || 'normal').toLowerCase()) as BassTechnique;
+            const vel =
+              tech === 'pop' || tech === 'slap'
+                ? 120
+                : Math.round((note.velocity ?? 0.85) * 120);
+            const dur = getSecondsPerStep(bpmRef.current) * 3.8;
 
-          guitarPreviewSynth.playNote({
-            midi: calculatedMidi,
-            technique: tech,
-            slideDirection: note.slideDirection,
-            bendType: note.bendType,
-            bendAmount: note.bendAmount,
-            duration: dur,
-            velocity: vel,
-            time,
-            scheduleTime: time,
-          });
-        } else {
-          engine.triggerNote(
-            exercise.instrument,
-            note.string,
-            note.fret,
-            time,
-            note.technique || 'normal',
-            note.velocity ?? 0.8
-          );
-        }
-      });
+            bassPreviewSynth.playNote({
+              midi: calculatedMidi,
+              technique: tech,
+              slideDirection: note.slideDirection,
+              stringIndex: resolvedStringIndex,
+              duration: dur,
+              velocity: vel,
+              scheduleTime: time,
+            });
+          } else if (exercise.instrument === 'guitar_6') {
+            const calculatedMidi = getGuitarMidiFromString(note.string, note.fret || 0);
+            const rawTech = (note.technique || 'normal').toLowerCase();
+            const tech = (rawTech === 'pull' ? 'pulloff' : rawTech) as GuitarTechnique;
+            const vel =
+              tech === 'natural_harmonic' || tech === 'pinch_harmonic'
+                ? 115
+                : Math.round((note.velocity ?? 0.85) * 115);
+            const dur = getSecondsPerStep(bpmRef.current) * 3.5;
+
+            guitarPreviewSynth.playNote({
+              midi: calculatedMidi,
+              technique: tech,
+              slideDirection: note.slideDirection,
+              bendType: note.bendType,
+              bendAmount: note.bendAmount,
+              string: note.string,
+              stringIndex: Math.max(0, (note.string || 1) - 1),
+              pickDirection: note.pickDirection,
+              palmMute: note.palmMute,
+              duration: dur,
+              velocity: vel,
+              time,
+              scheduleTime: time,
+            });
+          } else {
+            engine.triggerNote(
+              exercise.instrument,
+              note.string,
+              note.fret,
+              time,
+              (note.technique as any) || 'normal',
+              note.velocity ?? 0.8
+            );
+          }
+        });
+      }
 
       // 2. Metrónomo en tiempos fuertes según subdivisión
       if (stepNumber % stepsPerBeat === 0) {
@@ -401,7 +427,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
         } else if ((document as any).webkitExitFullscreen) {
           await (document as any).webkitExitFullscreen();
         }
-      } catch (err) {}
+      } catch (err) { }
 
       try {
         const orientation =
@@ -411,7 +437,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
         if (orientation && typeof orientation.unlock === 'function') {
           orientation.unlock();
         }
-      } catch (err) {}
+      } catch (err) { }
 
       setIsForceLandscapeCSS(false);
       setIsFullscreen(false);
@@ -440,7 +466,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
         if (orientation && typeof orientation.unlock === 'function') {
           try {
             orientation.unlock();
-          } catch (e) {}
+          } catch (e) { }
         }
       }
     };
@@ -506,13 +532,12 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
   return (
     <div
       ref={fullscreenWrapperRef}
-      className={`transition-all duration-200 ${
-        isFullscreen
-          ? isForceLandscapeCSS
-            ? 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100vh] h-[100vw] rotate-90 z-[9999] bg-[#0b0d13] flex flex-col justify-between p-3 sm:p-4 overflow-hidden select-none shadow-2xl'
-            : 'fixed inset-0 z-[9999] bg-[#0b0d13] flex flex-col justify-between p-3 sm:p-4 w-screen h-screen overflow-hidden select-none shadow-2xl'
-          : 'relative w-full max-w-6xl mx-auto flex flex-col gap-3'
-      }`}
+      className={`transition-all duration-200 ${isFullscreen
+        ? isForceLandscapeCSS
+          ? 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100vh] h-[100vw] rotate-90 z-[9999] bg-[#0b0d13] flex flex-col justify-between p-3 sm:p-4 overflow-hidden select-none shadow-2xl'
+          : 'fixed inset-0 z-[9999] bg-[#0b0d13] flex flex-col justify-between p-3 sm:p-4 w-screen h-screen overflow-hidden select-none shadow-2xl'
+        : 'relative w-full max-w-6xl mx-auto flex flex-col gap-3'
+        }`}
     >
       {/* ============================================================== */}
       {/* CABECERA SUPERIOR: VISIBLE EN TODO MOMENTO (NORMAL Y FULLSCREEN) */}
@@ -548,11 +573,10 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
           <button
             type="button"
             onClick={handleToggleFullscreen}
-            className={`px-3 py-1 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all active:scale-95 shadow-sm ${
-              isFullscreen
-                ? 'bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/70'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-            }`}
+            className={`px-3 py-1 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all active:scale-95 shadow-sm ${isFullscreen
+              ? 'bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/70'
+              : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+              }`}
             title={isFullscreen ? 'Salir de pantalla completa' : 'Activar pantalla completa'}
           >
             {isFullscreen ? (
@@ -600,11 +624,10 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
         <button
           type="button"
           onClick={handlePlayPause}
-          className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 sm:gap-2 transition-all shadow-md active:scale-95 shrink-0 ${
-            isPlaying
-              ? 'bg-amber-400 text-slate-950 animate-pulse shadow-[0_0_12px_rgba(251,191,36,0.6)]'
-              : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-          }`}
+          className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 sm:gap-2 transition-all shadow-md active:scale-95 shrink-0 ${isPlaying
+            ? 'bg-amber-400 text-slate-950 animate-pulse shadow-[0_0_12px_rgba(251,191,36,0.6)]'
+            : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+            }`}
         >
           <span>{isPlaying ? '⏸ Pausar' : '▶ Iniciar Práctica'}</span>
         </button>
@@ -627,11 +650,10 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
         <button
           type="button"
           onClick={handleToggleMetronome}
-          className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all active:scale-95 shrink-0 ${
-            metronomeEnabled
-              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
-              : 'bg-slate-950 text-slate-500 border-slate-800'
-          }`}
+          className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all active:scale-95 shrink-0 ${metronomeEnabled
+            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
+            : 'bg-slate-950 text-slate-500 border-slate-800'
+            }`}
           title="Alternar Metrónomo"
         >
           🔔 <span className="hidden sm:inline">Metrónomo </span>{metronomeEnabled ? 'ON' : 'OFF'}

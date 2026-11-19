@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DrumVoice, StickingType } from '@/types/drum';
-import { StringTechnique, BendType, BendAmount } from '@/types/strings';
+import { StringTechnique, BendType, BendAmount, PickDirection, PickingStyle, StrumDirection } from '@/types/strings';
+import { PICKING_STYLES, calculatePickDirectionForNote, applyPickingStyleToNotes } from '@/lib/music-theory/pickingStyles';
 import { getAudioEngine } from '@/lib/drumAudioEngine';
 import { drumSampler, playDrumHit, drumSynth } from '@/lib/audio/drumSynth';
 import {
@@ -124,6 +125,9 @@ interface EditorNote {
   bendType?: BendType;
   bendAmount?: BendAmount;
   finger?: string;     // '1', '2', '3', '4', 'T'
+  pickDirection?: PickDirection;
+  palmMute?: boolean;
+  strumDirection?: StrumDirection;
   drumVoice?: DrumVoice; // Para batería
   accent?: boolean;
   ghost?: boolean;
@@ -599,6 +603,9 @@ export const ExerciseBuilder: React.FC = () => {
   const [selectedBendAmount, setSelectedBendAmount] = useState<BendAmount>('1');
   const [selectedFinger, setSelectedFinger] = useState<string>('1');
   const [selectedFret, setSelectedFret] = useState<number>(0);
+  const [selectedPickingStyle, setSelectedPickingStyle] = useState<PickingStyle>('alternate');
+  const [selectedPickDirection, setSelectedPickDirection] = useState<PickDirection>(null);
+  const [selectedPalmMute, setSelectedPalmMute] = useState<boolean>(false);
   const [selectedDrumVoice, setSelectedDrumVoice] = useState<DrumVoice>('snare');
   const [selectedSticking, setSelectedSticking] = useState<StickingType>('R');
   const [selectedAccent, setSelectedAccent] = useState<boolean>(false);
@@ -2617,6 +2624,67 @@ export const ExerciseBuilder: React.FC = () => {
   };
 
   // ============================================================================
+  // AUTO-ASIGNACIÓN DE PICKING / PÚA Y RASGUEOS DE ACORDES
+  // ============================================================================
+  const handleApplyPickingToMeasure = () => {
+    setNotes((prev) => {
+      const next = applyPickingStyleToNotes(prev, selectedPickingStyle, {
+        startStep: activeMeasureStart,
+        endStep: activeMeasureStart + stepsPerMeasure,
+      });
+      activeNotesRef.current = next;
+      return next;
+    });
+    toast.success(`Estilo ${selectedPickingStyle} aplicado al Compás ${currentMeasure + 1}`);
+  };
+
+  const handleApplyPickingToPattern = () => {
+    setNotes((prev) => {
+      const next = applyPickingStyleToNotes(prev, selectedPickingStyle);
+      activeNotesRef.current = next;
+      return next;
+    });
+    toast.success(`Estilo ${selectedPickingStyle} aplicado a todo el patrón`);
+  };
+
+  const handleToggleStepStrum = (globalStep: number) => {
+    const stepNotes = notes.filter((n) => n.step === globalStep && n.string !== undefined);
+    if (stepNotes.length < 2) return;
+
+    const currentStrum = stepNotes.find((n) => n.strumDirection)?.strumDirection || 'down';
+    const nextStrum: StrumDirection =
+      currentStrum === 'down' ? 'up' : currentStrum === 'up' ? 'mute' : 'down';
+
+    setNotes((prev) => {
+      const next = prev.map((n) =>
+        n.step === globalStep && n.string !== undefined
+          ? { ...n, strumDirection: nextStrum }
+          : n
+      );
+      activeNotesRef.current = next;
+      return next;
+    });
+
+    // Pre-escucha inmediata del acorde con la dirección de rasgueo
+    if (instrument === 'guitar') {
+      const chordNotes = stepNotes.map((n) => ({
+        midi: getGuitarMidiFromString(n.string!, n.fret || 0),
+        string: n.string,
+        technique: n.technique,
+        palmMute: n.palmMute,
+      }));
+      guitarPreviewSynth.playChord(chordNotes, {
+        strumDirection: nextStrum,
+        duration: (60 / bpmRef.current) * 0.9,
+        velocity: 105,
+      });
+    }
+
+    const label = nextStrum === 'down' ? 'Abajo (↓)' : nextStrum === 'up' ? 'Arriba (↑)' : 'Muteado (×)';
+    toast.info(`Rasgueo del acorde: ${label}`);
+  };
+
+  // ============================================================================
   // MANIPULACIÓN DE NOTAS EN LA REJILLA
   // ============================================================================
   const handleCellClick = (stepInMeasure: number, stringNum?: number, drumVoice?: DrumVoice) => {
@@ -2766,6 +2834,12 @@ export const ExerciseBuilder: React.FC = () => {
 
         // Actualizar técnica/dedo si el usuario seleccionó otra articulación activa
         const dynSpec = getDynamicSpec(activeDynamic);
+        const targetPick = selectedPickDirection !== null ? selectedPickDirection : existingNote.pickDirection;
+        const targetPM =
+          selectedPalmMute || noteTech === 'pm' || selectedPickingStyle === 'palm_mute'
+            ? true
+            : (existingNote.palmMute ?? false);
+
         setNotes((prev) => {
           const next = prev.map((n, idx) =>
             idx === existingIdx
@@ -2778,6 +2852,8 @@ export const ExerciseBuilder: React.FC = () => {
                 finger: selectedFinger,
                 dynamic: activeDynamic,
                 velocity: dynSpec.velocity,
+                pickDirection: targetPick,
+                palmMute: targetPM,
               }
               : n
           );
@@ -2787,6 +2863,8 @@ export const ExerciseBuilder: React.FC = () => {
         setActiveCell({ step: globalStep, string: stringNum });
         if (existingNote.bendType) setSelectedBendType(existingNote.bendType);
         if (existingNote.bendAmount) setSelectedBendAmount(existingNote.bendAmount);
+        if (existingNote.pickDirection) setSelectedPickDirection(existingNote.pickDirection);
+        if (existingNote.palmMute !== undefined) setSelectedPalmMute(Boolean(existingNote.palmMute));
 
         // Pre-escucha inmediata con la técnica activa y motor dedicado
         if (instrument === 'bass') {
@@ -2811,6 +2889,10 @@ export const ExerciseBuilder: React.FC = () => {
             slideDirection: targetSlideDirection,
             bendType: guitarTech === 'bend' ? targetBendType : undefined,
             bendAmount: guitarTech === 'bend' ? targetBendAmount : undefined,
+            string: stringNum,
+            stringIndex: Math.max(0, (stringNum || 1) - 1),
+            pickDirection: targetPick,
+            palmMute: targetPM,
             duration: (60 / bpmRef.current) * 0.8,
             velocity: Math.round(baseGtrVel * dynSpec.gainScale),
           });
@@ -2848,6 +2930,26 @@ export const ExerciseBuilder: React.FC = () => {
         const targetSlideDirection =
           noteTech === 'slide_up' ? 'up' : noteTech === 'slide_down' ? 'down' : undefined;
 
+        // Auto-asignación de púa según estilo activo y nota previa
+        const prevNote = [...(activeNotesRef.current || notes)]
+          .filter((n) => n.string !== undefined && (n.step < globalStep || (n.step === globalStep && n.string > stringNum!)))
+          .sort((a, b) => (b.step !== a.step ? b.step - a.step : (a.string || 1) - (b.string || 1)))[0] || null;
+
+        const autoPick = selectedPickDirection ?? calculatePickDirectionForNote(
+          stringNum!,
+          prevNote ? { string: prevNote.string!, pickDirection: prevNote.pickDirection } : null,
+          selectedPickingStyle
+        );
+
+        const isPM = selectedPalmMute || noteTech === 'pm' || selectedPickingStyle === 'palm_mute';
+
+        // Comprobar si al añadir esta nota se forma o amplía un acorde (>= 2 cuerdas en este step)
+        const otherNotesInStep = (activeNotesRef.current || notes).filter(
+          (n) => n.step === globalStep && n.string !== undefined && n.string !== stringNum
+        );
+        const isChordStep = otherNotesInStep.length > 0;
+        const defaultStrum: StrumDirection = isChordStep ? 'down' : null;
+
         // Agregar nota con el traste, técnica y dinámica activos
         const dynSpec = getDynamicSpec(activeDynamic);
         const newNote: EditorNote = {
@@ -2861,9 +2963,19 @@ export const ExerciseBuilder: React.FC = () => {
           finger: selectedFinger,
           dynamic: activeDynamic,
           velocity: dynSpec.velocity,
+          pickDirection: autoPick,
+          palmMute: isPM,
+          strumDirection: defaultStrum,
         };
+
         setNotes((prev) => {
-          const next = [...prev, newNote];
+          const next = isChordStep
+            ? prev.map((n) =>
+                n.step === globalStep && n.string !== undefined
+                  ? { ...n, strumDirection: n.strumDirection || 'down' }
+                  : n
+              ).concat([newNote])
+            : [...prev, newNote];
           activeNotesRef.current = next;
           return next;
         });
@@ -2892,6 +3004,10 @@ export const ExerciseBuilder: React.FC = () => {
             slideDirection: targetSlideDirection,
             bendType: guitarTech === 'bend' ? selectedBendType : undefined,
             bendAmount: guitarTech === 'bend' ? selectedBendAmount : undefined,
+            string: stringNum,
+            stringIndex: Math.max(0, (stringNum || 1) - 1),
+            pickDirection: autoPick,
+            palmMute: isPM,
             duration: (60 / bpmRef.current) * 0.8,
             velocity: Math.round(baseGtrVel * dynSpec.gainScale),
           });
@@ -2950,6 +3066,9 @@ export const ExerciseBuilder: React.FC = () => {
               finger: existing?.finger || selectedFinger,
               dynamic: existing?.dynamic || activeDynamic,
               velocity: existing?.velocity || getDynamicSpec(existing?.dynamic || activeDynamic).velocity,
+              pickDirection: existing?.pickDirection ?? selectedPickDirection,
+              palmMute: existing?.palmMute ?? (selectedPalmMute || selectedPickingStyle === 'palm_mute'),
+              strumDirection: existing?.strumDirection,
             },
           ];
       activeNotesRef.current = next;
@@ -2977,6 +3096,10 @@ export const ExerciseBuilder: React.FC = () => {
           slideDirection: finalTech === 'slide_up' ? 'up' : finalTech === 'slide_down' ? 'down' : undefined,
           bendType: guitarTech === 'bend' ? selectedBendType : undefined,
           bendAmount: guitarTech === 'bend' ? selectedBendAmount : undefined,
+          string: stringNum,
+          stringIndex: Math.max(0, stringNum - 1),
+          pickDirection: selectedPickDirection,
+          palmMute: selectedPalmMute || selectedPickingStyle === 'palm_mute',
           duration: (60 / bpmRef.current) * 0.8,
           velocity: finalTech === 'natural_harmonic' || finalTech === 'pinch_harmonic' ? 115 : 100,
         });
@@ -3587,32 +3710,61 @@ export const ExerciseBuilder: React.FC = () => {
             n.fret !== undefined
         ) || [];
 
-      currentStepNotes.forEach((note: any) => {
-        const isZeroIndexed =
-          note.string === undefined && note.stringIndex !== undefined;
-        const strVal = isZeroIndexed ? note.stringIndex : note.string;
-        const calculatedMidi = getGuitarMidiFromString(
-          strVal,
-          note.fret || 0,
-          isZeroIndexed
-        );
-        const rawTech = (note.technique || 'normal').toLowerCase();
-        const tech = (rawTech === 'pull' ? 'pulloff' : rawTech) as GuitarTechnique;
+      if (currentStepNotes.length >= 2) {
+        // Disparo polifónico de acorde con dirección de rasgueo (↓ / ↑ / ×)
+        const firstWithStrum = currentStepNotes.find((n: any) => n.strumDirection);
+        const strumDir = firstWithStrum?.strumDirection || 'down';
+        const chordNotes = currentStepNotes.map((note: any) => {
+          const isZeroIndexed = note.string === undefined && note.stringIndex !== undefined;
+          const strVal = isZeroIndexed ? note.stringIndex : note.string;
+          const calculatedMidi = getGuitarMidiFromString(strVal, note.fret || 0, isZeroIndexed);
+          return {
+            midi: calculatedMidi,
+            string: note.string,
+            technique: note.technique,
+            palmMute: note.palmMute,
+            velocity: 105,
+          };
+        });
         const stepDuration = getStepDuration(stepIndex);
-
-        guitarPreviewSynth.playNote({
-          midi: calculatedMidi,
-          technique: tech,
-          slideDirection: note.slideDirection,
-          bendType: note.bendType,
-          bendAmount: note.bendAmount,
+        guitarPreviewSynth.playChord(chordNotes, {
+          strumDirection: strumDir,
           duration: stepDuration * 3.5,
-          velocity:
-            tech === 'natural_harmonic' || tech === 'pinch_harmonic' ? 115 : 100,
+          velocity: 105,
           time: hitTime,
           scheduleTime: hitTime,
         });
-      });
+      } else {
+        currentStepNotes.forEach((note: any) => {
+          const isZeroIndexed =
+            note.string === undefined && note.stringIndex !== undefined;
+          const strVal = isZeroIndexed ? note.stringIndex : note.string;
+          const calculatedMidi = getGuitarMidiFromString(
+            strVal,
+            note.fret || 0,
+            isZeroIndexed
+          );
+          const rawTech = (note.technique || 'normal').toLowerCase();
+          const tech = (rawTech === 'pull' ? 'pulloff' : rawTech) as GuitarTechnique;
+          const stepDuration = getStepDuration(stepIndex);
+
+          guitarPreviewSynth.playNote({
+            midi: calculatedMidi,
+            technique: tech,
+            slideDirection: note.slideDirection,
+            bendType: note.bendType,
+            bendAmount: note.bendAmount,
+            string: note.string,
+            pickDirection: note.pickDirection,
+            palmMute: note.palmMute,
+            duration: stepDuration * 3.5,
+            velocity:
+              tech === 'natural_harmonic' || tech === 'pinch_harmonic' ? 115 : 100,
+            time: hitTime,
+            scheduleTime: hitTime,
+          });
+        });
+      }
     },
     [getStepDuration]
   );
@@ -4017,6 +4169,9 @@ export const ExerciseBuilder: React.FC = () => {
             bendAmount: n.bendAmount,
             finger: n.finger ?? '1',
             velocity: 0.85,
+            pickDirection: n.pickDirection,
+            palmMute: n.palmMute,
+            strumDirection: n.strumDirection,
             patternCode: cfg.patternCode,
             patternName: cfg.patternName,
             patternColor: cfg.patternColor,
@@ -5632,6 +5787,171 @@ export const ExerciseBuilder: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* Barra Completa de Técnicas de Picking para Guitarra y Bajo */}
+            {(instrument === 'guitar' || instrument === 'bass') && (
+              <div className="w-full flex flex-wrap items-center justify-between gap-2.5 bg-slate-950/90 p-2.5 rounded-xl border border-amber-500/30 mt-2 shadow-inner">
+                {/* Selector de Estilo de Picking */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] text-amber-300 font-mono font-black uppercase tracking-wider mr-1 flex items-center gap-1">
+                    <span>⚡</span> PICKING:
+                  </span>
+                  {PICKING_STYLES.map((style) => {
+                    const isSelected = selectedPickingStyle === style.id;
+                    return (
+                      <button
+                        key={style.id}
+                        type="button"
+                        onClick={() => setSelectedPickingStyle(style.id)}
+                        title={style.description}
+                        className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 border transition-all ${
+                          isSelected
+                            ? 'bg-amber-400 text-slate-950 font-black border-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.4)]'
+                            : 'bg-white/5 border-white/10 text-slate-300 hover:text-white hover:bg-white/10'
+                        }`}
+                      >
+                        <span className="text-[10px] font-mono font-black opacity-90 px-1 rounded bg-black/30">
+                          {style.symbol}
+                        </span>
+                        <span className="hidden sm:inline">{style.shortLabel}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Botones de Auto-Asignación Masiva */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleApplyPickingToMeasure}
+                    title="Aplica el estilo de púa seleccionado a todas las notas de este compás"
+                    className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-300 text-xs font-bold flex items-center gap-1 transition-all shadow-sm active:scale-95"
+                  >
+                    <span>⚡</span> Aplicar al Compás
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleApplyPickingToPattern}
+                    title="Aplica el estilo de púa seleccionado a todas las notas del ejercicio completo"
+                    className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/40 text-cyan-300 text-xs font-bold flex items-center gap-1 transition-all shadow-sm active:scale-95"
+                  >
+                    <span>⚡</span> Al Patrón
+                  </button>
+
+                  <div className="h-4 w-px bg-white/10 mx-1 hidden sm:block" />
+
+                  {/* Edición puntual rápida: [ Π Abajo ] [ V Arriba ] [ Ninguna ] y [ P.M. ] */}
+                  <div className="flex items-center gap-1 bg-black/40 px-2 py-0.5 rounded-lg border border-white/10">
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase mr-0.5">PÚA:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextVal: PickDirection = selectedPickDirection === 'down' ? null : 'down';
+                        setSelectedPickDirection(nextVal);
+                        if (activeCell && activeCell.string !== undefined) {
+                          setNotes((prev) => {
+                            const next = prev.map((n) =>
+                              n.step === activeCell.step && n.string === activeCell.string
+                                ? { ...n, pickDirection: nextVal }
+                                : n
+                            );
+                            activeNotesRef.current = next;
+                            return next;
+                          });
+                        }
+                      }}
+                      className={`w-6 h-6 rounded text-xs font-mono font-black transition-all ${
+                        selectedPickDirection === 'down'
+                          ? 'bg-cyan-400 text-slate-950 shadow-sm'
+                          : 'text-cyan-400/80 hover:bg-white/10'
+                      }`}
+                      title="Púa Abajo (Π)"
+                    >
+                      Π
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextVal: PickDirection = selectedPickDirection === 'up' ? null : 'up';
+                        setSelectedPickDirection(nextVal);
+                        if (activeCell && activeCell.string !== undefined) {
+                          setNotes((prev) => {
+                            const next = prev.map((n) =>
+                              n.step === activeCell.step && n.string === activeCell.string
+                                ? { ...n, pickDirection: nextVal }
+                                : n
+                            );
+                            activeNotesRef.current = next;
+                            return next;
+                          });
+                        }
+                      }}
+                      className={`w-6 h-6 rounded text-xs font-mono font-black transition-all ${
+                        selectedPickDirection === 'up'
+                          ? 'bg-amber-400 text-slate-950 shadow-sm'
+                          : 'text-amber-400/80 hover:bg-white/10'
+                      }`}
+                      title="Púa Arriba (V)"
+                    >
+                      V
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPickDirection(null);
+                        if (activeCell && activeCell.string !== undefined) {
+                          setNotes((prev) => {
+                            const next = prev.map((n) =>
+                              n.step === activeCell.step && n.string === activeCell.string
+                                ? { ...n, pickDirection: null }
+                                : n
+                            );
+                            activeNotesRef.current = next;
+                            return next;
+                          });
+                        }
+                      }}
+                      className={`px-1.5 h-6 rounded text-[10px] font-bold transition-all ${
+                        selectedPickDirection === null
+                          ? 'bg-white/20 text-white'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                      title="Limpiar símbolo de púa"
+                    >
+                      Ø
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextVal = !selectedPalmMute;
+                        setSelectedPalmMute(nextVal);
+                        if (activeCell && activeCell.string !== undefined) {
+                          setNotes((prev) => {
+                            const next = prev.map((n) =>
+                              n.step === activeCell.step && n.string === activeCell.string
+                                ? { ...n, palmMute: nextVal }
+                                : n
+                            );
+                            activeNotesRef.current = next;
+                            return next;
+                          });
+                        }
+                      }}
+                      className={`px-1.5 h-6 rounded text-[10px] font-mono font-black border transition-all ${
+                        selectedPalmMute
+                          ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black'
+                          : 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10'
+                      }`}
+                      title="Palm Mute (Apagado con palma derecha sobre el puente)"
+                    >
+                      P.M.
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -5750,6 +6070,41 @@ export const ExerciseBuilder: React.FC = () => {
                             : 'bg-transparent'
                           }`}
                       />
+
+                      {/* Flecha de Rasgueo para Acordes (>= 2 cuerdas activas en este paso) */}
+                      {(instrument === 'guitar' || instrument === 'bass') && (() => {
+                        const chordNotesInStep = notes.filter(
+                          (n) => n.step === globalStep && n.string !== undefined
+                        );
+                        if (chordNotesInStep.length < 2) return null;
+                        const currentStrum =
+                          chordNotesInStep.find((n) => n.strumDirection)?.strumDirection || 'down';
+                        const isDown = currentStrum === 'down';
+                        const isUp = currentStrum === 'up';
+                        const isMute = currentStrum === 'mute';
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleStepStrum(globalStep);
+                            }}
+                            title={`Rasgueo de acorde: ${isDown ? 'Hacia abajo (↓)' : isUp ? 'Hacia arriba (↑)' : 'Muteado (×)'}. Clic para alternar.`}
+                            className={`mt-1 px-1.5 py-0.5 rounded flex items-center justify-center transition-all cursor-pointer shadow-sm ${
+                              isDown
+                                ? 'bg-cyan-500/20 border border-cyan-400 text-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.3)] hover:bg-cyan-500/30'
+                                : isUp
+                                  ? 'bg-amber-500/20 border border-amber-400 text-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.3)] hover:bg-amber-500/30'
+                                  : 'bg-rose-500/20 border border-rose-400 text-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.3)] hover:bg-rose-500/30'
+                            }`}
+                          >
+                            <span className={`font-black ${isMute ? 'text-xs' : 'text-base leading-none'}`}>
+                              {isDown ? '↓' : isUp ? '↑' : '×'}
+                            </span>
+                          </button>
+                        );
+                      })()}
                     </div>
                   );
                 })}
@@ -6178,6 +6533,32 @@ export const ExerciseBuilder: React.FC = () => {
                               {note.finger && (
                                 <span className="absolute -bottom-3 text-[8px] font-mono text-amber-300 font-bold">
                                   {note.finger}
+                                </span>
+                              )}
+
+                              {/* Símbolo de Púa / Picking (Π / V / m / a) */}
+                              {note.pickDirection && (
+                                <span
+                                  className={`absolute ${note.finger ? '-bottom-5' : '-bottom-3.5'} text-[8.5px] font-mono font-black px-1 rounded shadow-sm z-20 ${
+                                    note.pickDirection === 'down'
+                                      ? 'bg-cyan-500/25 border border-cyan-400 text-cyan-300'
+                                      : note.pickDirection === 'up'
+                                        ? 'bg-amber-500/25 border border-amber-400 text-amber-300'
+                                        : 'bg-purple-500/25 border border-purple-400 text-purple-300'
+                                  }`}
+                                  title={`Púa: ${note.pickDirection === 'down' ? 'Abajo (Π)' : note.pickDirection === 'up' ? 'Arriba (V)' : note.pickDirection}`}
+                                >
+                                  {note.pickDirection === 'down' ? 'Π' : note.pickDirection === 'up' ? 'V' : note.pickDirection}
+                                </span>
+                              )}
+
+                              {/* Marca Palm Mute (P.M.) */}
+                              {note.palmMute && (
+                                <span
+                                  className="absolute -top-3.5 -right-3 text-[7.5px] font-mono font-black text-emerald-300 bg-emerald-950/95 px-1 py-0.2 rounded border border-emerald-400/50 shadow-sm z-20"
+                                  title="Palm Mute (P.M.)"
+                                >
+                                  P.M.
                                 </span>
                               )}
 

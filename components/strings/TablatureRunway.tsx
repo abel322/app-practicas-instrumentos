@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { StringInstrument, StringTabNote, BendType, BendAmount } from '@/types/strings';
+import { StringInstrument, StringTabNote, BendType, BendAmount, PickDirection, StrumDirection } from '@/types/strings';
 import { getSubdivisionConfig } from '@/lib/music-theory/rhythmSubdivisions';
 
 export interface RenderedNote {
@@ -14,6 +14,9 @@ export interface RenderedNote {
   bendType?: BendType;
   bendAmount?: BendAmount;
   finger?: string;
+  pickDirection?: PickDirection;
+  palmMute?: boolean;
+  strumDirection?: StrumDirection;
 }
 
 export interface TablatureRunwayProps {
@@ -139,6 +142,9 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
         bendType: n.bendType,
         bendAmount: n.bendAmount,
         finger: n.finger,
+        pickDirection: n.pickDirection,
+        palmMute: n.palmMute,
+        strumDirection: n.strumDirection,
       }));
     }
 
@@ -155,6 +161,9 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
           bendType: note.bendType,
           bendAmount: note.bendAmount,
           finger: note.finger,
+          pickDirection: note.pickDirection,
+          palmMute: note.palmMute,
+          strumDirection: note.strumDirection,
         }));
     }
 
@@ -384,6 +393,50 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                     >
                       {text}
                     </text>
+
+                    {/* Flecha de Rasgueo para Acordes (>= 2 notas simultáneas en el paso) */}
+                    {(() => {
+                      const stepNotes = notesByStep.get(s) || [];
+                      if (stepNotes.length < 2) return null;
+                      const strumDir = stepNotes.find((n) => n.strumDirection)?.strumDirection || 'down';
+                      const isDown = strumDir === 'down';
+                      const isUp = strumDir === 'up';
+                      const isMute = strumDir === 'mute';
+                      const arrowChar = isDown ? '↓' : isUp ? '↑' : '×';
+                      const arrowColor = isDown ? '#22d3ee' : isUp ? '#fbbf24' : '#fb7185';
+                      const arrowBg = isDown
+                        ? 'rgba(34, 211, 238, 0.18)'
+                        : isUp
+                          ? 'rgba(251, 191, 36, 0.18)'
+                          : 'rgba(251, 113, 133, 0.18)';
+
+                      return (
+                        <g key={`runway-strum-${effectiveActiveMeasure}-${s}`} transform={`translate(${stepX}, 42)`}>
+                          <rect
+                            x={-10}
+                            y={-9}
+                            width={20}
+                            height={18}
+                            rx={4}
+                            fill={arrowBg}
+                            stroke={arrowColor}
+                            strokeWidth={isStepActive ? 1.6 : 0.9}
+                          />
+                          <text
+                            x={0}
+                            y={isMute ? 3.5 : 4.5}
+                            textAnchor="middle"
+                            fontSize={isMute ? 12 : 14}
+                            fontWeight="900"
+                            fontFamily="monospace"
+                            fill={arrowColor}
+                            className="select-none pointer-events-none"
+                          >
+                            {arrowChar}
+                          </text>
+                        </g>
+                      );
+                    })()}
                   </g>
                 );
               })}
@@ -721,6 +774,82 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                             >
                               {note.finger}
                             </text>
+                          )}
+
+                          {/* Símbolo de Púa / Picking (Π / V / m / a) */}
+                          {note.pickDirection && (
+                            <g transform={`translate(${noteX}, ${noteY + (note.finger ? 25 : 17)})`}>
+                              <rect
+                                x="-6.5"
+                                y="-6"
+                                width="13"
+                                height="12"
+                                rx="2.5"
+                                fill={
+                                  note.pickDirection === 'down'
+                                    ? 'rgba(34, 211, 238, 0.2)'
+                                    : note.pickDirection === 'up'
+                                      ? 'rgba(251, 191, 36, 0.2)'
+                                      : 'rgba(192, 132, 252, 0.2)'
+                                }
+                                stroke={
+                                  note.pickDirection === 'down'
+                                    ? '#22d3ee'
+                                    : note.pickDirection === 'up'
+                                      ? '#fbbf24'
+                                      : '#c084fc'
+                                }
+                                strokeWidth="0.8"
+                              />
+                              <text
+                                x="0"
+                                y="3"
+                                textAnchor="middle"
+                                fontSize="9"
+                                fontWeight="900"
+                                fontFamily="system-ui, monospace"
+                                fill={
+                                  note.pickDirection === 'down'
+                                    ? '#22d3ee'
+                                    : note.pickDirection === 'up'
+                                      ? '#fbbf24'
+                                      : '#c084fc'
+                                }
+                              >
+                                {note.pickDirection === 'down'
+                                  ? 'Π'
+                                  : note.pickDirection === 'up'
+                                    ? 'V'
+                                    : note.pickDirection}
+                              </text>
+                            </g>
+                          )}
+
+                          {/* Marca Palm Mute (P.M.) */}
+                          {note.palmMute && (
+                            <g transform={`translate(${noteX + (pillWidth / 2) + 9}, ${noteY - 6})`}>
+                              <rect
+                                x="-1"
+                                y="-6"
+                                width="18"
+                                height="11"
+                                rx="2"
+                                fill="#022c22"
+                                stroke="#10b981"
+                                strokeWidth="0.8"
+                              />
+                              <text
+                                x="8"
+                                y="2"
+                                textAnchor="middle"
+                                fontSize="7"
+                                fontWeight="900"
+                                fontFamily="monospace"
+                                fill="#34d399"
+                              >
+                                P.M.
+                              </text>
+                            </g>
                           )}
                         </g>
                       );

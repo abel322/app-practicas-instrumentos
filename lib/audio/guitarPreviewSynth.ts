@@ -39,6 +39,9 @@ export interface GuitarNoteEvent {
   bendType?: BendType;
   bendAmount?: BendAmount;
   stringIndex?: number;
+  string?: number;
+  pickDirection?: 'down' | 'up' | 'm' | 'a' | null;
+  palmMute?: boolean;
 }
 
 // Conversión de cuerda y traste a MIDI para guitarra de 6 cuerdas en afinación estándar
@@ -72,7 +75,7 @@ export function getGuitarMidiFromString(
   return baseMidi + Math.max(0, fret);
 }
 
-class SampledElectricGuitarSynth {
+export class SampledElectricGuitarSynth {
   private ctx: AudioContext | null = null;
   private sampleCache: Map<string, AudioBuffer> = new Map();
   private masterGain: GainNode | null = null;
@@ -304,24 +307,32 @@ class SampledElectricGuitarSynth {
       lfo.stop(hitTime + duration + 0.25);
     }
 
-    // 3. ENVOLVENTE DE ATAQUE Y CUERPO (Diferencia púa vs legato hammer/pull-off)
+    // 3. ENVOLVENTE DE ATAQUE Y CUERPO (Diferencia púa vs legato hammer/pull-off vs palm mute)
     const noteFilter = ctx.createBiquadFilter();
     noteFilter.type = 'lowpass';
 
     const gainNode = ctx.createGain();
     const velNorm = Math.min(1.25, Math.max(0.2, velocity / 100));
     const isLegato = technique === 'hammer' || technique === 'pulloff';
+    const isPalmMute = Boolean(event.palmMute || technique === 'pm');
 
     const peakGain = (isLegato ? 0.85 : 1.05) * velNorm;
     const attackTime = isLegato ? 0.018 : 0.004; // Legato sin golpe fuerte de púa
-    const releaseDuration = Math.max(0.9, duration * 1.45);
+    // Palm Mute: decaimiento más corto para simular el apagado real de la palma derecha sobre el puente
+    const releaseDuration = isPalmMute
+      ? Math.min(0.22, duration * 0.35)
+      : Math.max(0.9, duration * 1.45);
 
-    noteFilter.frequency.setValueAtTime(isLegato ? 3600 : 5400, hitTime);
-    noteFilter.frequency.exponentialRampToValueAtTime(2600, hitTime + releaseDuration);
+    // Palm Mute: filtro paso-bajo más cerrado (~1100 Hz)
+    const initialFreq = isPalmMute ? 1100 : (isLegato ? 3600 : 5400);
+    const finalFreq = isPalmMute ? 650 : 2600;
+
+    noteFilter.frequency.setValueAtTime(initialFreq, hitTime);
+    noteFilter.frequency.exponentialRampToValueAtTime(finalFreq, hitTime + releaseDuration);
 
     gainNode.gain.setValueAtTime(0.0001, hitTime);
     gainNode.gain.linearRampToValueAtTime(peakGain, hitTime + attackTime);
-    gainNode.gain.exponentialRampToValueAtTime(peakGain * 0.65, hitTime + 0.25);
+    gainNode.gain.exponentialRampToValueAtTime(peakGain * (isPalmMute ? 0.35 : 0.65), hitTime + (isPalmMute ? 0.08 : 0.25));
     gainNode.gain.exponentialRampToValueAtTime(0.0001, hitTime + releaseDuration);
 
     source.connect(noteFilter);
@@ -332,18 +343,115 @@ class SampledElectricGuitarSynth {
     source.stop(hitTime + releaseDuration + 0.08);
   }
 
-  public playChord(midis: number[], duration = 1.3, velocity = 90): void {
-    if (!midis || midis.length === 0) return;
+  /**
+   * Dispara un chasquido percusivo corto sobre las cuerdas (~35 ms con filtro paso-banda)
+   * para simular rasgueo apagado/muteado (×)
+   */
+  public playMutedStrum(time?: number, velocity = 90): void {
     const ctx = this.getContext();
-    const baseTime = ctx.currentTime;
+    if (!ctx || !this.toneFilter) return;
 
-    // Ligero rasgueo natural de 14 ms entre cuerdas para que los acordes suenen orgánicos
-    midis.forEach((midi, idx) => {
+    const hitTime = Math.max(ctx.currentTime, time ?? ctx.currentTime);
+    const velNorm = Math.min(1.2, Math.max(0.3, velocity / 100));
+
+    const bufferSize = Math.floor(ctx.sampleRate * 0.04); // ~40ms
+    const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const output = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      output[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.008));
+    }
+
+    const noiseSource = ctx.createBufferSource();
+    noiseSource.buffer = noiseBuffer;
+
+    const bandpass = ctx.createBiquadFilter();
+    bandpass.type = 'bandpass';
+    bandpass.frequency.setValueAtTime(1150, hitTime);
+    bandpass.Q.setValueAtTime(1.8, hitTime);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.001, hitTime);
+    gain.gain.linearRampToValueAtTime(0.85 * velNorm, hitTime + 0.003);
+    gain.gain.exponentialRampToValueAtTime(0.0001, hitTime + 0.035);
+
+    noiseSource.connect(bandpass);
+    bandpass.connect(gain);
+    gain.connect(this.toneFilter);
+
+    noiseSource.start(hitTime);
+    noiseSource.stop(hitTime + 0.04);
+  }
+
+  /**
+   * Disparo polifónico de acorde con soporte completo para dirección de rasgueo:
+   * - 'down' (↓): Cuerdas de grave a aguda (6ª -> 1ª) con desfase de 14ms entre cuerdas
+   * - 'up' (↑): Cuerdas de aguda a grave (1ª -> 6ª) con desfase de 14ms y brillo en agudos
+   * - 'mute' (×): Chasquido percusivo corto sobre las cuerdas
+   */
+  public playChord(
+    notesOrMidis: (number | { midi: number; string?: number; stringIndex?: number; technique?: string; palmMute?: boolean; velocity?: number })[],
+    options?: {
+      duration?: number;
+      velocity?: number;
+      time?: number;
+      scheduleTime?: number;
+      strumDirection?: 'down' | 'up' | 'mute' | null;
+    } | number,
+    fallbackVelocity = 90
+  ): void {
+    if (!notesOrMidis || notesOrMidis.length === 0) return;
+    const ctx = this.getContext();
+    const baseTime =
+      typeof options === 'object' && options?.time !== undefined
+        ? options.time
+        : (typeof options === 'object' && options?.scheduleTime !== undefined ? options.scheduleTime : ctx.currentTime);
+    const strumDir = typeof options === 'object' ? (options?.strumDirection ?? 'down') : 'down';
+    const duration =
+      typeof options === 'object' ? (options?.duration ?? 1.3) : (typeof options === 'number' ? options : 1.3);
+    const velocity =
+      typeof options === 'object' ? (options?.velocity ?? 90) : fallbackVelocity;
+
+    // 1. Rasgueo percusivo muteado (×)
+    if (strumDir === 'mute') {
+      this.playMutedStrum(baseTime, velocity);
+      return;
+    }
+
+    // Normalizar a lista de notas
+    const normalizedNotes = notesOrMidis.map((item) => {
+      if (typeof item === 'number') {
+        return { midi: item, velocity };
+      }
+      return {
+        midi: item.midi,
+        string: item.string,
+        technique: item.technique,
+        palmMute: item.palmMute,
+        velocity: item.velocity ?? velocity,
+      };
+    });
+
+    // 2. Ordenar según la dirección del rasgueo:
+    // 'down' (↓): de grave a aguda (MIDI ascendente)
+    // 'up' (↑): de aguda a grave (MIDI descendente)
+    const sorted = [...normalizedNotes].sort((a, b) => {
+      if (strumDir === 'up') {
+        return b.midi - a.midi;
+      }
+      return a.midi - b.midi;
+    });
+
+    sorted.forEach((note, idx) => {
+      const isTopStringInUpstroke = strumDir === 'up' && idx <= 1;
+      const noteVel = isTopStringInUpstroke ? Math.min(127, note.velocity + 6) : note.velocity;
       this.playNote({
-        midi,
+        midi: note.midi,
         duration,
-        velocity,
+        velocity: noteVel,
+        technique: note.technique,
+        palmMute: note.palmMute,
         time: baseTime + idx * 0.014,
+        scheduleTime: baseTime + idx * 0.014,
       });
     });
   }
