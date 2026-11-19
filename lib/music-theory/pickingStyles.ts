@@ -14,10 +14,17 @@ export interface PickingStyleDefinition {
 export const PICKING_STYLES: PickingStyleDefinition[] = [
   {
     id: 'alternate',
-    label: 'Alternate Picking',
-    shortLabel: 'Alternate',
+    label: 'Alternate Picking (Π/V)',
+    shortLabel: 'Π/V Alternate',
     symbol: 'Π/V',
-    description: 'Alternancia estricta de púa abajo (Π) y arriba (V) nota tras nota.',
+    description: 'Alternate Picking estándar: Inicia con púa abajo (Π → V → Π → V).',
+  },
+  {
+    id: 'alternate_up',
+    label: 'Alternate Invertido (V/Π)',
+    shortLabel: 'V/Π Invertido',
+    symbol: 'V/Π',
+    description: 'Alternate Picking Invertido (Inicia Arriba: V → Π → V → Π).',
   },
   {
     id: 'economy',
@@ -90,8 +97,13 @@ export function calculatePickDirectionForNote(
       return 'down';
 
     case 'alternate':
+    case 'alternate_down':
       if (!prevNote || !prevNote.pickDirection) return 'down';
       return prevNote.pickDirection === 'down' ? 'up' : 'down';
+
+    case 'alternate_up':
+      if (!prevNote || !prevNote.pickDirection) return 'up';
+      return prevNote.pickDirection === 'up' ? 'down' : 'up';
 
     case 'economy': {
       if (!prevNote) return 'down';
@@ -136,6 +148,7 @@ export function calculatePickDirectionForNote(
 export function applyPickingStyleToNotes<T extends {
   step: number;
   string?: number;
+  id?: string;
   pickDirection?: PickDirection;
   palmMute?: boolean;
   strumDirection?: StrumDirection;
@@ -157,32 +170,43 @@ export function applyPickingStyleToNotes<T extends {
   });
 
   let prevNote: { string: number; pickDirection?: PickDirection } | null = null;
+  const computedMap = new Map<string, { pickDirection: PickDirection; palmMute?: boolean; strumDirection?: StrumDirection }>();
 
-  return notes.map((original) => {
+  for (const n of sorted) {
     if (
       filterRange &&
-      (original.step < filterRange.startStep || original.step >= filterRange.endStep)
+      (n.step < filterRange.startStep || n.step >= filterRange.endStep)
     ) {
-      return original;
+      continue;
     }
 
-    const currentString = original.string || 1;
-    const isChordStep = (countByStep.get(original.step) || 0) >= 2;
+    const currentString = n.string || 1;
+    const isChordStep = (countByStep.get(n.step) || 0) >= 2;
 
     const computedPick = calculatePickDirectionForNote(currentString, prevNote, style);
-    const computedPalmMute = style === 'palm_mute' ? true : original.palmMute;
-    const computedStrum = isChordStep ? (original.strumDirection || 'down') : null;
+    const computedPalmMute = style === 'palm_mute' ? true : n.palmMute;
+    const computedStrum = isChordStep ? (n.strumDirection || 'down') : null;
 
     prevNote = {
       string: currentString,
       pickDirection: computedPick,
     };
 
-    return {
-      ...original,
+    const key = n.id ? n.id : `${n.step}-${n.string}`;
+    computedMap.set(key, {
       pickDirection: computedPick,
       palmMute: computedPalmMute,
       strumDirection: computedStrum,
+    });
+  }
+
+  return notes.map((original) => {
+    const key = original.id ? original.id : `${original.step}-${original.string}`;
+    const update = computedMap.get(key);
+    if (!update) return original;
+    return {
+      ...original,
+      ...update,
     };
   });
 }

@@ -56,6 +56,32 @@ export const StringsLegend: React.FC = () => {
         </span>
         <span className="text-zinc-400">Vibrato</span>
       </div>
+
+      <div className="h-4 w-px bg-white/10 hidden sm:block" />
+
+      {/* Púa Abajo */}
+      <div className="flex items-center gap-1.5">
+        <span className="inline-flex items-center justify-center px-1.5 h-5 rounded-md bg-cyan-500/20 border border-cyan-400 text-cyan-300 font-black font-mono text-[10px]">
+          Π
+        </span>
+        <span className="text-zinc-300">Púa Abajo (Arriba nota)</span>
+      </div>
+
+      {/* Púa Arriba */}
+      <div className="flex items-center gap-1.5">
+        <span className="inline-flex items-center justify-center px-1.5 h-5 rounded-md bg-amber-500/20 border border-amber-400 text-amber-300 font-black font-mono text-[10px]">
+          V
+        </span>
+        <span className="text-zinc-300">Púa Arriba (Arriba nota)</span>
+      </div>
+
+      {/* Dedo */}
+      <div className="flex items-center gap-1.5">
+        <span className="inline-flex items-center justify-center px-1.5 h-5 rounded-md bg-slate-900 border border-amber-400/50 text-amber-300 font-bold font-mono text-[10px]">
+          1-4
+        </span>
+        <span className="text-zinc-300">Dedo (Abajo nota)</span>
+      </div>
     </div>
   );
 };

@@ -2635,7 +2635,8 @@ export const ExerciseBuilder: React.FC = () => {
       activeNotesRef.current = next;
       return next;
     });
-    toast.success(`Estilo ${selectedPickingStyle} aplicado al Compás ${currentMeasure + 1}`);
+    const styleDef = PICKING_STYLES.find((s) => s.id === selectedPickingStyle);
+    toast.success(`Estilo ${styleDef?.label || selectedPickingStyle} aplicado al Compás ${currentMeasure + 1}`);
   };
 
   const handleApplyPickingToPattern = () => {
@@ -2644,7 +2645,8 @@ export const ExerciseBuilder: React.FC = () => {
       activeNotesRef.current = next;
       return next;
     });
-    toast.success(`Estilo ${selectedPickingStyle} aplicado a todo el patrón`);
+    const styleDef = PICKING_STYLES.find((s) => s.id === selectedPickingStyle);
+    toast.success(`Estilo ${styleDef?.label || selectedPickingStyle} aplicado a todo el patrón`);
   };
 
   const handleToggleStepStrum = (globalStep: number) => {
@@ -6251,7 +6253,7 @@ export const ExerciseBuilder: React.FC = () => {
             ) : (
               // Filas de Bajo o Guitarra con Mástil Realista de Palisandro
               (instrument === 'bass' ? BASS_STRINGS : GUITAR_STRINGS).map((str) => (
-                <div key={str.num} className="flex items-center h-12 relative border-b border-[#3d1f11]/60 group">
+                <div key={str.num} className="flex items-center h-[52px] relative border-b border-[#3d1f11]/60 group">
                   <div className="w-24 shrink-0 flex items-center gap-2 pr-2">
                     <span className="w-5 h-5 rounded-md bg-[#140804] border border-[#5c3a28] text-amber-200 font-mono font-black text-xs flex items-center justify-center shadow-sm">
                       {str.label}
@@ -6474,20 +6476,47 @@ export const ExerciseBuilder: React.FC = () => {
                         >
                           {note ? (
                             <div className="relative flex flex-col items-center">
-                              {/* Insignia de técnica */}
-                              {note.technique &&
-                                note.technique !== 'normal' &&
-                                note.technique !== 'hammer' &&
-                                note.technique !== 'pull' &&
-                                (note.technique as any) !== 'pulloff' &&
-                                note.technique !== 'bend' &&
-                                note.technique !== 'slide_up' &&
-                                note.technique !== 'slide_down' && (
-                                  <span className="absolute -top-3.5 text-[9px] font-mono font-black text-amber-300 bg-amber-500/30 px-1 rounded border border-amber-400/40 shadow-sm whitespace-nowrap">
-                                    {getTechniqueBadge(note.technique, instrument)}
+                              {/* 1. ARRIBA DE LA NOTA: Símbolo de Púa / Picking (Π / V / m / a), Palm Mute (P.M.) y Técnica */}
+                              <div className="absolute -top-3.5 flex items-center gap-0.5 pointer-events-none z-20">
+                                {note.pickDirection && (
+                                  <span
+                                    className={`text-[10px] font-mono font-black leading-none px-1 py-0.5 rounded shadow-sm ${
+                                      note.pickDirection === 'down'
+                                        ? 'bg-cyan-500/25 border border-cyan-400 text-cyan-300'
+                                        : note.pickDirection === 'up'
+                                          ? 'bg-amber-500/25 border border-amber-400 text-amber-300'
+                                          : 'bg-purple-500/25 border border-purple-400 text-purple-300'
+                                    }`}
+                                    title={`Púa: ${note.pickDirection === 'down' ? 'Abajo (Π)' : note.pickDirection === 'up' ? 'Arriba (V)' : note.pickDirection}`}
+                                  >
+                                    {note.pickDirection === 'down' ? 'Π' : note.pickDirection === 'up' ? 'V' : note.pickDirection}
                                   </span>
                                 )}
 
+                                {note.palmMute && (
+                                  <span
+                                    className="text-[7.5px] font-mono font-black text-emerald-300 bg-emerald-950/95 px-1 py-0.5 rounded border border-emerald-400/50 shadow-sm leading-none"
+                                    title="Palm Mute (P.M.)"
+                                  >
+                                    P.M.
+                                  </span>
+                                )}
+
+                                {note.technique &&
+                                  note.technique !== 'normal' &&
+                                  note.technique !== 'hammer' &&
+                                  note.technique !== 'pull' &&
+                                  (note.technique as any) !== 'pulloff' &&
+                                  note.technique !== 'bend' &&
+                                  note.technique !== 'slide_up' &&
+                                  note.technique !== 'slide_down' && (
+                                    <span className="text-[9px] font-mono font-black text-amber-300 bg-amber-500/30 px-1 py-0.5 rounded border border-amber-400/40 shadow-sm whitespace-nowrap leading-none">
+                                      {getTechniqueBadge(note.technique, instrument)}
+                                    </span>
+                                  )}
+                              </div>
+
+                              {/* 2. CENTRO: Cuadro de Traste */}
                               {(() => {
                                 const hasSlideUp = note.technique === 'slide_up' || note.slideDirection === 'up';
                                 const hasSlideDown = note.technique === 'slide_down' || note.slideDirection === 'down';
@@ -6529,48 +6558,23 @@ export const ExerciseBuilder: React.FC = () => {
                                 );
                               })()}
 
-                              {/* Dedo sugerido */}
-                              {note.finger && (
-                                <span className="absolute -bottom-3 text-[8px] font-mono text-amber-300 font-bold">
-                                  {note.finger}
-                                </span>
-                              )}
+                              {/* 3. ABAJO DE LA NOTA: Dedo sugerido (1, 2, 3, 4, T) y Dinámica */}
+                              <div className="absolute -bottom-3.5 flex items-center gap-0.5 pointer-events-none z-20">
+                                {note.finger && (
+                                  <span className="text-[9.5px] font-mono font-bold text-amber-300 bg-slate-900/90 px-1 py-0.5 rounded border border-amber-400/40 shadow-sm leading-none">
+                                    {note.finger}
+                                  </span>
+                                )}
 
-                              {/* Símbolo de Púa / Picking (Π / V / m / a) */}
-                              {note.pickDirection && (
-                                <span
-                                  className={`absolute ${note.finger ? '-bottom-5' : '-bottom-3.5'} text-[8.5px] font-mono font-black px-1 rounded shadow-sm z-20 ${
-                                    note.pickDirection === 'down'
-                                      ? 'bg-cyan-500/25 border border-cyan-400 text-cyan-300'
-                                      : note.pickDirection === 'up'
-                                        ? 'bg-amber-500/25 border border-amber-400 text-amber-300'
-                                        : 'bg-purple-500/25 border border-purple-400 text-purple-300'
-                                  }`}
-                                  title={`Púa: ${note.pickDirection === 'down' ? 'Abajo (Π)' : note.pickDirection === 'up' ? 'Arriba (V)' : note.pickDirection}`}
-                                >
-                                  {note.pickDirection === 'down' ? 'Π' : note.pickDirection === 'up' ? 'V' : note.pickDirection}
-                                </span>
-                              )}
-
-                              {/* Marca Palm Mute (P.M.) */}
-                              {note.palmMute && (
-                                <span
-                                  className="absolute -top-3.5 -right-3 text-[7.5px] font-mono font-black text-emerald-300 bg-emerald-950/95 px-1 py-0.2 rounded border border-emerald-400/50 shadow-sm z-20"
-                                  title="Palm Mute (P.M.)"
-                                >
-                                  P.M.
-                                </span>
-                              )}
-
-                              {/* Dinámica si es distinta de mf */}
-                              {note.dynamic && note.dynamic !== 'mf' && (
-                                <span
-                                  className="absolute -bottom-3.5 right-0 text-[8px] font-mono font-black italic text-amber-300 drop-shadow-sm pointer-events-none"
-                                  title={`Dinámica: ${note.dynamic}`}
-                                >
-                                  {note.dynamic}
-                                </span>
-                              )}
+                                {note.dynamic && note.dynamic !== 'mf' && (
+                                  <span
+                                    className="text-[8px] font-mono font-black italic text-amber-300 drop-shadow-sm pointer-events-none ml-0.5 leading-none"
+                                    title={`Dinámica: ${note.dynamic}`}
+                                  >
+                                    {note.dynamic}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           ) : (
                             <div className="w-1.5 h-1.5 rounded-full bg-amber-200/20 group-hover:bg-amber-200/45 transition-colors" />

@@ -6,6 +6,8 @@ export type BendAmount = '1/4' | '1/2' | '1' | '1.5';
 export type PickDirection = 'down' | 'up' | 'm' | 'a' | null; // Π (down), V (up), dedos híbridos m/a
 export type PickingStyle =
   | 'alternate'
+  | 'alternate_down'
+  | 'alternate_up'
   | 'economy'
   | 'sweep'
   | 'downpicking'

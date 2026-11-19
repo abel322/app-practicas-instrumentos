@@ -65,10 +65,10 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
   const isBass = effectiveInstrument === 'bass_4';
   const numStrings = isBass ? 4 : 6;
 
-  // Altura y espaciado de líneas según instrumento
-  const SVG_HEIGHT = isBass ? 230 : 250;
-  const lineSpacing = isBass ? 26 : 22;
-  const startY = isBass ? 70 : 60;
+  // Altura y espaciado de líneas según instrumento (amplitud optimizada para cero colisiones entre púa y dedo)
+  const SVG_HEIGHT = isBass ? 250 : 285;
+  const lineSpacing = isBass ? 36 : 32;
+  const startY = isBass ? 70 : 66;
 
   // Subdivisión rítmica dinámica (ej. 1/8 Corcheas, 1/16 Semicorcheas, 1/8T Tresillos)
   const subConfig = useMemo(() => {
@@ -729,68 +729,21 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                             {fretText}
                           </text>
 
-                          {/* Insignia de técnica (Slap 'S', Pop 'P', Slide '/', etc.) */}
-                          {techBadge &&
-                            note.technique !== 'hammer' &&
-                            note.technique !== 'pull' &&
-                            note.technique !== 'pulloff' &&
-                            note.technique !== 'bend' &&
-                            note.technique !== 'slide_up' &&
-                            note.technique !== 'slide_down' && (
-                              <g transform={`translate(${noteX}, ${noteY - 14})`}>
-                                <rect
-                                  x="-6"
-                                  y="-6"
-                                  width="12"
-                                  height="12"
-                                  rx="3"
-                                  fill={techBadge.bg}
-                                  stroke={techBadge.color}
-                                  strokeWidth="0.8"
-                                />
-                                <text
-                                  x="0"
-                                  y="3"
-                                  textAnchor="middle"
-                                  fontSize="9"
-                                  fontWeight="900"
-                                  fontFamily="monospace"
-                                  fill={techBadge.color}
-                                >
-                                  {techBadge.label}
-                                </text>
-                              </g>
-                            )}
-
-                          {/* Dedo sugerido */}
-                          {note.finger && !techBadge && (
-                            <text
-                              x={noteX}
-                              y={noteY + 18}
-                              textAnchor="middle"
-                              fontSize="9"
-                              fontFamily="monospace"
-                              fill="#71717a"
-                            >
-                              {note.finger}
-                            </text>
-                          )}
-
-                          {/* Símbolo de Púa / Picking (Π / V / m / a) */}
+                          {/* 1. ARRIBA DE LA NOTA: Símbolo de Púa / Picking (Π / V / m / a), Palm Mute (P.M.) y Técnica */}
                           {note.pickDirection && (
-                            <g transform={`translate(${noteX}, ${noteY + (note.finger ? 25 : 17)})`}>
+                            <g transform={`translate(${noteX}, ${noteY - 15})`}>
                               <rect
                                 x="-6.5"
-                                y="-6"
+                                y="-6.5"
                                 width="13"
-                                height="12"
-                                rx="2.5"
+                                height="13"
+                                rx="3"
                                 fill={
                                   note.pickDirection === 'down'
-                                    ? 'rgba(34, 211, 238, 0.2)'
+                                    ? 'rgba(34, 211, 238, 0.25)'
                                     : note.pickDirection === 'up'
-                                      ? 'rgba(251, 191, 36, 0.2)'
-                                      : 'rgba(192, 132, 252, 0.2)'
+                                      ? 'rgba(251, 191, 36, 0.25)'
+                                      : 'rgba(192, 132, 252, 0.25)'
                                 }
                                 stroke={
                                   note.pickDirection === 'down'
@@ -799,13 +752,13 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                                       ? '#fbbf24'
                                       : '#c084fc'
                                 }
-                                strokeWidth="0.8"
+                                strokeWidth="1"
                               />
                               <text
                                 x="0"
-                                y="3"
+                                y="3.5"
                                 textAnchor="middle"
-                                fontSize="9"
+                                fontSize="10"
                                 fontWeight="900"
                                 fontFamily="system-ui, monospace"
                                 fill={
@@ -825,29 +778,89 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                             </g>
                           )}
 
-                          {/* Marca Palm Mute (P.M.) */}
+                          {/* Marca Palm Mute (P.M.) - Arriba junto a la púa */}
                           {note.palmMute && (
-                            <g transform={`translate(${noteX + (pillWidth / 2) + 9}, ${noteY - 6})`}>
+                            <g transform={`translate(${noteX + (note.pickDirection ? 14 : 0)}, ${noteY - 15})`}>
                               <rect
-                                x="-1"
+                                x="-9"
                                 y="-6"
                                 width="18"
-                                height="11"
-                                rx="2"
+                                height="12"
+                                rx="2.5"
                                 fill="#022c22"
                                 stroke="#10b981"
                                 strokeWidth="0.8"
                               />
                               <text
-                                x="8"
-                                y="2"
+                                x="0"
+                                y="3"
                                 textAnchor="middle"
-                                fontSize="7"
+                                fontSize="7.5"
                                 fontWeight="900"
                                 fontFamily="monospace"
                                 fill="#34d399"
                               >
                                 P.M.
+                              </text>
+                            </g>
+                          )}
+
+                          {/* Insignia de técnica (Slap 'S', Pop 'P', Slide '/', etc.) - Arriba */}
+                          {techBadge &&
+                            note.technique !== 'hammer' &&
+                            note.technique !== 'pull' &&
+                            note.technique !== 'pulloff' &&
+                            note.technique !== 'bend' &&
+                            note.technique !== 'slide_up' &&
+                            note.technique !== 'slide_down' && (
+                              <g transform={`translate(${noteX + (note.pickDirection ? -13 : 0)}, ${noteY - 15})`}>
+                                <rect
+                                  x="-6"
+                                  y="-6"
+                                  width="12"
+                                  height="12"
+                                  rx="3"
+                                  fill={techBadge.bg}
+                                  stroke={techBadge.color}
+                                  strokeWidth="0.8"
+                                />
+                                <text
+                                  x="0"
+                                  y="3.5"
+                                  textAnchor="middle"
+                                  fontSize="9"
+                                  fontWeight="900"
+                                  fontFamily="monospace"
+                                  fill={techBadge.color}
+                                >
+                                  {techBadge.label}
+                                </text>
+                              </g>
+                            )}
+
+                          {/* 2. ABAJO DE LA NOTA: Dedo sugerido (1, 2, 3, 4, T) en píldora ámbar */}
+                          {note.finger && (
+                            <g transform={`translate(${noteX}, ${noteY + 16})`}>
+                              <rect
+                                x="-6"
+                                y="-6"
+                                width="12"
+                                height="12"
+                                rx="2.5"
+                                fill="#090d16"
+                                stroke="rgba(251, 191, 36, 0.7)"
+                                strokeWidth="0.8"
+                              />
+                              <text
+                                x="0"
+                                y="3.5"
+                                textAnchor="middle"
+                                fontSize="9.5"
+                                fontWeight="bold"
+                                fontFamily="monospace"
+                                fill="#fcd34d"
+                              >
+                                {note.finger}
                               </text>
                             </g>
                           )}
