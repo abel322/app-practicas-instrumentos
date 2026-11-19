@@ -12,6 +12,7 @@ function safeRevalidatePath(path: string) {
 }
 
 export interface SaveExercisePayload {
+  id?: string;
   slug?: string;
   instrumentType: 'drums' | 'bass' | 'guitar' | 'piano';
   title: string;
@@ -61,12 +62,22 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
         patternBank: Array.isArray(formData.patternBank) ? formData.patternBank : [],
       };
 
-      if (formData.slug) {
+      if (formData.id || formData.slug) {
         // Modo edición o sobreescritura
-        const existing = await prisma.drumExercise.findUnique({ where: { slug: formData.slug } }).catch(() => null);
+        const existing = await prisma.drumExercise
+          .findFirst({
+            where: {
+              OR: [
+                ...(formData.id ? [{ id: formData.id }] : []),
+                ...(formData.slug ? [{ slug: formData.slug }] : []),
+              ],
+            },
+          })
+          .catch(() => null);
+
         if (existing) {
           const updated = await prisma.drumExercise.update({
-            where: { slug: formData.slug },
+            where: { id: existing.id },
             data: {
               title: formData.title.trim(),
               category: formData.category,
@@ -87,6 +98,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
 
           return {
             success: true,
+            id: updated.id,
             slug: updated.slug,
             instrument: 'drums',
             url: `/practice/${updated.slug}`,
@@ -95,7 +107,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
         }
       }
 
-      // Si no existe o no tiene slug previo, verificar colisión
+      // Si no existe o no tiene slug/id previo, verificar colisión
       const existingCollision = await prisma.drumExercise.findUnique({ where: { slug } }).catch(() => null);
       if (existingCollision) {
         slug = `${baseSlug}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -124,6 +136,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
 
       return {
         success: true,
+        id: exercise.id,
         slug: exercise.slug,
         instrument: 'drums',
         url: `/practice/${exercise.slug}`,
@@ -152,12 +165,22 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
         patternBank: Array.isArray(formData.patternBank) ? formData.patternBank : [],
       };
 
-      if (formData.slug) {
+      if (formData.id || formData.slug) {
         // Modo edición o sobreescritura
-        const existing = await prisma.stringExercise.findUnique({ where: { slug: formData.slug } }).catch(() => null);
+        const existing = await prisma.stringExercise
+          .findFirst({
+            where: {
+              OR: [
+                ...(formData.id ? [{ id: formData.id }] : []),
+                ...(formData.slug ? [{ slug: formData.slug }] : []),
+              ],
+            },
+          })
+          .catch(() => null);
+
         if (existing) {
           const updated = await prisma.stringExercise.update({
-            where: { slug: formData.slug },
+            where: { id: existing.id },
             data: {
               title: formData.title.trim(),
               instrument,
@@ -189,6 +212,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
 
           return {
             success: true,
+            id: updated.id,
             slug: updated.slug,
             instrument: formData.instrumentType,
             url: targetPracticeUrl,
@@ -237,6 +261,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
 
       return {
         success: true,
+        id: exercise.id,
         slug: exercise.slug,
         instrument: formData.instrumentType,
         url: targetPracticeUrl,

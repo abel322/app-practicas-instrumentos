@@ -24,13 +24,16 @@ import {
   getTimeSignatureSpec,
   calculateStepsForMeasure,
 } from '@/lib/music/timeSignatures';
+import { normalizeInstrumentKey } from '@/lib/music-theory/instrumentUtils';
+import { StringsPracticePlayer } from '@/components/strings/StringsPracticePlayer';
+import { KeysPracticePlayer } from '@/components/piano/KeysPracticePlayer';
 import { ArrowLeft, Drum, Sparkles, Keyboard, Maximize2, Minimize2 } from 'lucide-react';
 
 interface PracticePlayerProps {
   exercise: DrumExerciseData;
 }
 
-export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
+const DrumPracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
   // Estado local del ejercicio con hidratación reactiva si existe una versión actualizada en localStorage
   const [activeExercise, setActiveExercise] = useState<DrumExerciseData>(exercise);
 
@@ -1211,4 +1214,111 @@ export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
       )}
     </div>
   );
+};
+
+export const PracticePlayer: React.FC<PracticePlayerProps> = ({ exercise }) => {
+  const [activeExercise, setActiveExercise] = useState<any>(exercise);
+
+  useEffect(() => {
+    setActiveExercise(exercise);
+  }, [exercise]);
+
+  // Hidratación reactiva desde sessionStorage, localStorage o API
+  useEffect(() => {
+    try {
+      // 1. Revisar sessionStorage
+      const sessionRaw = sessionStorage.getItem('soundlab_editing_exercise');
+      if (sessionRaw) {
+        const parsed = JSON.parse(sessionRaw);
+        if (parsed.slug === exercise.slug || parsed.id === exercise.id) {
+          setActiveExercise((prev: any) => ({ ...prev, ...parsed }));
+          return;
+        }
+      }
+
+      // 2. Revisar localStorage
+      const localList = getLocalExercises();
+      const found = localList.find((e: any) => e.slug === exercise.slug || e.id === exercise.id);
+      if (found) {
+        setActiveExercise((prev: any) => ({ ...prev, ...found }));
+        return;
+      }
+
+      // 3. Consultar a la API en segundo plano con el hint de instrumento adecuado
+      const rawInst = (exercise as any).instrument || (exercise as any).instrumentType || '';
+      const instHint = rawInst ? normalizeInstrumentKey(rawInst) : '';
+      const queryParam = instHint ? `?instrument=${instHint}` : '';
+      fetch(`/api/exercises/${exercise.slug}${queryParam}`, { cache: 'no-store' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.success && data?.exercise) {
+            setActiveExercise((prev: any) => ({
+              ...prev,
+              ...data.exercise,
+            }));
+          }
+        })
+        .catch((e) => {
+          console.warn('API fetch fallback en PracticePlayer dispatcher:', e);
+        });
+    } catch (e) {
+      console.warn('Error sincronizando en PracticePlayer dispatcher:', e);
+    }
+  }, [exercise.slug, exercise.id]);
+
+  const rawInstrument =
+    activeExercise.instrument ||
+    activeExercise.instrumentType ||
+    (exercise as any).instrument ||
+    (exercise as any).instrumentType ||
+    'drums';
+  const resolvedInstrument = normalizeInstrumentKey(rawInstrument);
+
+  // 1. Si es guitarra o bajo: Renderizar Visor de Tablatura de Cuerdas (StringsPracticePlayer)
+  if (resolvedInstrument === 'guitar' || resolvedInstrument === 'bass') {
+    const isBass = resolvedInstrument === 'bass';
+    const stringExerciseData: any = {
+      ...activeExercise,
+      instrument: isBass ? 'bass_4' : 'guitar_6',
+      tuning: activeExercise.tuning || (isBass ? 'E A D G' : 'E A D G B E'),
+      tabData:
+        activeExercise.tabData ||
+        activeExercise.stringNotes ||
+        activeExercise.grid ||
+        activeExercise.data ||
+        [],
+      bpmDefault: activeExercise.bpmDefault || (activeExercise as any).bpm || 90,
+      totalSteps: activeExercise.totalSteps || 16,
+      subdivision: activeExercise.subdivision || '1/16',
+      timeSignature: activeExercise.timeSignature || '4/4',
+      measures: activeExercise.measures || activeExercise.sequence || [],
+      patternBank: activeExercise.patternBank || [],
+    };
+    return <StringsPracticePlayer exercise={stringExerciseData} />;
+  }
+
+  // 2. Si es piano: Renderizar Pentagrama / Teclado de Piano (KeysPracticePlayer)
+  if (resolvedInstrument === 'piano') {
+    const pianoExerciseData: any = {
+      ...activeExercise,
+      instrument: 'piano',
+      notesData:
+        activeExercise.notesData ||
+        activeExercise.pianoNotes ||
+        activeExercise.tabData ||
+        activeExercise.grid ||
+        activeExercise.data ||
+        [],
+      bpmDefault: activeExercise.bpmDefault || (activeExercise as any).bpm || 90,
+      totalSteps: activeExercise.totalSteps || 16,
+      subdivision: activeExercise.subdivision || '1/16',
+      timeSignature: activeExercise.timeSignature || '4/4',
+      measures: activeExercise.measures || activeExercise.sequence || [],
+      patternBank: activeExercise.patternBank || [],
+    };
+    return <KeysPracticePlayer exercise={pianoExerciseData} />;
+  }
+
+  // 3. Si es batería: Renderizar visor de batería
+  return <DrumPracticePlayer exercise={activeExercise} />;
 };

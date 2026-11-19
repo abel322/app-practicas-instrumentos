@@ -9,15 +9,72 @@ import { guitarPreviewSynth, getGuitarMidiFromString, GuitarTechnique } from '@/
 import { getSubdivisionConfig } from '@/lib/music-theory/rhythmSubdivisions';
 import { TablatureRunway } from './TablatureRunway';
 import { StringsLegend } from './StringsLegend';
+import { getLocalExercises } from '@/lib/exercises/customExercisesStorage';
 import { ArrowLeft, Keyboard, Maximize2, Minimize2 } from 'lucide-react';
 
 interface StringsPracticePlayerProps {
   exercise: StringExerciseData;
 }
 
-export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ exercise }) => {
+export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ exercise: initialExercise }) => {
+  const [activeExercise, setActiveExercise] = useState<StringExerciseData>(initialExercise);
+
+  useEffect(() => {
+    setActiveExercise(initialExercise);
+  }, [initialExercise]);
+
+  // Hidratación reactiva desde sessionStorage, localStorage o API
+  useEffect(() => {
+    try {
+      const sessionRaw = sessionStorage.getItem('soundlab_editing_exercise');
+      if (sessionRaw) {
+        const parsed = JSON.parse(sessionRaw);
+        if (parsed.slug === initialExercise.slug || parsed.id === initialExercise.id) {
+          setActiveExercise((prev) => ({
+            ...prev,
+            ...parsed,
+            tabData: parsed.tabData || parsed.stringNotes || parsed.data || prev.tabData || [],
+          }));
+          return;
+        }
+      }
+
+      const localList = getLocalExercises();
+      const found = localList.find((e: any) => e.slug === initialExercise.slug || e.id === initialExercise.id);
+      if (found) {
+        setActiveExercise((prev) => ({
+          ...prev,
+          ...found,
+          tabData: found.tabData || found.stringNotes || found.data || prev.tabData || [],
+        }));
+        return;
+      }
+
+      const instParam = initialExercise.instrument === 'bass_4' ? 'bass' : 'guitar';
+      fetch(`/api/exercises/${initialExercise.slug}?instrument=${instParam}`, { cache: 'no-store' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.success && data?.exercise) {
+            setActiveExercise((prev) => ({
+              ...prev,
+              ...data.exercise,
+              tabData: data.exercise.tabData || data.exercise.data || prev.tabData || [],
+            }));
+          }
+        })
+        .catch((e) => {
+          console.warn('API fetch fallback en StringsPracticePlayer:', e);
+        });
+    } catch (e) {
+      console.warn('Error sincronizando ejercicio en StringsPracticePlayer:', e);
+    }
+  }, [initialExercise.slug, initialExercise.id, initialExercise.instrument]);
+
+  const currentExercise = activeExercise;
+  const exercise = activeExercise;
+
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [bpm, setBpm] = useState<number>(exercise.bpmDefault);
+  const [bpm, setBpm] = useState<number>(currentExercise.bpmDefault || 90);
   const [metronomeEnabled, setMetronomeEnabled] = useState<boolean>(true);
   const [activeStep, setActiveStep] = useState<number>(0);
   const [progress, setProgress] = useState<number>(0);
@@ -28,7 +85,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
   const fullscreenWrapperRef = useRef<HTMLDivElement | null>(null);
 
   const isPlayingRef = useRef<boolean>(false);
-  const bpmRef = useRef<number>(exercise.bpmDefault);
+  const bpmRef = useRef<number>(currentExercise.bpmDefault || 90);
   const nextNoteTimeRef = useRef<number>(0);
   const currentStepRef = useRef<number>(0);
   const anchorStepRef = useRef<number>(0);
@@ -40,7 +97,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
 
-  const isBass = exercise.instrument === 'bass_4';
+  const isBass = currentExercise.instrument === 'bass_4';
 
   useEffect(() => {
     guitarPreviewSynth.preloadSamples();

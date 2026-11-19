@@ -318,6 +318,7 @@ export const ExerciseBuilder: React.FC = () => {
   const [masteryLevel, setMasteryLevel] = useState<number>(11);
 
   // Modo Edición de Ejercicio Existente
+  const [editingExerciseId, setEditingExerciseId] = useState<string | null>(null);
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [editorViewMode, setEditorViewMode] = useState<'pianoroll' | 'sheet' | 'extended'>('extended');
 
@@ -358,7 +359,9 @@ export const ExerciseBuilder: React.FC = () => {
     const target = searchParams.get('target');
     const queryInst = searchParams.get('instrument');
     const lvl = searchParams.get('level');
-    const editSlug = searchParams.get('editSlug') || searchParams.get('id') || searchParams.get('slug');
+    const editId = searchParams.get('id');
+    const editSlug = searchParams.get('editSlug') || (!editId ? searchParams.get('slug') : null) || searchParams.get('edit');
+    const queryIdentifier = editId || editSlug;
 
     if (target === 'mastery') {
       setDestination('mastery');
@@ -383,22 +386,27 @@ export const ExerciseBuilder: React.FC = () => {
       setMasteryLevel(parseInt(lvl) || 11);
     }
 
+    if (editId) {
+      setEditingExerciseId(editId);
+    }
     if (editSlug) {
       setEditingSlug(editSlug);
+    }
 
+    if (queryIdentifier) {
       const loadExerciseData = async () => {
         try {
           let exerciseData: any = null;
           const sessionRaw = sessionStorage.getItem('soundlab_editing_exercise');
           if (sessionRaw) {
             const parsed = JSON.parse(sessionRaw);
-            if (parsed.slug === editSlug || parsed.id === editSlug) {
+            if (parsed.slug === queryIdentifier || parsed.id === queryIdentifier || (editId && parsed.id === editId) || (editSlug && parsed.slug === editSlug)) {
               exerciseData = parsed;
             }
           }
           if (!exerciseData) {
             const localList = getLocalExercises();
-            const found = localList.find((e: any) => e.slug === editSlug || e.id === editSlug);
+            const found = localList.find((e: any) => e.slug === queryIdentifier || e.id === queryIdentifier || (editId && e.id === editId) || (editSlug && e.slug === editSlug));
             if (found) exerciseData = found;
           }
 
@@ -406,7 +414,7 @@ export const ExerciseBuilder: React.FC = () => {
           try {
             const paramInst = searchParams.get('instrument');
             const apiRes = await fetch(
-              `/api/exercises/${editSlug}${paramInst ? `?instrument=${paramInst}` : ''}`
+              `/api/exercises/${queryIdentifier}${paramInst ? `?instrument=${paramInst}` : ''}`
             );
             if (apiRes.ok) {
               const json = await apiRes.json();
@@ -419,6 +427,8 @@ export const ExerciseBuilder: React.FC = () => {
           }
 
           if (exerciseData) {
+            if (exerciseData.id) setEditingExerciseId(exerciseData.id);
+            if (exerciseData.slug) setEditingSlug(exerciseData.slug);
             if (exerciseData.title) setTitle(exerciseData.title);
             if (exerciseData.category) setCategory(exerciseData.category);
             if (exerciseData.difficulty) setDifficulty(exerciseData.difficulty);
@@ -1216,6 +1226,20 @@ export const ExerciseBuilder: React.FC = () => {
       } catch (err) {
         console.error('Error limpiando borrador:', err);
       }
+      setEditingExerciseId(null);
+      setEditingSlug(null);
+      setSaveResult(null);
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('id');
+        url.searchParams.delete('editSlug');
+        url.searchParams.delete('slug');
+        url.searchParams.delete('edit');
+        window.history.replaceState(null, '', url.toString());
+        try {
+          sessionStorage.removeItem('soundlab_editing_exercise');
+        } catch { }
+      }
       setNotes([]);
       activeNotesRef.current = [];
       setTotalMeasures(1);
@@ -1244,8 +1268,14 @@ export const ExerciseBuilder: React.FC = () => {
       });
       setEditingPatternCode('P1');
       setActiveBrushPatternCode('P1');
-      setTitle('');
-      toast.info('Borrador descartado. Ejercicio nuevo en blanco.');
+      setTitle(
+        instrument === 'piano'
+          ? 'Nuevo Estudio de Piano'
+          : instrument === 'drums'
+          ? 'Nuevo Groovin Rudimento'
+          : 'Nuevo Ejercicio de Cuerdas'
+      );
+      toast.info('Lienzo en blanco listo para crear un nuevo ejercicio.');
     }
   };
 
@@ -4145,70 +4175,127 @@ export const ExerciseBuilder: React.FC = () => {
       }
 
       const normalizedSub = normalizeSubdivisionKey(activeMeasureSubdivision);
-      const res = await saveExerciseAction({
+      const apiPayload = {
+        id: editingExerciseId || undefined,
         slug: editingSlug || undefined,
+        title: title.trim(),
+        instrument,
+        instrumentType: instrument,
+        category,
+        difficulty,
+        bpm,
+        bpmDefault: bpm,
+        timeSignature: activeMeasureConfig.timeSignature || timeSignature || '4/4',
+        totalMeasures,
+        stepsPerMeasure,
+        totalSteps,
+        data: formattedData,
+        grid: formattedData,
+        tabData: instrument !== 'drums' && instrument !== 'piano' ? formattedData : undefined,
+        stringNotes: instrument !== 'drums' && instrument !== 'piano' ? formattedData : undefined,
+        pianoNotes: instrument === 'piano' ? formattedData : undefined,
+        hitsData: instrument === 'drums' ? formattedData : undefined,
+        measures: savedMeasures,
+        sequence: savedMeasures,
+        patternBank: currentBank,
+      };
+
+      let resData: any = null;
+
+      if (!editingExerciseId) {
+        // Crear nuevo ejercicio vía POST
+        const response = await fetch('/api/exercises', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(apiPayload),
+        });
+        resData = await response.json();
+
+        if (!response.ok || !resData.success) {
+          throw new Error(resData?.error || 'Error al publicar ejercicio');
+        }
+
+        const newId = resData.id || resData.slug;
+        if (newId) {
+          setEditingExerciseId(newId);
+        }
+        if (resData.slug) {
+          setEditingSlug(resData.slug);
+          if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href);
+            url.searchParams.set('id', newId);
+            url.searchParams.set('editSlug', resData.slug);
+            url.searchParams.set('instrument', instrument);
+            window.history.replaceState(null, '', url.toString());
+          }
+        }
+
+        toast.success('Ejercicio publicado correctamente. Ahora estás editando este ejercicio');
+      } else {
+        // Actualizar ejercicio existente vía PUT sin crear duplicados
+        const response = await fetch(`/api/exercises/${editingExerciseId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(apiPayload),
+        });
+        resData = await response.json();
+
+        if (!response.ok || !resData.success) {
+          throw new Error(resData?.error || 'Error al guardar cambios');
+        }
+
+        if (resData.id) {
+          setEditingExerciseId(resData.id);
+        }
+        if (resData.slug) {
+          setEditingSlug(resData.slug);
+        }
+
+        toast.success('Cambios guardados en el ejercicio');
+      }
+
+      try {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+      } catch (err) {
+        console.error('Error eliminando borrador tras publicar/guardar:', err);
+      }
+
+      const savedPayload = {
+        id: resData.id || editingExerciseId,
+        slug: resData.slug || editingSlug,
         instrumentType: instrument,
         title,
         category,
         difficulty,
+        bpmDefault: bpm,
         bpm,
-        timeSignature,
+        timeSignature: activeMeasureConfig.timeSignature || timeSignature || '4/4',
+        subdivision: normalizedSub,
+        totalSteps,
         totalMeasures,
         stepsPerMeasure,
-        subdivision: normalizedSub,
-        data: formattedData,
         measures: savedMeasures,
         patternBank: currentBank,
-      });
+        hitsData: instrument === 'drums' ? formattedData : undefined,
+        tabData: instrument !== 'drums' && instrument !== 'piano' ? formattedData : undefined,
+        notesData: instrument === 'piano' ? formattedData : undefined,
+        instrument: instrument === 'drums' ? 'drums' : instrument === 'bass' ? 'bass_4' : instrument === 'piano' ? 'piano' : 'guitar_6',
+      };
 
-      if (res.success) {
-        try {
-          localStorage.removeItem(DRAFT_STORAGE_KEY);
-        } catch (err) {
-          console.error('Error eliminando borrador tras publicar:', err);
-        }
-
-        const savedPayload = {
-          slug: res.slug,
-          instrumentType: instrument,
-          title,
-          category,
-          difficulty,
-          bpmDefault: bpm,
-          bpm,
-          timeSignature,
-          subdivision: normalizedSub,
-          totalSteps,
-          totalMeasures,
-          stepsPerMeasure,
-          measures: savedMeasures,
-          patternBank: currentBank,
-          hitsData: instrument === 'drums' ? formattedData : undefined,
-          tabData: instrument !== 'drums' ? formattedData : undefined,
-          instrument: instrument === 'drums' ? 'drums' : instrument === 'bass' ? 'bass_4' : instrument === 'piano' ? 'piano' : 'guitar_6',
-        };
-
-        saveLocalExercise(savedPayload);
-        try {
-          sessionStorage.setItem('soundlab_editing_exercise', JSON.stringify(savedPayload));
-        } catch { }
-
-        if (editingSlug) {
-          toast.success(`Ejercicio "${title}" actualizado con éxito.`);
-        } else {
-          toast.success(`Ejercicio "${title}" publicado con éxito.`);
-        }
-      }
+      saveLocalExercise(savedPayload);
+      try {
+        sessionStorage.setItem('soundlab_editing_exercise', JSON.stringify(savedPayload));
+      } catch { }
 
       const practiceUrl =
-        res.url ||
+        resData.url ||
         (instrument === 'piano'
-          ? `/piano/practice/${res.slug}`
+          ? `/piano/practice/${resData.slug || editingSlug}`
           : instrument === 'drums'
-            ? `/practice/${res.slug}`
-            : `/strings/practice/${res.slug}`);
+            ? `/practice/${resData.slug || editingSlug}`
+            : `/strings/practice/${resData.slug || editingSlug}`);
 
-      setSaveResult({ ...res, url: practiceUrl });
+      setSaveResult({ ...resData, success: true, url: practiceUrl });
     } catch (e: any) {
       setSaveResult({ success: false, error: e?.message || 'Error inesperado' });
     } finally {
@@ -4237,10 +4324,10 @@ export const ExerciseBuilder: React.FC = () => {
               <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#0891b2]/15 text-[#0891b2] border border-[#0891b2]/30 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/30">
                 Studio Builder
               </span>
-              {editingSlug && (
-                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 flex items-center gap-1">
+              {editingExerciseId && (
+                <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
                   <Pencil className="w-2.5 h-2.5" />
-                  Modo Edición
+                  Editando Ejercicio
                 </span>
               )}
               <span className="text-xs text-slate-500 dark:text-zinc-400 font-mono">
@@ -4307,41 +4394,56 @@ export const ExerciseBuilder: React.FC = () => {
             </button>
           </div>
 
-          {/* Botón Limpiar / Nuevo Ejercicio */}
+          {/* Botón Principal: 📤 Publicar Ejercicio (Ámbar) vs 💾 Guardar Cambios (Verde Esmeralda) */}
+          {editingExerciseId ? (
+            <button
+              onClick={handlePublish}
+              disabled={isSaving}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md shadow-emerald-600/30 active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+              title="Guardar cambios realizados en este ejercicio existente"
+            >
+              {isSaving ? (
+                <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span className="text-sm">💾</span>
+              )}
+              <span>Guardar Cambios</span>
+            </button>
+          ) : (
+            <button
+              onClick={handlePublish}
+              disabled={isSaving}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-md shadow-amber-500/30 active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+              title="Publicar este nuevo ejercicio en la base de datos"
+            >
+              {isSaving ? (
+                <span className="inline-block w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span className="text-sm">📤</span>
+              )}
+              <span>Publicar Ejercicio</span>
+            </button>
+          )}
+
+          {/* Botón Secundario Discreto: + Nuevo */}
           <button
             onClick={handleClearDraft}
             type="button"
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200 dark:bg-white/5 dark:hover:bg-rose-500/15 dark:text-zinc-400 dark:hover:text-rose-300 dark:border-white/10 dark:hover:border-rose-500/30 font-semibold text-xs transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-950 border border-slate-300 dark:bg-white/5 dark:hover:bg-white/10 dark:text-zinc-300 dark:hover:text-white dark:border-white/10 font-bold text-xs transition-colors cursor-pointer"
             title="Descartar borrador y empezar un ejercicio nuevo en blanco"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Nuevo / Limpiar</span>
+            <Plus className="w-3.5 h-3.5" />
+            <span>+ Nuevo</span>
           </button>
 
           {/* Botón Exportar PDF */}
           <button
             type="button"
             onClick={() => setIsPrintModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 hover:border-slate-500 transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 hover:border-slate-500 transition-all shadow-sm cursor-pointer"
             title="Abrir vista previa y exportar a PDF para impresión"
           >
             <span>📄 Exportar PDF</span>
-          </button>
-
-          {/* Botón Guardar / Publicar Ejercicio */}
-          <button
-            onClick={handlePublish}
-            disabled={isSaving}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0891b2] hover:bg-[#0e7490] text-white shadow-sm dark:bg-gradient-to-r dark:from-cyan-500 dark:to-cyan-400 dark:text-zinc-950 font-bold text-xs dark:shadow-[0_0_20px_rgba(34,211,238,0.4)] active:scale-95 transition-all disabled:opacity-50"
-          >
-            {isSaving ? (
-              <span className="inline-block w-4 h-4 border-2 border-white dark:border-zinc-950 border-t-transparent rounded-full animate-spin" />
-            ) : editingSlug ? (
-              <CheckCircle2 className="w-4 h-4" />
-            ) : (
-              <Save className="w-4 h-4" />
-            )}
-            <span>{editingSlug ? 'Guardar Cambios' : 'Publicar Ejercicio'}</span>
           </button>
         </div>
       </div>
@@ -4366,7 +4468,9 @@ export const ExerciseBuilder: React.FC = () => {
               )}
               <span>
                 {saveResult.success
-                  ? '¡Ejercicio publicado con éxito en la base de datos!'
+                  ? editingExerciseId
+                    ? '¡Cambios guardados con éxito en la base de datos!'
+                    : '¡Ejercicio publicado con éxito en la base de datos!'
                   : `Error: ${saveResult.error}`}
               </span>
             </div>
@@ -4377,7 +4481,7 @@ export const ExerciseBuilder: React.FC = () => {
                 target="_blank"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold text-xs hover:bg-emerald-500/30 transition-colors"
               >
-                <span>Ver en Práctica</span>
+                <span>Practicar ➔</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </Link>
             )}

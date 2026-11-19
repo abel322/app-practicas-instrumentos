@@ -50,7 +50,7 @@ export const StringExerciseCard: React.FC<StringExerciseCardProps> = ({
           JSON.stringify({ ...exercise, instrumentType: instType, subdivision: exercise.subdivision || (exercise.totalSteps === 8 ? '1/8' : '1/16') })
         );
       } catch (_) {}
-      router.push(`/admin/builder?editSlug=${exercise.slug}&instrument=${instType}`);
+      router.push(`/admin/builder?id=${exercise.id}&editSlug=${exercise.slug}&instrument=${instType}`);
     }
   };
 
@@ -193,7 +193,7 @@ export const StringExerciseCard: React.FC<StringExerciseCardProps> = ({
               : 'bg-[#0891b2] hover:bg-[#0e7490] text-white dark:bg-cyan-500/10 dark:hover:bg-cyan-500 dark:border dark:border-cyan-500/30 dark:hover:border-cyan-500 dark:text-cyan-300 dark:hover:text-zinc-950'
           }`}
         >
-          <span>{isPiano ? 'Estudiar Piano' : 'Estudiar Tab'}</span>
+          <span>Practicar ➔</span>
           <Play className="w-3 h-3 fill-current" />
         </Link>
       </div>

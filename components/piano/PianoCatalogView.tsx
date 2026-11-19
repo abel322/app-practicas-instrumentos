@@ -106,7 +106,7 @@ export const PianoCatalogView: React.FC<PianoCatalogViewProps> = ({ initialExerc
         JSON.stringify({ ...ex, instrumentType: 'piano' })
       );
     } catch (_) {}
-    router.push(`/admin/builder?editSlug=${ex.slug}&instrument=piano`);
+    router.push(`/admin/builder?id=${ex.id}&editSlug=${ex.slug}&instrument=piano`);
   };
 
   const handleConfirmDelete = async () => {

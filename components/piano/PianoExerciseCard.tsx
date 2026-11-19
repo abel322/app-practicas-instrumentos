@@ -47,7 +47,7 @@ export const PianoExerciseCard: React.FC<PianoExerciseCardProps> = ({
           JSON.stringify({ ...exercise, instrumentType: 'piano' })
         );
       } catch (_) {}
-      router.push(`/admin/builder?editSlug=${exercise.slug}&instrument=piano`);
+      router.push(`/admin/builder?id=${exercise.id}&editSlug=${exercise.slug}&instrument=piano`);
     }
   };
 
@@ -177,7 +177,7 @@ export const PianoExerciseCard: React.FC<PianoExerciseCardProps> = ({
           href={`/piano/practice/${exercise.slug}`}
           className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-sm transition-all duration-200"
         >
-          <span>Estudiar</span>
+          <span>Practicar ➔</span>
           <Play className="w-3 h-3 fill-current" />
         </Link>
       </div>

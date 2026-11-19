@@ -188,7 +188,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           href={`/practice/${exercise.slug}`}
           className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#0891b2] hover:bg-[#0e7490] text-white shadow-sm dark:bg-cyan-500/10 dark:hover:bg-cyan-500 dark:border dark:border-cyan-500/30 dark:hover:border-cyan-500 dark:text-cyan-300 dark:hover:text-zinc-950 font-bold text-xs transition-all duration-200"
         >
-          <span>Estudiar</span>
+          <span>Practicar ➔</span>
           <Play className="w-3 h-3 fill-current" />
         </Link>
       </div>

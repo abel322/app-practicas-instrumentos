@@ -63,25 +63,24 @@ export async function POST(request: Request) {
     }
 
     const rawInst = body.instrumentType || body.instrument || 'drums';
-    const normalizedInst =
-      rawInst === 'piano'
-        ? 'piano'
-        : rawInst === 'bass' || rawInst === 'bass_4'
-        ? 'bass'
-        : rawInst === 'guitar' || rawInst === 'guitar_6'
-        ? 'guitar'
-        : 'drums';
+    const normalizedInst = normalizeInstrumentKey(rawInst);
 
     const rawData =
       body.data ||
-      (normalizedInst === 'drums' ? body.hitsData : body.tabData || body.notesData) ||
+      body.grid ||
+      (normalizedInst === 'drums'
+        ? body.hitsData
+        : normalizedInst === 'piano'
+        ? body.pianoNotes || body.notesData || body.tabData
+        : body.stringNotes || body.tabData || body.notesData) ||
       [];
 
     const result = await saveExerciseAction({
+      id: body.id || undefined,
       slug: body.slug || undefined,
       instrumentType: normalizedInst,
       title: body.title,
-      category: body.category || 'Rudimentos',
+      category: body.category || (normalizedInst === 'drums' ? 'Rudimentos' : normalizedInst === 'piano' ? 'Clásico' : 'Slap & Pop'),
       difficulty: body.difficulty || 'Intermedio',
       bpm: Number(body.bpm || body.bpmDefault) || 100,
       timeSignature: body.timeSignature || '4/4',
@@ -89,7 +88,7 @@ export async function POST(request: Request) {
       stepsPerMeasure: Number(body.stepsPerMeasure) || 16,
       subdivision: body.subdivision || '1/16',
       data: Array.isArray(rawData) ? rawData : [],
-      measures: Array.isArray(body.measures) ? body.measures : undefined,
+      measures: Array.isArray(body.measures) ? body.measures : Array.isArray(body.sequence) ? body.sequence : undefined,
       patternBank: Array.isArray(body.patternBank) ? body.patternBank : undefined,
     });
 
@@ -100,6 +99,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: true,
+        id: result.id,
         slug: result.slug,
         url: result.url,
         isUpdate: result.isUpdate,

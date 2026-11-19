@@ -1,8 +1,9 @@
 import React from 'react';
-import { notFound, redirect } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
-import { getStringExercises, getStringExerciseBySlug } from '@/lib/prisma';
+import { getStringExercises, getStringExerciseBySlug, getExerciseBySlug, getPianoExerciseBySlug } from '@/lib/prisma';
 import { StringsPracticePlayer } from '@/components/strings/StringsPracticePlayer';
+import { StringExerciseData } from '@/types/strings';
 
 interface StringsPracticePageProps {
   params: Promise<{ slug: string }>;
@@ -21,7 +22,7 @@ export async function generateMetadata({ params }: StringsPracticePageProps): Pr
 
   if (!exercise) {
     return {
-      title: 'Ejercicio de Cuerdas No Encontrado — SoundLab',
+      title: 'Ejercicio de Cuerdas — SoundLab Studio',
     };
   }
 
@@ -34,19 +35,45 @@ export async function generateMetadata({ params }: StringsPracticePageProps): Pr
 
 export default async function StringsPracticePage({ params }: StringsPracticePageProps) {
   const { slug } = await params;
-  const exercise = await getStringExerciseBySlug(slug);
+  let exercise: any = await getStringExerciseBySlug(slug);
 
   if (!exercise) {
-    notFound();
+    const drumEx = await getExerciseBySlug(slug);
+    if (drumEx) {
+      redirect(`/practice/${drumEx.slug}`);
+    }
+    const pianoEx = await getPianoExerciseBySlug(slug);
+    if (pianoEx) {
+      redirect(`/piano/practice/${pianoEx.slug}`);
+    }
   }
 
-  if (exercise.instrument === ('piano' as any)) {
-    redirect(`/piano/practice/${exercise.slug}`);
+  const safeExercise: StringExerciseData = exercise ?? {
+    id: `local_${slug}`,
+    slug,
+    title: slug
+      .split('-')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' '),
+    instrument: 'guitar_6',
+    tuning: 'E A D G B E',
+    category: 'Licks & Riffs',
+    difficulty: 'Intermedio',
+    bpmDefault: 95,
+    timeSignature: '4/4',
+    totalSteps: 16,
+    subdivision: '1/16',
+    stepsPerMeasure: 16,
+    tabData: [],
+  };
+
+  if (safeExercise.instrument === ('piano' as any)) {
+    redirect(`/piano/practice/${safeExercise.slug}`);
   }
 
   return (
     <main className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 flex flex-col justify-center">
-      <StringsPracticePlayer exercise={exercise} />
+      <StringsPracticePlayer exercise={safeExercise} />
     </main>
   );
 }

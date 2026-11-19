@@ -1,7 +1,6 @@
 import React from 'react';
-import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
-import { getExercises, getExerciseBySlug } from '@/lib/prisma';
+import { getExercises, getExerciseBySlug, getStringExerciseBySlug, getPianoExerciseBySlug } from '@/lib/prisma';
 import { PracticePlayer } from '@/components/practice/PracticePlayer';
 
 interface PracticePageProps {
@@ -17,23 +16,35 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: PracticePageProps): Promise<Metadata> {
   const { slug } = await params;
-  const exercise = await getExerciseBySlug(slug);
+  let exercise: any = await getExerciseBySlug(slug);
+  if (!exercise) {
+    exercise = await getStringExerciseBySlug(slug);
+  }
+  if (!exercise) {
+    exercise = await getPianoExerciseBySlug(slug);
+  }
 
   if (!exercise) {
     return {
-      title: 'Ejercicio No Encontrado — Drum Lab',
+      title: 'Ejercicio — SoundLab Studio',
     };
   }
 
   return {
-    title: `${exercise.title} — Práctica Runway | Drum Lab`,
-    description: exercise.description || `Estudio interactivo de ${exercise.title} con pentagrama formal de batería de 5 líneas y escaneo Runway a tiempo real.`,
+    title: `${exercise.title} — Práctica Runway | SoundLab`,
+    description: exercise.description || `Estudio interactivo de ${exercise.title} con escaneo óptico Runway a tiempo real.`,
   };
 }
 
 export default async function PracticePage({ params }: PracticePageProps) {
   const { slug } = await params;
-  const exercise = await getExerciseBySlug(slug);
+  let exercise: any = await getExerciseBySlug(slug);
+  if (!exercise) {
+    exercise = await getStringExerciseBySlug(slug);
+  }
+  if (!exercise) {
+    exercise = await getPianoExerciseBySlug(slug);
+  }
 
   const safeExercise = exercise ?? {
     id: `local_${slug}`,

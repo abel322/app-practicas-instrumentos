@@ -8,13 +8,14 @@ import { PIANO_INITIAL_EXERCISES } from '@/lib/pianoSeedData';
 import { saveExerciseAction, deleteExerciseAction } from '@/app/actions/save-exercise';
 
 interface RouteParams {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ id: string }>;
 }
 
 export async function GET(request: Request, { params }: RouteParams) {
   try {
-    const { slug } = await params;
-    if (!slug) {
+    const resolvedParams = await params;
+    const identifier = resolvedParams.id;
+    if (!identifier) {
       return NextResponse.json({ success: false, error: 'Slug o ID requerido' }, { status: 400 });
     }
 
@@ -27,7 +28,7 @@ export async function GET(request: Request, { params }: RouteParams) {
       try {
         const drumEx = await prisma.drumExercise.findFirst({
           where: {
-            OR: [{ slug }, { id: slug }],
+            OR: [{ id: identifier }, { slug: identifier }],
           },
         });
 
@@ -70,7 +71,7 @@ export async function GET(request: Request, { params }: RouteParams) {
       try {
         const stringEx = await prisma.stringExercise.findFirst({
           where: {
-            OR: [{ slug }, { id: slug }],
+            OR: [{ id: identifier }, { slug: identifier }],
           },
         });
 
@@ -83,7 +84,7 @@ export async function GET(request: Request, { params }: RouteParams) {
           const instType =
             stringEx.instrument === 'piano'
               ? 'piano'
-              : stringEx.instrument === 'bass_4'
+              : stringEx.instrument === 'bass_4' || stringEx.instrument === 'bass'
               ? 'bass'
               : 'guitar';
 
@@ -140,7 +141,7 @@ export async function GET(request: Request, { params }: RouteParams) {
     }
 
     // Fallbacks en memoria si la BD no arrojó resultados
-    const foundString = STRINGS_INITIAL_EXERCISES.find((e) => e.slug === slug || e.id === slug);
+    const foundString = STRINGS_INITIAL_EXERCISES.find((e) => e.slug === identifier || e.id === identifier);
     if (foundString && instrumentHint !== 'drums') {
       return NextResponse.json({
         success: true,
@@ -158,7 +159,7 @@ export async function GET(request: Request, { params }: RouteParams) {
       });
     }
 
-    const foundPiano = PIANO_INITIAL_EXERCISES.find((e) => e.slug === slug || e.id === slug);
+    const foundPiano = PIANO_INITIAL_EXERCISES.find((e) => e.slug === identifier || e.id === identifier);
     if (foundPiano && (instrumentHint === 'piano' || !instrumentHint)) {
       return NextResponse.json({
         success: true,
@@ -171,7 +172,7 @@ export async function GET(request: Request, { params }: RouteParams) {
       });
     }
 
-    const foundDrum = INITIAL_EXERCISES.find((e) => e.slug === slug || e.id === slug);
+    const foundDrum = INITIAL_EXERCISES.find((e) => e.slug === identifier || e.id === identifier);
     if (foundDrum) {
       return NextResponse.json({
         success: true,
@@ -193,32 +194,31 @@ export async function GET(request: Request, { params }: RouteParams) {
 
 export async function PUT(request: Request, { params }: RouteParams) {
   try {
-    const { slug } = await params;
-    if (!slug) {
-      return NextResponse.json({ success: false, error: 'Slug requerido' }, { status: 400 });
+    const { id } = await params;
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'ID o Slug requerido' }, { status: 400 });
     }
 
     const body = await request.json();
     const rawInst = body.instrumentType || body.instrument || 'drums';
-    const normalizedInst =
-      rawInst === 'piano'
-        ? 'piano'
-        : rawInst === 'bass' || rawInst === 'bass_4'
-        ? 'bass'
-        : rawInst === 'guitar' || rawInst === 'guitar_6'
-        ? 'guitar'
-        : 'drums';
+    const normalizedInst = normalizeInstrumentKey(rawInst);
 
     const rawData =
       body.data ||
-      (normalizedInst === 'drums' ? body.hitsData : body.tabData || body.notesData) ||
+      body.grid ||
+      (normalizedInst === 'drums'
+        ? body.hitsData
+        : normalizedInst === 'piano'
+        ? body.pianoNotes || body.notesData || body.tabData
+        : body.stringNotes || body.tabData || body.notesData) ||
       [];
 
     const result = await saveExerciseAction({
-      slug,
+      id,
+      slug: body.slug || undefined,
       instrumentType: normalizedInst,
       title: body.title,
-      category: body.category || 'Rudimentos',
+      category: body.category || (normalizedInst === 'drums' ? 'Rudimentos' : normalizedInst === 'piano' ? 'Clásico' : 'Slap & Pop'),
       difficulty: body.difficulty || 'Intermedio',
       bpm: Number(body.bpm || body.bpmDefault) || 100,
       timeSignature: body.timeSignature || '4/4',
@@ -226,7 +226,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
       stepsPerMeasure: Number(body.stepsPerMeasure) || 16,
       subdivision: body.subdivision || '1/16',
       data: Array.isArray(rawData) ? rawData : [],
-      measures: Array.isArray(body.measures) ? body.measures : undefined,
+      measures: Array.isArray(body.measures) ? body.measures : Array.isArray(body.sequence) ? body.sequence : undefined,
       patternBank: Array.isArray(body.patternBank) ? body.patternBank : undefined,
     });
 
@@ -236,40 +236,40 @@ export async function PUT(request: Request, { params }: RouteParams) {
 
     return NextResponse.json({
       success: true,
+      id: result.id,
       slug: result.slug,
       url: result.url,
       isUpdate: true,
+      message: 'Ejercicio actualizado correctamente en PostgreSQL',
     });
   } catch (err: any) {
+    console.error('❌ Error en PUT /api/exercises/[id]:', err);
     return NextResponse.json({ success: false, error: err?.message || 'Error interno' }, { status: 500 });
   }
 }
 
+export async function PATCH(request: Request, context: RouteParams) {
+  return PUT(request, context);
+}
+
 export async function DELETE(request: Request, { params }: RouteParams) {
   try {
-    const { slug } = await params;
-    if (!slug) {
-      return NextResponse.json({ success: false, error: 'Slug requerido' }, { status: 400 });
+    const { id } = await params;
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'ID o Slug requerido' }, { status: 400 });
     }
 
     const url = new URL(request.url);
     const rawInstrument = url.searchParams.get('instrument') || 'drums';
-    const instrumentType =
-      rawInstrument === 'piano'
-        ? 'piano'
-        : rawInstrument === 'bass' || rawInstrument === 'bass_4'
-        ? 'bass'
-        : rawInstrument === 'guitar' || rawInstrument === 'guitar_6'
-        ? 'guitar'
-        : 'drums';
+    const instrumentType = normalizeInstrumentKey(rawInstrument);
 
-    const res = await deleteExerciseAction(slug, instrumentType as any);
+    const res = await deleteExerciseAction(id, instrumentType as any);
 
     if (!res.success) {
       return NextResponse.json({ success: false, error: res.error }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true, message: `Ejercicio ${slug} eliminado con éxito` });
+    return NextResponse.json({ success: true, message: `Ejercicio ${id} eliminado con éxito` });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || 'Error al eliminar ejercicio' }, { status: 500 });
   }

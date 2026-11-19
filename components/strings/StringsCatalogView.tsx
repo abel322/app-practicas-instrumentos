@@ -123,7 +123,7 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
         JSON.stringify({ ...ex, instrumentType: instType, subdivision: ex.subdivision || (ex.totalSteps === 8 ? '1/8' : '1/16') })
       );
     } catch (_) {}
-    router.push(`/admin/builder?editSlug=${ex.slug}&instrument=${instType}`);
+    router.push(`/admin/builder?id=${ex.id}&editSlug=${ex.slug}&instrument=${instType}`);
   };
 
   const handleConfirmDelete = async () => {

@@ -123,8 +123,10 @@ export async function getExercises(): Promise<DrumExerciseData[]> {
  */
 export async function getExerciseBySlug(slug: string): Promise<DrumExerciseData | null> {
   try {
-    const dbEx = await prisma.drumExercise.findUnique({
-      where: { slug },
+    const dbEx = await prisma.drumExercise.findFirst({
+      where: {
+        OR: [{ slug }, { id: slug }],
+      },
     });
 
     if (dbEx) {
@@ -161,9 +163,19 @@ export async function getExerciseBySlug(slug: string): Promise<DrumExerciseData 
 /**
  * Obtiene ejercicios de cuerdas (bajo o guitarra) con Prisma, o fallback a STRINGS_INITIAL_EXERCISES.
  */
-export async function getStringExercises(instrument?: StringInstrument): Promise<StringExerciseData[]> {
+export async function getStringExercises(instrument?: StringInstrument | string): Promise<StringExerciseData[]> {
   try {
-    const where = instrument ? { instrument } : { instrument: { in: ['bass_4', 'guitar_6'] } };
+    let where: any = { instrument: { in: ['bass_4', 'guitar_6', 'bass', 'guitar'] } };
+    if (instrument) {
+      const cleanInst = instrument.toLowerCase();
+      if (cleanInst.includes('bass') || cleanInst.includes('bajo')) {
+        where = { instrument: { in: ['bass_4', 'bass'] } };
+      } else if (cleanInst.includes('guitar')) {
+        where = { instrument: { in: ['guitar_6', 'guitar'] } };
+      } else {
+        where = { instrument };
+      }
+    }
     const dbExercises = await prisma.stringExercise.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -172,11 +184,15 @@ export async function getStringExercises(instrument?: StringInstrument): Promise
     if (dbExercises && dbExercises.length > 0) {
       return dbExercises.map((ex) => {
         const payload = extractStringPayload(ex.tabData);
+        const normalizedInst =
+          ex.instrument === 'bass' || ex.instrument === 'bass_4'
+            ? 'bass_4'
+            : 'guitar_6';
         return {
           id: ex.id,
           slug: ex.slug,
           title: ex.title,
-          instrument: ex.instrument as any,
+          instrument: normalizedInst as any,
           tuning: ex.tuning,
           category: ex.category,
           difficulty: ex.difficulty as any,
@@ -197,7 +213,9 @@ export async function getStringExercises(instrument?: StringInstrument): Promise
   }
 
   if (instrument) {
-    return STRINGS_INITIAL_EXERCISES.filter((e) => e.instrument === instrument);
+    const clean = instrument.toLowerCase();
+    const isB = clean.includes('bass') || clean.includes('bajo');
+    return STRINGS_INITIAL_EXERCISES.filter((e) => (isB ? e.instrument === 'bass_4' : e.instrument === 'guitar_6'));
   }
   return STRINGS_INITIAL_EXERCISES;
 }
@@ -207,17 +225,23 @@ export async function getStringExercises(instrument?: StringInstrument): Promise
  */
 export async function getStringExerciseBySlug(slug: string): Promise<StringExerciseData | null> {
   try {
-    const dbEx = await prisma.stringExercise.findUnique({
-      where: { slug },
+    const dbEx = await prisma.stringExercise.findFirst({
+      where: {
+        OR: [{ slug }, { id: slug }],
+      },
     });
 
     if (dbEx && dbEx.instrument !== 'piano') {
       const payload = extractStringPayload(dbEx.tabData);
+      const normalizedInst =
+        dbEx.instrument === 'bass' || dbEx.instrument === 'bass_4'
+          ? 'bass_4'
+          : 'guitar_6';
       return {
         id: dbEx.id,
         slug: dbEx.slug,
         title: dbEx.title,
-        instrument: dbEx.instrument as any,
+        instrument: normalizedInst as any,
         tuning: dbEx.tuning,
         category: dbEx.category,
         difficulty: dbEx.difficulty as any,
@@ -236,7 +260,7 @@ export async function getStringExerciseBySlug(slug: string): Promise<StringExerc
     console.warn(`⚠️ [Prisma Strings] Fallback local para slug "${slug}":`, (error as any)?.message || error);
   }
 
-  const found = STRINGS_INITIAL_EXERCISES.find((e) => e.slug === slug);
+  const found = STRINGS_INITIAL_EXERCISES.find((e) => e.slug === slug || e.id === slug);
   return found || null;
 }
 
@@ -289,8 +313,13 @@ export async function getPianoExercises(): Promise<PianoExerciseData[]> {
  */
 export async function getPianoExerciseBySlug(slug: string): Promise<PianoExerciseData | null> {
   try {
-    const dbEx = await prisma.stringExercise.findUnique({
-      where: { slug },
+    const dbEx = await prisma.stringExercise.findFirst({
+      where: {
+        AND: [
+          { instrument: 'piano' },
+          { OR: [{ slug }, { id: slug }] },
+        ],
+      },
     });
 
     if (dbEx && dbEx.instrument === 'piano') {

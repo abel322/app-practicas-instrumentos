@@ -8,6 +8,7 @@ import { pianoPreviewSynth } from '@/lib/audio/pianoPreviewSynth';
 import { ExtendedScoreView, ScoreMeasure } from '@/components/studio/ExtendedScoreView';
 import { InteractivePianoKeyboard } from './InteractivePianoKeyboard';
 import { getSubdivisionConfig } from '@/lib/music-theory/rhythmSubdivisions';
+import { getLocalExercises } from '@/lib/exercises/customExercisesStorage';
 import {
   Play,
   Pause,
@@ -47,8 +48,60 @@ const scheduleMetronomeClick = (ctx: AudioContext, hitTime: number, isDownbeat: 
   osc.stop(hitTime + 0.06);
 };
 
-export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise }) => {
+export const KeysPracticePlayer: React.FC<KeysPracticePlayerProps> = ({ exercise: initialExercise }) => {
   const pathname = usePathname();
+  const [activeExercise, setActiveExercise] = useState<PianoExerciseData>(initialExercise);
+
+  useEffect(() => {
+    setActiveExercise(initialExercise);
+  }, [initialExercise]);
+
+  useEffect(() => {
+    try {
+      const sessionRaw = sessionStorage.getItem('soundlab_editing_exercise');
+      if (sessionRaw) {
+        const parsed = JSON.parse(sessionRaw);
+        if (parsed.slug === initialExercise.slug || parsed.id === initialExercise.id) {
+          setActiveExercise((prev) => ({
+            ...prev,
+            ...parsed,
+            notesData: parsed.notesData || parsed.pianoNotes || parsed.tabData || parsed.data || prev.notesData || [],
+          }));
+          return;
+        }
+      }
+
+      const localList = getLocalExercises();
+      const found = localList.find((e: any) => e.slug === initialExercise.slug || e.id === initialExercise.id);
+      if (found) {
+        setActiveExercise((prev) => ({
+          ...prev,
+          ...found,
+          notesData: found.notesData || found.pianoNotes || found.tabData || found.data || prev.notesData || [],
+        }));
+        return;
+      }
+
+      fetch(`/api/exercises/${initialExercise.slug}?instrument=piano`, { cache: 'no-store' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.success && data?.exercise) {
+            setActiveExercise((prev) => ({
+              ...prev,
+              ...data.exercise,
+              notesData: data.exercise.notesData || data.exercise.tabData || data.exercise.data || prev.notesData || [],
+            }));
+          }
+        })
+        .catch((e) => {
+          console.warn('API fetch fallback en KeysPracticePlayer:', e);
+        });
+    } catch (e) {
+      console.warn('Error sincronizando ejercicio en KeysPracticePlayer:', e);
+    }
+  }, [initialExercise.slug, initialExercise.id]);
+
+  const exercise = activeExercise;
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [bpm, setBpm] = useState<number>(exercise.bpmDefault || 90);
   const [metronomeEnabled, setMetronomeEnabled] = useState<boolean>(true);
