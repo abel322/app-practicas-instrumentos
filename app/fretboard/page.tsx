@@ -1605,6 +1605,74 @@ export default function FretboardPage() {
     setCurrentProgressionStepIndex(0);
   }, [selectedProgressionId, rootNote]);
 
+  // Navegación bidireccional entre Cajas CAGED, Patrones de Escalas y Progresiones
+  const handlePrevBox = useCallback(() => {
+    if (studyMode === 'chords') {
+      setActiveCagedBoxId((prev) => (prev === 1 ? 5 : prev - 1));
+      setCustomChordNotes(null);
+    } else if (studyMode === 'scales') {
+      const maxPat = scaleSystem === 'caged' ? 5 : 7;
+      setActivePatternId((prev) => (prev === 1 ? maxPat : prev - 1));
+    } else if (studyMode === 'progressions') {
+      prevProgressionStep();
+    }
+  }, [studyMode, scaleSystem, prevProgressionStep]);
+
+  const handleNextBox = useCallback(() => {
+    if (studyMode === 'chords') {
+      setActiveCagedBoxId((prev) => (prev === 5 ? 1 : prev + 1));
+      setCustomChordNotes(null);
+    } else if (studyMode === 'scales') {
+      const maxPat = scaleSystem === 'caged' ? 5 : 7;
+      setActivePatternId((prev) => (prev === maxPat ? 1 : prev + 1));
+    } else if (studyMode === 'progressions') {
+      advanceProgressionStep();
+    }
+  }, [studyMode, scaleSystem, advanceProgressionStep]);
+
+  // Badge Limpio y No Truncado para la Cabecera del Mástil
+  const chordBadgeText = useMemo(() => {
+    if (studyMode === 'chords') {
+      const box = CAGED_BOX_DEFINITIONS.find((b) => b.id === activeCagedBoxId);
+      const chordName = activeCagedChord?.chordName || cleanRootNote;
+      const frettedNotes = (activeCagedChord?.notes || []).map((n) => n.fret).filter((f) => f > 0);
+      let rangeStr = '';
+      if (frettedNotes.length > 0) {
+        const minF = Math.min(...frettedNotes);
+        const maxF = Math.max(...frettedNotes);
+        rangeStr = minF === maxF ? `Tr. ${minF}` : `Tr. ${minF}–${maxF}`;
+      } else if (fretFocusRange) {
+        rangeStr = `Tr. ${fretFocusRange[0]}–${fretFocusRange[1]}`;
+      }
+      return `${chordName} • ${box?.shortLabel || 'Forma C'}${rangeStr ? ` (${rangeStr})` : ''}`;
+    }
+    if (studyMode === 'scales') {
+      const patLabel = (scaleSystem === 'caged' ? CAGED_BOXES : THREE_NPS_PATTERNS).find(
+        (p) => p.id === activePatternId
+      )?.shortLabel;
+      const rangeStr = fretFocusRange ? `Tr. ${fretFocusRange[0]}–${fretFocusRange[1]}` : '';
+      return `${cleanRootNote} ${SCALES_CATALOG[scaleKey]?.name || ''} • ${patLabel || ''}${rangeStr ? ` (${rangeStr})` : ''}`;
+    }
+    if (studyMode === 'progressions') {
+      if (currentImprovGuide) {
+        return `${currentImprovGuide.chordName} (${currentImprovGuide.degreeRoman}) • ${currentImprovGuide.primaryMode.name}`;
+      }
+      return `${cleanRootNote} ${PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId)?.name || ''}`;
+    }
+    return '';
+  }, [
+    studyMode,
+    activeCagedBoxId,
+    activeCagedChord,
+    cleanRootNote,
+    fretFocusRange,
+    scaleSystem,
+    activePatternId,
+    scaleKey,
+    currentImprovGuide,
+    selectedProgressionId,
+  ]);
+
   // Presets Rápidos
   const applyPreset = (preset: {
     instrument: InstrumentType;
@@ -1704,6 +1772,11 @@ export default function FretboardPage() {
           onInstrumentChange={setInstrument}
           rootNote={cleanRootNote}
           onRootNoteChange={handleRootNoteChange}
+          tonalityMode={tonalityMode}
+          onTonalityModeChange={(mode) => {
+            setTonalityMode(mode);
+            setCustomChordNotes(null);
+          }}
           scaleKey={scaleKey}
           onScaleKeyChange={setScaleKey}
           displayMode={displayMode}
@@ -1836,6 +1909,13 @@ export default function FretboardPage() {
           viewMode={fretboardViewMode}
           onViewModeChange={setFretboardViewMode}
           studyMode={studyMode}
+          onPlayStrum={studyMode === 'chords' ? handlePlayCagedStrum : undefined}
+          onPlayArpeggio={studyMode === 'chords' ? handlePlayCagedArpeggio : undefined}
+          onToggleEditing={studyMode === 'chords' ? handleToggleChordEditor : undefined}
+          isEditingVoicing={isChordEditorActive}
+          onPrevBox={handlePrevBox}
+          onNextBox={handleNextBox}
+          chordBadge={chordBadgeText}
           isEditorActive={
             (isEditorActive && studyMode === 'scales' && scaleViewMode === 'single_box') ||
             (isChordEditorActive && studyMode === 'chords')

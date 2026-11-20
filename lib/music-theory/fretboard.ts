@@ -210,12 +210,12 @@ export function getChordNoteList(rootNote: string, chordKey: ChordKey): { note: 
       customLabel === 'R'
         ? 'root'
         : customLabel.includes('3')
-        ? 'third'
-        : customLabel.includes('7')
-        ? 'seventh'
-        : customLabel.includes('5')
-        ? 'fifth'
-        : 'other';
+          ? 'third'
+          : customLabel.includes('7')
+            ? 'seventh'
+            : customLabel.includes('5')
+              ? 'fifth'
+              : 'other';
 
     return {
       note,
@@ -1058,15 +1058,14 @@ export function resolveProgressionChords(
     const chordRootIdx = (rootIdx + step.semitoneOffset) % 12;
     const chordRoot = getCleanNoteNameForTonality(chordRootIdx, cleanKeyRoot);
     const chordDef = CHORDS_CATALOG[step.chordKey];
-    const fullChordLabel = `${chordRoot}${
-      step.chordKey === 'major'
+    const fullChordLabel = `${chordRoot}${step.chordKey === 'major'
         ? ''
         : step.chordKey === 'minor'
-        ? 'm'
-        : step.chordKey === 'dom7'
-        ? '7'
-        : step.chordKey
-    }`;
+          ? 'm'
+          : step.chordKey === 'dom7'
+            ? '7'
+            : step.chordKey
+      }`;
 
     return {
       roman: step.roman,

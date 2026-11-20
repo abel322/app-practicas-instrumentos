@@ -12,7 +12,7 @@ import {
   getCagedDiatonicChords,
 } from '@/lib/music-theory/cagedHarmonics';
 import { NoteDisplayMode } from '@/lib/music-theory/scaleSystems';
-import { Volume2, Sparkles, Layers, Music2, SlidersHorizontal } from 'lucide-react';
+import { Volume2, Sparkles, Layers, Music2, SlidersHorizontal, ChevronDown, ChevronUp } from 'lucide-react';
 import { ChordEditToolbar } from './ChordEditToolbar';
 import { ChordExtensionSelector, EXTENSION_FAMILIES_LIST } from './ChordExtensionSelector';
 import {
@@ -101,61 +101,23 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
   const variations = getVariationsForDegree(activeChordDegreeIndex, cleanKeyRoot, tonalityMode);
   const currentVariationId = activeVariationId || (variations[0]?.id ?? '');
 
+  const [isFamiliesOpen, setIsFamiliesOpen] = useState<boolean>(false);
+  const currentFamily =
+    EXTENSION_FAMILIES_LIST.find((f) => f.id === activeExtensionFamily) || EXTENSION_FAMILIES_LIST[0];
+
   const activeChord = activeChordOverride || baseActiveChord;
   const activeBoxMeta =
     CAGED_BOX_DEFINITIONS.find((b) => b.id === activeCagedBoxId) || CAGED_BOX_DEFINITIONS[0];
 
   return (
-    <div className="w-full flex flex-col gap-2.5 p-3 sm:p-4 rounded-2xl bg-[#f8fafc] dark:bg-slate-900/90 border border-slate-300/80 dark:border-slate-800 shadow-sm backdrop-blur-xl transition-all">
-      {/* 1. Fila Superior: Tonalidad (Key), Modo y Selector de las 5 Cajas CAGED */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-200 dark:border-slate-800">
-        {/* Selector de Tonalidad y Modo */}
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="text-[10px] sm:text-xs font-mono font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
-            <Music2 className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-            <span>Tonalidad:</span>
-          </label>
-          <select
-            value={cleanKeyRoot}
-            onChange={(e) => onKeyRootChange(e.target.value)}
-            className="h-9 px-3 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700/80 text-slate-900 dark:text-white text-xs font-mono font-black rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-400/40 cursor-pointer shadow-sm"
-          >
-            {DISPLAY_ROOTS.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label} {r.value === cleanKeyRoot ? '★' : ''}
-              </option>
-            ))}
-          </select>
-
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-bold text-slate-400">Modo:</label>
-            <select
-              value={tonalityMode}
-              onChange={(e) => setTonalityMode(e.target.value as TonalityMode)}
-              className="bg-slate-900 border border-slate-700/80 text-cyan-300 font-bold text-xs rounded-xl px-3 py-1.5 focus:ring-2 focus:ring-cyan-400 focus:outline-none cursor-pointer shadow-sm"
-            >
-              <optgroup label="─── MODOS GRIEGOS ───" className="text-slate-400 bg-slate-950 font-bold">
-                <option value="ionian" className="text-cyan-300 bg-slate-900">Jónico (Mayor)</option>
-                <option value="dorian" className="text-cyan-300 bg-slate-900">Dórico</option>
-                <option value="phrygian" className="text-cyan-300 bg-slate-900">Frigio</option>
-                <option value="lydian" className="text-cyan-300 bg-slate-900">Lidio</option>
-                <option value="mixolydian" className="text-cyan-300 bg-slate-900">Mixolidio</option>
-                <option value="aeolian" className="text-cyan-300 bg-slate-900">Eólico (Menor Natural)</option>
-                <option value="locrian" className="text-cyan-300 bg-slate-900">Locrio</option>
-              </optgroup>
-              <optgroup label="─── SISTEMAS MENORES ───" className="text-slate-400 bg-slate-950 font-bold">
-                <option value="minor_harmonic" className="text-amber-300 bg-slate-900">Menor Armónica</option>
-                <option value="minor_melodic" className="text-amber-300 bg-slate-900">Menor Melódica</option>
-              </optgroup>
-            </select>
-          </div>
-        </div>
-
-        {/* Barra de Formas Armónicas exclusiva para Acordes */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 min-w-0">
-          <span className="text-xs font-bold text-slate-400 mr-1 flex items-center gap-1 shrink-0">
-            <Layers className="w-3.5 h-3.5 text-cyan-500" />
-            <span>FORMA CAGED:</span>
+    <div className="w-full flex flex-col gap-1.5 p-2 sm:p-3 rounded-2xl bg-[#f8fafc] dark:bg-slate-900/90 border border-slate-300/80 dark:border-slate-800 shadow-sm backdrop-blur-xl transition-all">
+      {/* 1. Fila de Forma CAGED y Botón Acordeón de Familias Armónicas */}
+      <div className="flex flex-wrap items-center justify-between gap-1.5 pb-1 border-b border-slate-200 dark:border-slate-800">
+        {/* Forma CAGED: C, A, G, E, D */}
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
+          <span className="text-[10px] sm:text-xs font-mono font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider shrink-0 flex items-center gap-1 mr-0.5">
+            <Layers className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
+            <span>CAGED:</span>
           </span>
           {CAGED_BOX_DEFINITIONS.map((box) => {
             const isSelected = activeCagedBoxId === box.id;
@@ -164,59 +126,70 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
                 key={box.id}
                 type="button"
                 onClick={() => onSelectCagedBoxId(box.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border shrink-0 flex items-center gap-1.5 active:scale-95 ${
+                className={`px-2 sm:px-2.5 py-1 rounded-lg text-xs font-bold transition-all border shrink-0 flex items-center gap-1 active:scale-95 ${
                   isSelected
-                    ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-md shadow-cyan-500/20 ring-2 ring-cyan-400/30'
+                    ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-sm ring-1 ring-cyan-400/50'
                     : 'bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
                 title={`${box.name}: ${box.description}`}
               >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    isSelected ? 'bg-slate-950' : 'bg-cyan-500'
-                  }`}
-                />
-                <span>{box.shortLabel}</span>
+                <span>{box.shapeLetter}</span>
               </button>
             );
           })}
         </div>
+
+        {/* Botón Acordeón Compacto de Familias Diatónicas (Plegado por defecto en móvil) */}
+        <button
+          type="button"
+          onClick={() => setIsFamiliesOpen((prev) => !prev)}
+          className={`px-2 sm:px-2.5 py-1 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 shrink-0 ${
+            isFamiliesOpen
+              ? 'bg-amber-400 text-slate-950 border-amber-300 font-black ring-1 ring-amber-400/40'
+              : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-950 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-800'
+          }`}
+          title="Ver las 7 familias armónicas (Tríadas, Séptimas, Novenas, Oncenas, Trecenas, Agregados, Suspendidos)"
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+          <span>Familia: <b>{currentFamily.label}</b></span>
+          <span className="text-[10px] opacity-75 font-mono hidden xs:inline">({currentFamily.badge})</span>
+          {isFamiliesOpen ? (
+            <ChevronUp className="w-3.5 h-3.5 shrink-0" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+          )}
+        </button>
       </div>
 
-      {/* 2. Selector de las 7 Familias de Extensiones Armónicas Diatónicas */}
-      <ChordExtensionSelector
-        activeFamily={activeExtensionFamily}
-        onSelectFamily={onSelectExtensionFamily}
-      />
+      {/* Cajón Desplegable de las 7 Familias Armónicas (Solo cuando se pulsa el botón acordeón) */}
+      {isFamiliesOpen && (
+        <div className="pt-1 pb-1.5 border-b border-slate-200 dark:border-slate-800">
+          <ChordExtensionSelector
+            activeFamily={activeExtensionFamily}
+            onSelectFamily={(fam) => {
+              onSelectExtensionFamily(fam);
+              setIsFamiliesOpen(false);
+            }}
+          />
+        </div>
+      )}
 
-      {/* 3. Barra de los 7 Acordes Diatónicos del Campo Armónico */}
-      <div className="flex flex-col gap-1.5 min-w-0">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] font-mono uppercase font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
-            <span>Campo Armónico Diatónico en</span>
-            <span className="text-slate-900 dark:text-white font-black">
-              {cleanKeyRoot} {TONALITY_MODE_LABELS[tonalityMode]}
-            </span>
-            <span className="text-cyan-600 dark:text-cyan-400 font-bold">
-              ({activeBoxMeta.shortLabel} • {EXTENSION_FAMILIES_LIST.find((f) => f.id === activeExtensionFamily)?.label})
-            </span>
+      {/* 2. Barra de los 7 Acordes Diatónicos del Campo Armónico */}
+      <div className="flex flex-col gap-1 min-w-0">
+        <div className="flex items-center justify-between text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400">
+          <span className="flex items-center gap-1 truncate">
+            <span>7 Grados:</span>
+            <span className="text-slate-900 dark:text-white font-black">{cleanKeyRoot} {TONALITY_MODE_LABELS[tonalityMode]}</span>
+            <span className="text-cyan-600 dark:text-cyan-400">({activeBoxMeta.shortLabel} • {currentFamily.label})</span>
           </span>
-          <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 hidden sm:inline">
-            7 Grados Diatónicos
-          </span>
+          <span className="hidden sm:inline text-slate-400">Toca un grado para iluminar en el mástil</span>
         </div>
 
-        {/* Botones de los 7 Grados con Codificación Cromática */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-1.5 w-full">
+        {/* Botones de los 7 Grados: Fila horizontal deslizable en móvil, grid en pantallas mayores */}
+        <div className="overflow-x-auto flex sm:grid sm:grid-cols-7 gap-1.5 pb-1 no-scrollbar w-full">
           {diatonicChords.map((chord, idx) => {
             const isSelected = activeChordDegreeIndex === idx;
 
-            // Código de color musical:
-            // - Grados Mayores (I, IV, V): Acento cian / esmeralda
-            // - Grados Menores (ii, iii, vi): Acento índigo / violeta
-            // - Grado Aumentado (♭III+): Acento púrpura / fuchsia
-            // - Grado Disminuido / Semidisminuido (vii°): Acento carmesí / rose
-            // - Dominante 7/9 (V): Acento ámbar
             const isDominant = chord.chordType === 'dom7';
             const isMajor = chord.chordType === 'maj';
             const isMinor = chord.chordType === 'min';
@@ -270,7 +243,7 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
               <button
                 key={chord.degreeRoman}
                 onClick={() => onSelectChordDegreeIndex(idx)}
-                className={`py-2 px-1.5 rounded-xl border flex flex-col items-center justify-center transition-all text-center select-none active:scale-95 ${baseColorClasses}`}
+                className={`shrink-0 min-w-[56px] sm:min-w-0 py-1 sm:py-1.5 px-1 sm:px-1.5 rounded-xl border flex flex-col items-center justify-center transition-all text-center select-none active:scale-95 ${baseColorClasses}`}
                 title={`Grado ${chord.degreeRoman}: ${chord.chordName} (${chord.degreeName})`}
               >
                 <span
@@ -283,7 +256,7 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
                 <span className="text-xs sm:text-sm font-black tracking-tight leading-tight">
                   {chord.chordName}
                 </span>
-                <span className="text-[9px] font-mono opacity-80 mt-0.5 truncate max-w-full">
+                <span className="text-[9px] font-mono opacity-80 mt-0.5 truncate max-w-full hidden xs:block">
                   {chord.degreeName}
                 </span>
               </button>
@@ -291,19 +264,21 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
           })}
         </div>
 
-        {/* 3.1 Selector Contextual de Tensiones y Variaciones del Acorde */}
+        {/* 2.1 Selector Contextual de Tensiones y Variaciones del Acorde */}
         {onSelectVariation && variations.length > 1 && (
-          <ChordVariationChips
-            variations={variations}
-            activeVariationId={currentVariationId}
-            onSelectVariation={onSelectVariation}
-            chordBaseLabel={`${baseActiveChord?.rootNote || cleanKeyRoot} (${baseActiveChord?.degreeRoman || 'I'})`}
-          />
+          <div className="pt-0.5">
+            <ChordVariationChips
+              variations={variations}
+              activeVariationId={currentVariationId}
+              onSelectVariation={onSelectVariation}
+              chordBaseLabel={`${baseActiveChord?.rootNote || cleanKeyRoot} (${baseActiveChord?.degreeRoman || 'I'})`}
+            />
+          </div>
         )}
       </div>
 
-      {/* 4. Barra de Edición Visual de Acordes (CRUD en PostgreSQL) */}
-      {onToggleEditing && (
+      {/* 3. Barra de Edición Visual de Acordes (CRUD en PostgreSQL cuando se activa) */}
+      {onToggleEditing && isEditing && (
         <ChordEditToolbar
           isEditing={isEditing}
           onToggleEditing={onToggleEditing}
@@ -314,81 +289,6 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
           chordName={activeChord?.chordName || ''}
         />
       )}
-
-      {/* 5. Fila de Control: Audio (Rasguear / Arpegiar), Modo de Visualización y Detalle */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-        {/* Controles de Reproducción Web Audio */}
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={onPlayStrum}
-            className="h-8 px-3 rounded-lg bg-[#0891b2] hover:bg-[#0e7490] text-white font-bold text-xs flex items-center gap-1.5 shadow-sm dark:bg-gradient-to-r dark:from-cyan-500 dark:to-cyan-600 dark:text-slate-950 dark:shadow-[0_0_12px_rgba(6,182,212,0.4)] transition-all active:scale-95"
-            title="Reproducir acorde completo rasgueado"
-          >
-            <Volume2 className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span>Rasguear</span>
-          </button>
-          <button
-            onClick={onPlayArpeggio}
-            className="h-8 px-2.5 rounded-lg bg-slate-200/80 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-white font-bold text-xs flex items-center gap-1 border border-slate-300 dark:border-slate-700 transition-all active:scale-95"
-            title="Reproducir arpegio nota por nota"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-            <span>Arpegiar</span>
-          </button>
-        </div>
-
-        {/* Resumen del Voicing Activo */}
-        <div className="hidden lg:flex items-center gap-2 text-xs font-mono bg-white dark:bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-800">
-          <span className="text-slate-500">Voicing:</span>
-          <strong className="text-slate-900 dark:text-white">
-            {activeChord?.fullName}
-          </strong>
-          <span className="text-slate-400">•</span>
-          <span className="text-cyan-600 dark:text-cyan-400">
-            {activeChord?.notes.length} notas en {activeBoxMeta.shortLabel}
-          </span>
-          {isCustom && (
-            <span className="text-emerald-500 font-bold ml-1">
-              [Personalizado en BD]
-            </span>
-          )}
-        </div>
-
-        {/* Alternador de Modo de Visualización (Notas / Grados / Dedos) */}
-        <div className="flex items-center gap-1 p-0.5 bg-slate-200/70 dark:bg-slate-950 rounded-lg border border-slate-300/80 dark:border-slate-800 text-[10px] font-mono">
-          <button
-            onClick={() => onDisplayModeChange('notes')}
-            className={`px-2 py-1 rounded-md transition-colors font-bold ${
-              displayMode === 'notes'
-                ? 'bg-cyan-500 text-slate-950 font-black shadow-sm ring-1 ring-cyan-300'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            Notas
-          </button>
-          <button
-            onClick={() => onDisplayModeChange('degrees')}
-            className={`px-2 py-1 rounded-md transition-colors font-bold ${
-              displayMode === 'degrees' || displayMode === 'intervals'
-                ? 'bg-cyan-500 text-slate-950 font-black shadow-sm ring-1 ring-cyan-300'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            Grados (R-3-5)
-          </button>
-          <button
-            onClick={() => onDisplayModeChange('fingers')}
-            className={`px-2 py-1 rounded-md transition-colors font-bold ${
-              displayMode === 'fingers'
-                ? 'bg-emerald-500 text-slate-950 font-black shadow-sm ring-1 ring-emerald-300'
-                : 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-500'
-            }`}
-            title="Ver digitación anatómica (Dedos 1-4)"
-          >
-            🖐️ Dedos
-          </button>
-        </div>
-      </div>
     </div>
   );
 };

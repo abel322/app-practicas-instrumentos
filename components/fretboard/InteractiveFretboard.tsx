@@ -10,7 +10,7 @@ import {
 import { getFretboardAudioEngine } from '@/lib/music-theory/fretboardAudio';
 import { FingerAssignment, NoteDisplayMode } from '@/lib/music-theory/scaleSystems';
 import { FretboardNoteNode } from './FretboardNoteNode';
-import { Volume2, ChevronLeft, ChevronRight, Maximize2, Minimize2, Play, Square } from 'lucide-react';
+import { Volume2, ChevronLeft, ChevronRight, Maximize2, Minimize2, Play, Square, Sparkles, Pencil } from 'lucide-react';
 import {
   practiceLoopEngine,
   LoopNoteItem,
@@ -54,6 +54,11 @@ export interface FretboardViewControlsProps {
   onChordLoopTypeChange: (type: ChordLoopPattern) => void;
   scaleLoopType: ScaleLoopPattern;
   onScaleLoopTypeChange: (type: ScaleLoopPattern) => void;
+  // Controles Unificados de Sonido y Edición
+  onPlayStrum?: () => void;
+  onPlayArpeggio?: () => void;
+  onToggleEditing?: () => void;
+  isEditingVoicing?: boolean;
 }
 
 export function FretboardViewControls({
@@ -77,247 +82,221 @@ export function FretboardViewControls({
   onChordLoopTypeChange,
   scaleLoopType,
   onScaleLoopTypeChange,
+  onPlayStrum,
+  onPlayArpeggio,
+  onToggleEditing,
+  isEditingVoicing = false,
 }: FretboardViewControlsProps) {
   const isRange012 = activeFretRange[0] === 0 && activeFretRange[1] === 12;
   const isRange1224 = activeFretRange[0] === 12 && activeFretRange[1] === 24;
 
   return (
     <div
-      className={`flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs backdrop-blur-md transition-all ${
+      className={`flex flex-col gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs backdrop-blur-md transition-all ${
         isFullscreen
           ? 'bg-slate-900/95 border border-slate-800 rounded-xl mb-2 shrink-0 shadow-lg'
           : 'bg-[#16161a] border-b border-slate-800'
       }`}
     >
-      {/* 1. Botonera de Modo de Visualización: [ Nota ] | [ Grado ] | [ Dedo ] */}
-      <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
-        <button
-          type="button"
-          onClick={() => onDisplayModeChange?.('notes')}
-          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-            displayMode === 'notes'
-              ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
-              : 'text-slate-300 hover:text-white'
-          }`}
-          title="Mostrar nombres de notas (C, D, E...)"
-        >
-          Nota
-        </button>
-        <button
-          type="button"
-          onClick={() => onDisplayModeChange?.('degrees')}
-          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-            displayMode === 'degrees' || displayMode === 'intervals'
-              ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
-              : 'text-slate-300 hover:text-white'
-          }`}
-          title="Mostrar grados e intervalos armónicos (R, 3, 5...)"
-        >
-          Grado
-        </button>
-        <button
-          type="button"
-          onClick={() => onDisplayModeChange?.('fingers')}
-          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-            displayMode === 'fingers'
-              ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
-              : 'text-slate-300 hover:text-white'
-          }`}
-          title="Mostrar digitación de dedos (1, 2, 3, 4)"
-        >
-          Dedo
-        </button>
-      </div>
-
-      {/* 2. Barra de Motor de Bucle Interactivo & Metrónomo */}
-      <div className="flex flex-wrap items-center gap-2 bg-slate-950/90 px-3 py-1.5 rounded-xl border border-slate-800 text-xs shrink-0 shadow-inner">
-        {/* Botón Play / Stop Loop */}
-        <button
-          type="button"
-          onClick={onToggleLoop}
-          className={`px-3 py-1 rounded-lg font-bold flex items-center gap-1.5 transition-all shadow-sm ${
-            isLooping
-              ? 'bg-amber-400 text-slate-950 ring-2 ring-amber-300 font-black animate-pulse'
-              : 'bg-emerald-600 hover:bg-emerald-500 text-white font-bold'
-          }`}
-          title={isLooping ? 'Detener práctica en bucle' : 'Iniciar bucle con metrónomo'}
-        >
-          {isLooping ? (
-            <Square className="w-3.5 h-3.5 fill-current" />
-          ) : (
-            <Play className="w-3.5 h-3.5 fill-current" />
-          )}
-          <span>{isLooping ? 'Stop' : '▶ Loop'}</span>
-        </button>
-
-        {/* Selector de Patrón en Acordes */}
-        {studyMode === 'chords' && (
-          <div className="inline-flex p-0.5 bg-slate-900 rounded-lg border border-slate-800">
+      {/* FILA A (Sonido y Vista de Puntos): [ 🔊 Rasguear ] [ 🎵 Arpegiar ] [ ▶ Loop 85 BPM ] + [ Nota | Grado | Dedo ] */}
+      <div className="w-full flex flex-wrap items-center justify-between gap-1.5">
+        {/* Controles de Sonido */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          {/* Botón Rasguear Acorde */}
+          {onPlayStrum && (
             <button
               type="button"
-              onClick={() => onChordLoopTypeChange('arpeggio')}
-              className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
-                chordLoopType === 'arpeggio'
-                  ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              onClick={onPlayStrum}
+              className="px-2.5 py-1.5 rounded-xl bg-[#0891b2] hover:bg-[#0e7490] text-white font-black text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all shrink-0"
+              title="Rasguear acorde completo"
+            >
+              <Volume2 className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Rasguear</span>
+            </button>
+          )}
+
+          {/* Botón Arpegiar Acorde */}
+          {onPlayArpeggio && (
+            <button
+              type="button"
+              onClick={onPlayArpeggio}
+              className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-700/80 font-bold text-xs flex items-center gap-1 active:scale-95 transition-all shrink-0"
               title="Arpegiar cuerda por cuerda"
             >
-              Arpegio 🎶
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Arpegiar</span>
             </button>
-            <button
-              type="button"
-              onClick={() => onChordLoopTypeChange('strum')}
-              className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
-                chordLoopType === 'strum'
-                  ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Rasgueo de acorde completo en cada compás"
-            >
-              Rasgueo 🔊
-            </button>
-          </div>
-        )}
+          )}
 
-        {/* Selector de Patrón en Escalas */}
-        {studyMode === 'scales' && (
-          <div className="inline-flex p-0.5 bg-slate-900 rounded-lg border border-slate-800">
+          {/* Botón Loop y Metrónomo BPM */}
+          <div className="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800 shrink-0">
             <button
               type="button"
-              onClick={() => onScaleLoopTypeChange('asc')}
-              className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
-                scaleLoopType === 'asc'
-                  ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
+              onClick={onToggleLoop}
+              className={`px-2 py-0.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${
+                isLooping
+                  ? 'bg-amber-400 text-slate-950 font-black animate-pulse'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white'
               }`}
-              title="Escala ascendente continua"
+              title={isLooping ? 'Detener bucle' : 'Iniciar bucle con metrónomo'}
             >
-              Ascendente ↗
+              {isLooping ? <Square className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}
+              <span>{isLooping ? 'Stop' : '▶ Loop'}</span>
             </button>
-            <button
-              type="button"
-              onClick={() => onScaleLoopTypeChange('pendulum')}
-              className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
-                scaleLoopType === 'pendulum'
-                  ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Ida y vuelta (ascendente y descendente)"
-            >
-              Ida y Vuelta ⇄
-            </button>
-          </div>
-        )}
 
-        {/* Control Deslizante de Tempo Metrónomo (BPM: 50 - 200) */}
-        <div className="flex items-center gap-2 pl-1 font-mono text-xs text-slate-300">
-          <span className="text-amber-300 font-extrabold min-w-[54px]">{bpm} BPM</span>
-          <input
-            type="range"
-            min={50}
-            max={200}
-            step={5}
-            value={bpm}
-            onChange={(e) => onBpmChange(Number(e.target.value))}
-            className="w-20 sm:w-24 h-1.5 bg-slate-800 accent-amber-400 rounded-lg cursor-pointer"
-            title="Ajustar tempo del metrónomo"
-          />
+            {/* Alternar modo de bucle en acordes (Arpegio / Rasgueo) */}
+            {studyMode === 'chords' && (
+              <button
+                type="button"
+                onClick={() =>
+                  onChordLoopTypeChange(chordLoopType === 'arpeggio' ? 'strum' : 'arpeggio')
+                }
+                className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-900 text-cyan-300 border border-slate-800 hover:bg-slate-800 transition-colors"
+                title="Alternar entre Arpegio y Rasgueo en el bucle"
+              >
+                {chordLoopType === 'arpeggio' ? 'Arp' : 'Rasg'}
+              </button>
+            )}
+
+            <span className="text-[11px] font-mono text-amber-300 font-extrabold whitespace-nowrap">
+              {bpm} BPM
+            </span>
+            <input
+              type="range"
+              min={50}
+              max={200}
+              step={5}
+              value={bpm}
+              onChange={(e) => onBpmChange(Number(e.target.value))}
+              className="w-14 sm:w-20 h-1 bg-slate-800 accent-amber-400 rounded cursor-pointer"
+              title="Ajustar tempo (BPM)"
+            />
+          </div>
+        </div>
+
+        {/* Selector Segmentado de Modo de Visualización: [ Nota | Grado | Dedo ] */}
+        <div className="flex items-center gap-0.5 bg-slate-950 p-1 rounded-xl border border-slate-800 shrink-0 ml-auto">
+          <button
+            type="button"
+            onClick={() => onDisplayModeChange?.('notes')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+              displayMode === 'notes'
+                ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                : 'text-slate-300 hover:text-white'
+            }`}
+            title="Mostrar nombres de notas (C, D, E...)"
+          >
+            Nota
+          </button>
+          <button
+            type="button"
+            onClick={() => onDisplayModeChange?.('degrees')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+              displayMode === 'degrees' || displayMode === 'intervals'
+                ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                : 'text-slate-300 hover:text-white'
+            }`}
+            title="Mostrar grados armónicos (R, 3, 5...)"
+          >
+            Grado
+          </button>
+          <button
+            type="button"
+            onClick={() => onDisplayModeChange?.('fingers')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+              displayMode === 'fingers'
+                ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                : 'text-slate-300 hover:text-white'
+            }`}
+            title="Mostrar digitación de dedos (1, 2, 3, 4)"
+          >
+            Dedo
+          </button>
         </div>
       </div>
 
-      {/* 3. Selector de Cantidad de Trastes Visibles (12, 15, 21, 24) */}
-      <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
-        <span className="text-[10px] text-slate-400 font-bold px-1 hidden md:inline">Trastes:</span>
-        {[12, 15, 21, 24].map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => onVisibleFretsChange(f)}
-            className={`px-2.5 py-1 rounded-lg font-mono text-xs font-bold transition-all ${
-              visibleFrets === f
-                ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
+      {/* FILA B (Rango y Herramientas del Mástil): [ 12 | 15 | 21 | 24 ] + [ 🎯 Ver ] + [ ✏️ Editar ] + [ ↔️ Scroll / Ajustado ] + [ ⛶ Expandir ] */}
+      <div className="w-full flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-slate-800/60">
+        {/* Selector de Cantidad de Trastes Visibles (12, 15, 21, 24) */}
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-0.5 bg-slate-950 p-0.5 rounded-xl border border-slate-800">
+            {[12, 15, 21, 24].map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => onVisibleFretsChange(f)}
+                className={`px-2 py-0.5 rounded-lg font-mono text-[11px] font-bold transition-all ${
+                  visibleFrets === f
+                    ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
 
-      {/* 4. Saltos Rápidos de Zona & Foco */}
-      <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
-        <button
-          type="button"
-          onClick={() => onSelectFretRange(0, Math.min(12, visibleFrets))}
-          className={`px-2 py-1 rounded-lg font-mono text-[11px] font-bold border transition-colors ${
-            isRange012
-              ? 'bg-amber-400 text-slate-950 border-amber-300 font-black shadow-sm'
-              : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800'
-          }`}
-        >
-          Tr. 0-12
-        </button>
-        {visibleFrets > 12 && (
           <button
             type="button"
-            onClick={() => onSelectFretRange(12, visibleFrets)}
-            className={`px-2 py-1 rounded-lg font-mono text-[11px] font-bold border transition-colors ${
-              isRange1224
-                ? 'bg-amber-400 text-slate-950 border-amber-300 font-black shadow-sm'
-                : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800'
-            }`}
+            onClick={onFocusActiveNotes}
+            className="px-2 py-1 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded-xl font-mono text-[11px] font-bold border border-slate-800 transition-colors shadow-sm shrink-0"
+            title="Centrar en notas activas"
           >
-            Tr. 12-{visibleFrets}
+            🎯 Ver Notas
           </button>
-        )}
-        <button
-          type="button"
-          onClick={onFocusActiveNotes}
-          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-mono text-[11px] font-bold border border-slate-700 transition-colors shadow-sm"
-          title="Centrar en donde están las notas activas"
-        >
-          🎯 Ver Notas
-        </button>
-      </div>
+        </div>
 
-      {/* 5. Switch Ajustado/Scroll y Botón Fullscreen Landscape */}
-      <div className="flex items-center gap-1.5 ml-auto shrink-0">
-        <button
-          type="button"
-          onClick={onToggleViewMode}
-          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shadow-sm border ${
-            viewMode === 'fit'
-              ? 'bg-slate-700 text-white border-slate-600 font-bold'
-              : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
-          }`}
-        >
-          {viewMode === 'fit' ? <span>↔️ Ajustado</span> : <span>🔍 Scroll</span>}
-        </button>
-
-        <button
-          type="button"
-          onClick={onToggleFullscreen}
-          className={`px-3 py-1.5 rounded-xl border transition-all flex items-center gap-1.5 text-xs font-bold shadow-sm ${
-            isFullscreen
-              ? 'bg-rose-950/80 hover:bg-rose-900 text-rose-200 border-rose-700/80'
-              : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-800 hover:border-slate-700'
-          }`}
-          title={isFullscreen ? 'Salir de pantalla completa (Esc)' : 'Modo Estudio Zen (Pantalla Completa Horizontal)'}
-          aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla Completa'}
-        >
-          {isFullscreen ? (
-            <>
-              <Minimize2 className="w-4 h-4 text-rose-400" />
-              <span className="text-xs font-black">✕ Salir</span>
-            </>
-          ) : (
-            <>
-              <Maximize2 className="w-4 h-4 text-[#FFCC00]" />
-              <span className="hidden sm:inline text-xs">Pantalla Completa</span>
-            </>
+        {/* Herramientas del Mástil: Editar Voicing + Switch Vista + Expandir */}
+        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+          {onToggleEditing && (
+            <button
+              type="button"
+              onClick={onToggleEditing}
+              className={`px-2.5 py-1 rounded-xl text-xs font-bold border transition-all flex items-center gap-1 ${
+                isEditingVoicing
+                  ? 'bg-amber-400 text-slate-950 border-amber-300 font-black ring-2 ring-amber-400/40 shadow-sm'
+                  : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800'
+              }`}
+              title={isEditingVoicing ? 'Salir del editor de digitación' : 'Editar digitación del acorde'}
+            >
+              <Pencil className="w-3 h-3" />
+              <span>{isEditingVoicing ? 'Salir Editor' : '✏️ Editar Voicing'}</span>
+            </button>
           )}
-        </button>
+
+          <button
+            type="button"
+            onClick={onToggleViewMode}
+            className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all border ${
+              viewMode === 'fit'
+                ? 'bg-slate-800 text-white border-slate-700'
+                : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+            }`}
+            title={viewMode === 'fit' ? 'Cambiar a modo Scroll horizontal' : 'Cambiar a modo Ajustado a pantalla'}
+          >
+            {viewMode === 'fit' ? '↔️ Ajustado' : '🔍 Scroll'}
+          </button>
+
+          <button
+            type="button"
+            onClick={onToggleFullscreen}
+            className="px-2.5 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-800 hover:border-slate-700 text-xs font-bold flex items-center gap-1 transition-all"
+            title={isFullscreen ? 'Salir de pantalla completa (Esc)' : 'Modo Estudio Zen (Pantalla Completa Horizontal)'}
+            aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla Completa'}
+          >
+            {isFullscreen ? (
+              <>
+                <Minimize2 className="w-3.5 h-3.5 text-rose-400" />
+                <span className="text-xs font-black">✕ Salir</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden xs:inline text-xs">⛶ Expandir</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -338,6 +317,13 @@ export interface InteractiveFretboardProps {
   onToggleRootInEditor?: (e: React.MouseEvent, stringIndex: number, fret: number) => void;
   topBanner?: React.ReactNode;
   studyMode?: 'chords' | 'scales' | 'progressions';
+  onPlayStrum?: () => void;
+  onPlayArpeggio?: () => void;
+  onToggleEditing?: () => void;
+  isEditingVoicing?: boolean;
+  onPrevBox?: () => void;
+  onNextBox?: () => void;
+  chordBadge?: string;
 }
 
 // Inlays estándar: simples en 3, 5, 7, 9, 15, 17, 19, 21; dobles en 12 y 24
@@ -359,6 +345,13 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   onToggleRootInEditor,
   topBanner,
   studyMode = 'chords',
+  onPlayStrum,
+  onPlayArpeggio,
+  onToggleEditing,
+  isEditingVoicing,
+  onPrevBox,
+  onNextBox,
+  chordBadge,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [internalViewMode, setInternalViewMode] = useState<'scroll' | 'fit'>('fit');
@@ -709,6 +702,52 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
     [scrollToFretZone]
   );
 
+  const centerOnFrets = useCallback((minFret: number, maxFret: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    if (maxFret <= 0) {
+      container.scrollTo({ left: 0, behavior: 'smooth' });
+      return;
+    }
+
+    const minEl = container.querySelector(`[data-fret="${minFret}"]`) as HTMLElement | null;
+    const maxEl = container.querySelector(`[data-fret="${maxFret}"]`) as HTMLElement | null;
+
+    if (minEl && maxEl) {
+      const containerRect = container.getBoundingClientRect();
+      const minRect = minEl.getBoundingClientRect();
+      const maxRect = maxEl.getBoundingClientRect();
+
+      const chordCenterInScroll =
+        (minRect.left + maxRect.right) / 2 - containerRect.left + container.scrollLeft;
+      const targetScrollLeft = Math.max(0, chordCenterInScroll - container.clientWidth / 2);
+
+      container.scrollTo({ left: targetScrollLeft, behavior: 'smooth' });
+    }
+  }, []);
+
+  // Tarea 3: Auto-centrar en el diapasón cuando cambia el acorde, forma CAGED o notas activas
+  useEffect(() => {
+    if (viewMode === 'scroll') {
+      const fretted = activeNotes.filter((n) => !n.isDimmed && n.fret > 0 && n.fret <= totalFrets);
+      let minF = 0;
+      let maxF = 0;
+      if (fretted.length > 0) {
+        const frets = fretted.map((n) => n.fret);
+        minF = Math.min(...frets);
+        maxF = Math.max(...frets);
+      } else if (fretFocusRange) {
+        minF = fretFocusRange[0];
+        maxF = fretFocusRange[1];
+      }
+      const timer = setTimeout(() => {
+        centerOnFrets(minF, maxF);
+      }, 70);
+      return () => clearTimeout(timer);
+    }
+  }, [activeNotes, totalFrets, fretFocusRange, viewMode, centerOnFrets]);
+
   const handleFocusActiveNotes = useCallback(() => {
     if (activeNotes.length === 0) {
       scrollToFretZone(0);
@@ -721,18 +760,10 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
     const frets = targetNotes.map((n) => n.fret);
     const minFret = Math.min(...frets);
     const maxFret = Math.max(...frets);
-    const avgFret = Math.round(frets.reduce((a, b) => a + b, 0) / frets.length);
 
     setActiveFretRangeState([minFret, maxFret]);
-
-    requestAnimationFrame(() => {
-      if (!containerRef.current) return;
-      const fretElement = containerRef.current.querySelector(`[data-fret="${avgFret}"]`);
-      if (fretElement && typeof fretElement.scrollIntoView === 'function') {
-        fretElement.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-      }
-    });
-  }, [activeNotes, totalFrets, scrollToFretZone]);
+    centerOnFrets(minFret, maxFret);
+  }, [activeNotes, totalFrets, scrollToFretZone, centerOnFrets]);
 
   // Renderizado de los nodos de notas por cuerda (columnas: 0 .. maxFrets)
   const renderFretNodesForString = (stringIdx: number, maxFrets: number) => {
@@ -986,22 +1017,26 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
             onChordLoopTypeChange={handleChordLoopTypeChange}
             scaleLoopType={scaleLoopType}
             onScaleLoopTypeChange={handleScaleLoopTypeChange}
+            onPlayStrum={onPlayStrum}
+            onPlayArpeggio={onPlayArpeggio}
+            onToggleEditing={onToggleEditing}
+            isEditingVoicing={isEditingVoicing ?? isEditorActive}
           />
 
-          {/* Barra de Estado de Alto Contraste en Modo Ventana */}
-          <div className="flex items-center justify-between px-3.5 py-2 text-[11px] font-mono text-slate-400 backdrop-blur-md border-b border-slate-800/80 bg-[#16161a]">
-            <div className="flex items-center gap-2 truncate">
+          {/* Cabecera Limpia del Mástil (Sin Truncar): Badge a la Izquierda y Botones < > a la Derecha */}
+          <div className="flex items-center justify-between px-3 py-1.5 text-xs font-mono text-slate-400 backdrop-blur-md border-b border-slate-800/80 bg-[#16161a]">
+            <div className="flex items-center gap-2 min-w-0">
               <span className="w-2.5 h-2.5 rounded-full bg-[#FFCC00] shadow-[0_0_8px_rgba(255,204,0,0.8)] shrink-0" />
-              <span className="font-bold text-slate-100 text-xs truncate">
-                {title || `Diapasón ${totalFrets}T • ${config.name}`}
+              <span className="font-black text-cyan-300 dark:text-cyan-300 text-xs sm:text-sm tracking-tight truncate">
+                {chordBadge || title || `Diapasón ${totalFrets}T • ${config.name}`}
               </span>
               {activeFretRangeState && (
-                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-amber-300 font-mono shrink-0 border border-slate-700">
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 font-mono shrink-0 border border-slate-700 hidden xs:inline">
                   Tr. {activeFretRangeState[0]}–{activeFretRangeState[1]}
                 </span>
               )}
               {isLooping && (
-                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30 animate-pulse">
+                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30 animate-pulse shrink-0">
                   LOOP{' '}
                   {studyMode === 'chords'
                     ? chordLoopType === 'strum'
@@ -1032,28 +1067,26 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
                   ✓ Todo el mástil visible ({totalFrets} trastes)
                 </span>
               )}
-              {viewMode === 'scroll' && (
-                <div className="flex items-center gap-0.5">
-                  <button
-                    type="button"
-                    onClick={handlePrevZone}
-                    className="p-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors border border-slate-800"
-                    title="Retroceder"
-                    aria-label="Retroceder a la izquierda"
-                  >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleNextZone}
-                    className="p-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors border border-slate-800"
-                    title="Avanzar"
-                    aria-label="Avanzar a la derecha"
-                  >
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={onPrevBox || handlePrevZone}
+                  className="h-7 w-7 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-white transition-all border border-slate-800 flex items-center justify-center active:scale-90 shadow-sm"
+                  title="Caja / Posición Anterior"
+                  aria-label="Caja o posición anterior"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={onNextBox || handleNextZone}
+                  className="h-7 w-7 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-white transition-all border border-slate-800 flex items-center justify-center active:scale-90 shadow-sm"
+                  title="Siguiente Caja / Posición"
+                  aria-label="Siguiente caja o posición"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         </>
