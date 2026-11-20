@@ -354,7 +354,7 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   chordBadge,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [internalViewMode, setInternalViewMode] = useState<'scroll' | 'fit'>('fit');
+  const [internalViewMode, setInternalViewMode] = useState<'scroll' | 'fit'>('scroll');
   const viewMode = controlledViewMode !== undefined ? controlledViewMode : internalViewMode;
 
   // Estado y manejador de Pantalla Completa Forzada Horizontal & Fallback CSS
@@ -375,12 +375,17 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   const numStrings = strings.length;
   const totalFrets = Math.min(config.totalFrets, visibleFrets);
 
-  // Ancho de la cejuela (traste 0) fijo, y las columnas restantes repartidas proporcionalmente en 1fr
+  // Ancho de la cejuela y columnas de trastes:
+  // En modo 'scroll': trastes anchos y legibles (min 58px) para mobile ergonomics óptimas.
+  // En modo 'fit': reparte todo el mástil proporcionalmente para caber en pantalla.
   const fretGridTemplate = useMemo(
     () => ({
-      gridTemplateColumns: `minmax(34px, 42px) repeat(${totalFrets}, minmax(0, 1fr))`,
+      gridTemplateColumns:
+        viewMode === 'scroll'
+          ? `minmax(42px, 48px) repeat(${totalFrets}, minmax(58px, 1fr))`
+          : `minmax(28px, 36px) repeat(${totalFrets}, minmax(0, 1fr))`,
     }),
-    [totalFrets]
+    [totalFrets, viewMode]
   );
 
   // Detener bucle de audio
@@ -702,51 +707,87 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
     [scrollToFretZone]
   );
 
-  const centerOnFrets = useCallback((minFret: number, maxFret: number) => {
-    const container = containerRef.current;
-    if (!container) return;
+  // Tarea 2: Auto-desplazamiento inteligente hacia los trastes del acorde/escala activa
+  const scrollToActiveFrets = useCallback(
+    (smooth = true) => {
+      const container = containerRef.current;
+      if (!container) return;
 
-    if (maxFret <= 0) {
-      container.scrollTo({ left: 0, behavior: 'smooth' });
-      return;
-    }
+      if (viewMode !== 'scroll') return;
 
-    const minEl = container.querySelector(`[data-fret="${minFret}"]`) as HTMLElement | null;
-    const maxEl = container.querySelector(`[data-fret="${maxFret}"]`) as HTMLElement | null;
+      // Obtener los trastes de los puntos activos en el voicing/caja actual
+      const activeFretted = activeNotes.filter((n) => !n.isDimmed && n.fret <= totalFrets);
+      const frets = activeFretted.map((n) => n.fret);
 
-    if (minEl && maxEl) {
-      const containerRect = container.getBoundingClientRect();
-      const minRect = minEl.getBoundingClientRect();
-      const maxRect = maxEl.getBoundingClientRect();
+      let minFret = 0;
+      let maxFret = 0;
 
-      const chordCenterInScroll =
-        (minRect.left + maxRect.right) / 2 - containerRect.left + container.scrollLeft;
-      const targetScrollLeft = Math.max(0, chordCenterInScroll - container.clientWidth / 2);
+      if (frets.length > 0) {
+        minFret = Math.min(...frets);
+        maxFret = Math.max(...frets);
+      } else if (fretFocusRange) {
+        minFret = fretFocusRange[0];
+        maxFret = fretFocusRange[1];
+      }
 
-      container.scrollTo({ left: targetScrollLeft, behavior: 'smooth' });
-    }
-  }, []);
+      // Regla 1: Si minFret <= 3 (como en C • Forma C Tr. 1–3, o acordes abiertos con Traste 0),
+      // fijar targetLeft = 0 para mostrar limpiamente desde el Traste 0 (cuerdas al aire) al 5 sin recortes
+      if (minFret <= 3) {
+        container.scrollTo({ left: 0, behavior: smooth ? 'smooth' : 'auto' });
+        return;
+      }
 
-  // Tarea 3: Auto-centrar en el diapasón cuando cambia el acorde, forma CAGED o notas activas
+      // Regla 2: Si minFret > 3 (ej. Tr. 8–10), medir posición del traste (minFret - 1)
+      // en el DOM para dejar toda la postura centrada con un traste de margen a la izquierda
+      const targetFretIdx = Math.max(0, minFret - 1);
+      const targetFretEl = container.querySelector(`[data-fret="${targetFretIdx}"]`) as HTMLElement | null;
+      const maxFretEl = container.querySelector(`[data-fret="${maxFret}"]`) as HTMLElement | null;
+
+      if (targetFretEl && maxFretEl) {
+        const containerRect = container.getBoundingClientRect();
+        const targetRect = targetFretEl.getBoundingClientRect();
+        const maxRect = maxFretEl.getBoundingClientRect();
+
+        const chordCenterInScroll =
+          (targetRect.left + maxRect.right) / 2 - containerRect.left + container.scrollLeft;
+        const targetLeft = Math.max(0, Math.round(chordCenterInScroll - container.clientWidth / 2));
+
+        container.scrollTo({ left: targetLeft, behavior: smooth ? 'smooth' : 'auto' });
+      } else if (targetFretEl) {
+        const containerRect = container.getBoundingClientRect();
+        const targetRect = targetFretEl.getBoundingClientRect();
+        const targetLeft = Math.max(0, Math.round(targetRect.left - containerRect.left + container.scrollLeft - 16));
+        container.scrollTo({ left: targetLeft, behavior: smooth ? 'smooth' : 'auto' });
+      }
+    },
+    [activeNotes, totalFrets, fretFocusRange, viewMode]
+  );
+
+  const isInitialMount = useRef(true);
+
+  // Ejecutar scrollToActiveFrets al montar y al cambiar de acorde, escala, tonalidad o CAGED
   useEffect(() => {
     if (viewMode === 'scroll') {
-      const fretted = activeNotes.filter((n) => !n.isDimmed && n.fret > 0 && n.fret <= totalFrets);
-      let minF = 0;
-      let maxF = 0;
-      if (fretted.length > 0) {
-        const frets = fretted.map((n) => n.fret);
-        minF = Math.min(...frets);
-        maxF = Math.max(...frets);
-      } else if (fretFocusRange) {
-        minF = fretFocusRange[0];
-        maxF = fretFocusRange[1];
+      const isFirst = isInitialMount.current;
+      if (isFirst) {
+        isInitialMount.current = false;
+        // Al montar la página: instantáneo (smooth = false) para que el acorde inicial aparezca visible de inmediato
+        requestAnimationFrame(() => {
+          scrollToActiveFrets(false);
+        });
+        const timerInit = setTimeout(() => {
+          scrollToActiveFrets(false);
+        }, 80);
+        return () => clearTimeout(timerInit);
       }
+
+      // En cambios de acorde / forma CAGED: desplazamiento suave
       const timer = setTimeout(() => {
-        centerOnFrets(minF, maxF);
-      }, 70);
+        scrollToActiveFrets(true);
+      }, 50);
       return () => clearTimeout(timer);
     }
-  }, [activeNotes, totalFrets, fretFocusRange, viewMode, centerOnFrets]);
+  }, [activeNotes, totalFrets, fretFocusRange, viewMode, scrollToActiveFrets]);
 
   const handleFocusActiveNotes = useCallback(() => {
     if (activeNotes.length === 0) {
@@ -762,8 +803,8 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
     const maxFret = Math.max(...frets);
 
     setActiveFretRangeState([minFret, maxFret]);
-    centerOnFrets(minFret, maxFret);
-  }, [activeNotes, totalFrets, scrollToFretZone, centerOnFrets]);
+    scrollToActiveFrets(true);
+  }, [activeNotes, totalFrets, scrollToFretZone, scrollToActiveFrets]);
 
   // Renderizado de los nodos de notas por cuerda (columnas: 0 .. maxFrets)
   const renderFretNodesForString = (stringIdx: number, maxFrets: number) => {
@@ -1095,16 +1136,18 @@ export const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
       {/* Top Banner (si se proporciona en modo ventana) */}
       {!isFullscreen && topBanner}
 
-      {/* Área principal: Centrado perfecto vertical y horizontal */}
+      {/* Área principal: En scroll alinea al inicio (justify-start / items-start) para Traste 0 sin recortes */}
       <main
         ref={containerRef}
-        className="w-full flex-1 flex flex-col justify-center items-center px-2 sm:px-4 py-1.5 overflow-x-auto overflow-y-hidden select-none"
+        className={`w-full flex-1 flex flex-col py-1.5 px-2 sm:px-4 overflow-x-auto overflow-y-hidden select-none ${
+          viewMode === 'scroll' ? 'items-start justify-start' : 'items-center justify-center'
+        }`}
       >
-        {/* Contenedor del mástil con altura incrementada */}
+        {/* Contenedor del mástil con altura incrementada y ancho dinámico amplio */}
         <div
-          className={`w-full max-w-[1300px] ${
-            !isFullscreen && viewMode === 'scroll' ? 'min-w-[720px]' : ''
-          } h-[255px] sm:h-[275px] flex flex-col justify-between bg-[#221c19] rounded-2xl border border-amber-950/50 p-2.5 sm:p-3 shadow-2xl shrink-0`}
+          className={`h-[255px] sm:h-[275px] flex flex-col justify-between bg-[#221c19] rounded-2xl border border-amber-950/50 p-2.5 sm:p-3 shadow-2xl shrink-0 ${
+            viewMode === 'scroll' ? 'w-max min-w-full' : 'w-full max-w-[1300px]'
+          }`}
         >
           {/* Grid de las 6 cuerdas con mayor altura y separación */}
           <div className="w-full flex-1 flex flex-col justify-between py-1">
