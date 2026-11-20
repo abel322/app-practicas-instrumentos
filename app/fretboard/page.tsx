@@ -20,11 +20,14 @@ import {
   ProgressionDef,
   resolveProgressionChords,
   convertCustomProgressionToDef,
+  parseDegreeLabelToStep,
 } from '@/lib/music-theory/fretboard';
 import { getFretboardAudioEngine } from '@/lib/music-theory/fretboardAudio';
 import { InteractiveFretboard, ActiveFretNote } from '@/components/fretboard/InteractiveFretboard';
 import { FretboardToolbar, StudyMode } from '@/components/fretboard/FretboardToolbar';
 import { ChordTheoryAccordion } from '@/components/fretboard/ChordTheoryAccordion';
+import { ModalInterchangePanel } from '@/components/fretboard/ModalInterchangePanel';
+import { BorrowedChordInfo } from '@/lib/music-theory/modalInterchange';
 import {
   CagedChordVoicing,
   CAGED_BOX_DEFINITIONS,
@@ -153,6 +156,7 @@ export default function FretboardPage() {
   const [customProgressions, setCustomProgressions] = useState<ProgressionDef[]>([]);
   const [isCreateProgModalOpen, setIsCreateProgModalOpen] = useState<boolean>(false);
   const [stepResourceOverrides, setStepResourceOverrides] = useState<Record<string, string>>({});
+  const [previewBorrowedChord, setPreviewBorrowedChord] = useState<BorrowedChordInfo | null>(null);
 
   // Cargar progresiones personalizadas de PostgreSQL al iniciar
   useEffect(() => {
@@ -183,11 +187,14 @@ export default function FretboardPage() {
   }, [allProgressions, selectedProgressionId]);
 
   const activeStepResourceId = useMemo(() => {
+    if (previewBorrowedChord) {
+      return previewBorrowedChord.suggestedResourceId;
+    }
     const resolved = resolveProgressionChords(activeProgression, cleanRootNote);
     const currentStep = resolved[currentProgressionStepIndex] || resolved[0];
     const overrideKey = `${selectedProgressionId}_${currentProgressionStepIndex}`;
     return stepResourceOverrides[overrideKey] || currentStep?.assignedImprovResourceId || 'default';
-  }, [activeProgression, cleanRootNote, currentProgressionStepIndex, selectedProgressionId, stepResourceOverrides]);
+  }, [activeProgression, cleanRootNote, currentProgressionStepIndex, selectedProgressionId, stepResourceOverrides, previewBorrowedChord]);
 
   const handleStepImprovResourceChange = useCallback(
     (stepIndex: number, resourceId: string) => {
@@ -201,11 +208,39 @@ export default function FretboardPage() {
   );
 
   const currentImprovGuide = useMemo(() => {
-    const resolved = resolveProgressionChords(activeProgression, cleanRootNote);
-    const currentStep = resolved[currentProgressionStepIndex] || resolved[0];
+    let currentStep: {
+      roman: string;
+      stepName: string;
+      rootNote: string;
+      chordKey: ChordKey;
+      chordName: string;
+      fullChordLabel: string;
+      bars: number;
+      assignedImprovResourceId?: string;
+    } | undefined;
+
+    if (previewBorrowedChord) {
+      currentStep = {
+        roman: previewBorrowedChord.degreeDisplay,
+        stepName: previewBorrowedChord.harmonicFunction,
+        rootNote: previewBorrowedChord.rootNote,
+        chordKey: previewBorrowedChord.chordKey,
+        chordName: previewBorrowedChord.chordName,
+        fullChordLabel: previewBorrowedChord.chordName,
+        bars: 2,
+        assignedImprovResourceId: previewBorrowedChord.suggestedResourceId,
+      };
+    } else {
+      const resolved = resolveProgressionChords(activeProgression, cleanRootNote);
+      currentStep = resolved[currentProgressionStepIndex] || resolved[0];
+    }
+
     if (!currentStep) return null;
     const baseGuide = getImprovisationGuide(cleanRootNote, currentStep.fullChordLabel, currentStep.roman);
-    const customResource = findImprovResourceById(activeStepResourceId, currentStep.roman);
+    const customResource = findImprovResourceById(
+      activeStepResourceId,
+      currentStep.fullChordLabel || currentStep.roman
+    );
     if (!customResource) return baseGuide;
 
     const rootIdx = getPitchClass(currentStep.rootNote);
@@ -224,13 +259,90 @@ export default function FretboardPage() {
         ...baseGuide.primaryMode,
         name: `${currentStep.rootNote} ${resourceTitle}`,
         scaleNotes: customNotes,
-        character:
-          customResource.type === 'arpeggio'
-            ? `Arpegio asignado (${resourceTitle}) sobre ${currentStep.fullChordLabel}`
-            : `Escala/Modo asignado (${resourceTitle}) sobre ${currentStep.fullChordLabel}`,
+        description: customResource.description,
       },
     };
-  }, [activeProgression, cleanRootNote, currentProgressionStepIndex, activeStepResourceId]);
+  }, [activeProgression, cleanRootNote, currentProgressionStepIndex, activeStepResourceId, previewBorrowedChord]);
+
+  // Manejadores para Intercambio Modal (Acordes Prestados)
+  const handleSelectBorrowedChord = useCallback((chord: BorrowedChordInfo) => {
+    // 1. Tocar acorde con rasgueo limpio
+    const chordNotes = getChordNoteList(chord.rootNote, chord.chordKey);
+    const rootMidi = 40 + getPitchClass(chord.rootNote);
+    const midis = chordNotes.map((cn) => rootMidi + cn.interval.semitones);
+    getFretboardAudioEngine().playChord(midis, 'strum', 0.05);
+
+    // 2. Proyectar en diapasón como acorde activo
+    setPreviewBorrowedChord(chord);
+  }, []);
+
+  const handleAddBorrowedChordToProgression = useCallback(
+    (chord: BorrowedChordInfo) => {
+      const newStep = parseDegreeLabelToStep(chord.degreeLabel, 2, chord.suggestedResourceId);
+      const updatedSteps = [...activeProgression.steps, newStep];
+      const isCustomAlready = activeProgression.id.startsWith('custom_');
+      const updatedProgId = isCustomAlready ? activeProgression.id : `custom_mod_${Date.now()}`;
+      const updatedProgName = isCustomAlready
+        ? activeProgression.name
+        : `★ ${activeProgression.name.replace(/^★\s*/, '')} (Modificada)`;
+
+      const updatedProg: ProgressionDef = {
+        ...activeProgression,
+        id: updatedProgId,
+        name: updatedProgName,
+        steps: updatedSteps,
+      };
+
+      setCustomProgressions((prev) => {
+        const idx = prev.findIndex((p) => p.id === updatedProg.id);
+        if (idx !== -1) {
+          const next = [...prev];
+          next[idx] = updatedProg;
+          return next;
+        }
+        return [updatedProg, ...prev];
+      });
+
+      setSelectedProgressionId(updatedProgId);
+      setCurrentProgressionStepIndex(updatedSteps.length - 1);
+      setPreviewBorrowedChord(null);
+    },
+    [activeProgression]
+  );
+
+  const handleReplaceCurrentProgressionChord = useCallback(
+    (chord: BorrowedChordInfo) => {
+      const newStep = parseDegreeLabelToStep(chord.degreeLabel, 2, chord.suggestedResourceId);
+      const updatedSteps = [...activeProgression.steps];
+      updatedSteps[currentProgressionStepIndex] = newStep;
+      const isCustomAlready = activeProgression.id.startsWith('custom_');
+      const updatedProgId = isCustomAlready ? activeProgression.id : `custom_mod_${Date.now()}`;
+      const updatedProgName = isCustomAlready
+        ? activeProgression.name
+        : `★ ${activeProgression.name.replace(/^★\s*/, '')} (Modificada)`;
+
+      const updatedProg: ProgressionDef = {
+        ...activeProgression,
+        id: updatedProgId,
+        name: updatedProgName,
+        steps: updatedSteps,
+      };
+
+      setCustomProgressions((prev) => {
+        const idx = prev.findIndex((p) => p.id === updatedProg.id);
+        if (idx !== -1) {
+          const next = [...prev];
+          next[idx] = updatedProg;
+          return next;
+        }
+        return [updatedProg, ...prev];
+      });
+
+      setSelectedProgressionId(updatedProgId);
+      setPreviewBorrowedChord(null);
+    },
+    [activeProgression, currentProgressionStepIndex]
+  );
 
   const config = INSTRUMENTS[instrument];
 
@@ -1190,11 +1302,39 @@ export default function FretboardPage() {
     // MODO 3: PROGRESIONES ARMÓNICAS + GUÍA DE IMPROVISACIÓN
     // -------------------------------------------------------------
     if (studyMode === 'progressions') {
-      const resolved = resolveProgressionChords(activeProgression, cleanRootNote);
-      const currentStep = resolved[currentProgressionStepIndex] || resolved[0];
+      let currentStep: {
+        roman: string;
+        stepName: string;
+        rootNote: string;
+        chordKey: ChordKey;
+        chordName: string;
+        fullChordLabel: string;
+        bars: number;
+        assignedImprovResourceId?: string;
+      };
+
+      if (previewBorrowedChord) {
+        currentStep = {
+          roman: previewBorrowedChord.degreeDisplay,
+          stepName: previewBorrowedChord.harmonicFunction,
+          rootNote: previewBorrowedChord.rootNote,
+          chordKey: previewBorrowedChord.chordKey,
+          chordName: previewBorrowedChord.chordName,
+          fullChordLabel: previewBorrowedChord.chordName,
+          bars: 2,
+          assignedImprovResourceId: previewBorrowedChord.suggestedResourceId,
+        };
+      } else {
+        const resolved = resolveProgressionChords(activeProgression, cleanRootNote);
+        currentStep = resolved[currentProgressionStepIndex] || resolved[0];
+      }
+
       const cleanStepRoot = resolveCleanKeyRoot(currentStep.rootNote);
       const guide = getImprovisationGuide(cleanRootNote, currentStep.fullChordLabel, currentStep.roman);
-      const customResource = findImprovResourceById(activeStepResourceId, currentStep.roman);
+      const customResource = findImprovResourceById(
+        activeStepResourceId,
+        currentStep.fullChordLabel || currentStep.roman
+      );
 
       const SEMITONE_INTERVAL_LABELS: Record<number, { label: string; role: NoteRole }> = {
         0: { label: 'R', role: 'root' },
@@ -1470,10 +1610,12 @@ export default function FretboardPage() {
       return getCagedBoxFretRange(activeCagedBoxId, cleanRootNote);
     }
     if (studyMode === 'progressions') {
+      const chordRoot = previewBorrowedChord
+        ? previewBorrowedChord.rootNote
+        : (resolveProgressionChords(activeProgression, cleanRootNote)[currentProgressionStepIndex] ||
+            resolveProgressionChords(activeProgression, cleanRootNote)[0])?.rootNote || cleanRootNote;
+
       if (progressionSystem === 'three_to_two') {
-        const resolved = resolveProgressionChords(activeProgression, cleanRootNote);
-        const currentStep = resolved[currentProgressionStepIndex] || resolved[0];
-        const chordRoot = currentStep ? currentStep.rootNote : cleanRootNote;
         const targetRootIdx = getPitchClass(chordRoot);
         const shift = targetRootIdx;
         const pat = getThreeToTwoPattern(selectedThreeToTwoPattern);
@@ -1489,7 +1631,7 @@ export default function FretboardPage() {
         return [Math.max(0, minF), Math.min(config.totalFrets, maxF)];
       }
       if (progressionSystem === 'caged') {
-        return getCagedBoxFretRange(activeCagedBoxId, cleanRootNote);
+        return getCagedBoxFretRange(activeCagedBoxId, chordRoot);
       }
       return null;
     }
@@ -1531,6 +1673,7 @@ export default function FretboardPage() {
     scaleResult,
     cleanRootNote,
     config.totalFrets,
+    previewBorrowedChord,
   ]);
 
   // Audio: Rasguear Acorde CAGED (de grave a agudo)
@@ -1614,6 +1757,7 @@ export default function FretboardPage() {
       const maxPat = scaleSystem === 'caged' ? 5 : 7;
       setActivePatternId((prev) => (prev === 1 ? maxPat : prev - 1));
     } else if (studyMode === 'progressions') {
+      setPreviewBorrowedChord(null);
       prevProgressionStep();
     }
   }, [studyMode, scaleSystem, prevProgressionStep]);
@@ -1626,6 +1770,7 @@ export default function FretboardPage() {
       const maxPat = scaleSystem === 'caged' ? 5 : 7;
       setActivePatternId((prev) => (prev === maxPat ? 1 : prev + 1));
     } else if (studyMode === 'progressions') {
+      setPreviewBorrowedChord(null);
       advanceProgressionStep();
     }
   }, [studyMode, scaleSystem, advanceProgressionStep]);
@@ -1654,6 +1799,9 @@ export default function FretboardPage() {
       return `${cleanRootNote} ${SCALES_CATALOG[scaleKey]?.name || ''} • ${patLabel || ''}${rangeStr ? ` (${rangeStr})` : ''}`;
     }
     if (studyMode === 'progressions') {
+      if (previewBorrowedChord) {
+        return `🔀 ${previewBorrowedChord.chordName} (${previewBorrowedChord.degreeDisplay}) • ${previewBorrowedChord.suggestedScaleName}`;
+      }
       if (currentImprovGuide) {
         return `${currentImprovGuide.chordName} (${currentImprovGuide.degreeRoman}) • ${currentImprovGuide.primaryMode.name}`;
       }
@@ -1671,6 +1819,7 @@ export default function FretboardPage() {
     scaleKey,
     currentImprovGuide,
     selectedProgressionId,
+    previewBorrowedChord,
   ]);
 
   // Presets Rápidos
@@ -1782,12 +1931,24 @@ export default function FretboardPage() {
           displayMode={displayMode}
           onDisplayModeChange={setDisplayMode}
           selectedProgressionId={selectedProgressionId}
-          onProgressionIdChange={setSelectedProgressionId}
+          onProgressionIdChange={(id) => {
+            setPreviewBorrowedChord(null);
+            setSelectedProgressionId(id);
+          }}
           progressionPlaying={progressionPlaying}
           onToggleProgressionPlay={() => setProgressionPlaying((prev) => !prev)}
-          onNextProgressionStep={advanceProgressionStep}
-          onPrevProgressionStep={prevProgressionStep}
-          onSelectProgressionStep={setCurrentProgressionStepIndex}
+          onNextProgressionStep={() => {
+            setPreviewBorrowedChord(null);
+            advanceProgressionStep();
+          }}
+          onPrevProgressionStep={() => {
+            setPreviewBorrowedChord(null);
+            prevProgressionStep();
+          }}
+          onSelectProgressionStep={(idx) => {
+            setPreviewBorrowedChord(null);
+            setCurrentProgressionStepIndex(idx);
+          }}
           currentProgressionStepIndex={currentProgressionStepIndex}
           bpm={bpm}
           onBpmChange={setBpm}
@@ -1796,6 +1957,17 @@ export default function FretboardPage() {
           activeStepImprovResourceId={activeStepResourceId}
           onStepImprovResourceChange={handleStepImprovResourceChange}
         />
+
+        {/* 3.0.0 Panel de Intercambio Modal (Acordes Prestados) */}
+        {studyMode === 'progressions' && (
+          <ModalInterchangePanel
+            tonalityRoot={cleanRootNote}
+            activeBorrowedChordId={previewBorrowedChord?.id}
+            onSelectBorrowedChord={handleSelectBorrowedChord}
+            onAddBorrowedChordToProgression={handleAddBorrowedChordToProgression}
+            onReplaceCurrentProgressionChord={handleReplaceCurrentProgressionChord}
+          />
+        )}
 
         {/* 3.0.1 Panel de Guía de Improvisación en Tiempo Real (Pestaña Progresiones) */}
         {studyMode === 'progressions' && (

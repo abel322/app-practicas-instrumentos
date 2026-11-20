@@ -36,7 +36,8 @@ export function ProgressionImprovPanel({
 }: ProgressionImprovPanelProps) {
   if (!currentChord) return null;
 
-  const customResource = findImprovResourceById(selectedResourceId, currentChord.degreeRoman);
+  const options = getImprovOptionsForChord(currentChord.chordName || currentChord.degreeRoman);
+  const customResource = findImprovResourceById(selectedResourceId, currentChord.chordName || currentChord.degreeRoman);
   const activeResourceName = customResource
     ? `${currentChord.chordRoot} ${customResource.name}`
     : currentChord.primaryMode.name;
@@ -44,8 +45,12 @@ export function ProgressionImprovPanel({
     ? customResource.description
     : currentChord.primaryMode.description;
 
+  const scalesList = options.filter((o) => o.type === 'scale');
+  const pentatonicsList = options.filter((o) => o.type === 'pentatonic');
+  const arpeggiosList = options.filter((o) => o.type === 'arpeggio');
+
   return (
-    <div className="w-full my-1.5 p-3 bg-slate-900/95 border border-cyan-900/40 rounded-2xl flex flex-col gap-2 shadow-lg select-none">
+    <div className="w-full my-1.5 p-2.5 sm:p-3 bg-slate-900/95 border border-cyan-900/40 rounded-2xl flex flex-col gap-2 shadow-lg select-none">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
         <div className="flex flex-wrap items-center gap-2">
           <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
@@ -54,26 +59,47 @@ export function ProgressionImprovPanel({
             <span className="text-amber-400">{currentChord.chordName}</span> (
             {currentChord.degreeRoman})
           </span>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800/50 font-bold">
-            Recurso activo: {activeResourceName}
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800/50 font-bold truncate max-w-[200px]">
+            Activo: {activeResourceName}
           </span>
 
           {onResourceIdChange && (
             <select
               value={selectedResourceId || 'default'}
               onChange={(e) => onResourceIdChange(e.target.value)}
-              className="bg-slate-950 border border-slate-700/80 text-[11px] text-amber-300 font-bold rounded-lg px-2 py-0.5 focus:outline-none focus:border-cyan-400 cursor-pointer"
-              title="Cambiar escala o arpegio para este acorde"
+              className="bg-slate-950 border border-slate-700/80 text-[11px] text-amber-300 font-bold rounded-lg px-2 py-0.5 focus:outline-none focus:border-cyan-400 cursor-pointer max-w-[220px] truncate"
+              title="Cambiar escala o modo para este acorde"
             >
               <option value="default">
                 💡 Auto ({currentChord.primaryMode.name})
               </option>
-              {getImprovOptionsForChord(currentChord.degreeRoman).map((res) => (
-                <option key={res.id} value={res.id}>
-                  {res.type === 'arpeggio' ? '🎯' : res.type === 'pentatonic' ? '🎸' : '🎼'}{' '}
-                  {res.name} [{res.tag}]
-                </option>
-              ))}
+              {scalesList.length > 0 && (
+                <optgroup label="🎼 Modos Griegos y Escalas">
+                  {scalesList.map((res) => (
+                    <option key={res.id} value={res.id}>
+                      🎼 {res.name} [{res.tag}]
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {pentatonicsList.length > 0 && (
+                <optgroup label="🎸 Pentatónicas y Blues">
+                  {pentatonicsList.map((res) => (
+                    <option key={res.id} value={res.id}>
+                      🎸 {res.name} [{res.tag}]
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {arpeggiosList.length > 0 && (
+                <optgroup label="🎯 Arpegios (Notas Diana)">
+                  {arpeggiosList.map((res) => (
+                    <option key={res.id} value={res.id}>
+                      🎯 {res.name} [{res.tag}]
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           )}
         </div>
@@ -173,6 +199,44 @@ export function ProgressionImprovPanel({
         </div>
       </div>
     </div>
+
+      {/* Tira rápida de Modos Griegos y Escalas compatibles con este acorde (1-toque en móvil) */}
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1 border-t border-slate-800/80">
+        <span className="text-[10px] font-mono uppercase font-bold text-slate-500 shrink-0">
+          Modos:
+        </span>
+        <button
+          type="button"
+          onClick={() => onResourceIdChange?.('default')}
+          className={`shrink-0 px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all border flex items-center gap-1 ${
+            !selectedResourceId || selectedResourceId === 'default'
+              ? 'bg-amber-400 text-slate-950 border-amber-300 font-black shadow-sm ring-1 ring-amber-400/50'
+              : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-800'
+          }`}
+          title={`💡 Modo automático sugerido: ${currentChord.primaryMode.name}`}
+        >
+          <span>💡 Auto ({currentChord.primaryMode.name})</span>
+        </button>
+        {options.map((opt) => {
+          const isSelected = selectedResourceId === opt.id;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => onResourceIdChange?.(opt.id)}
+              className={`shrink-0 px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all border flex items-center gap-1 ${
+                isSelected
+                  ? 'bg-cyan-500 text-slate-950 border-cyan-300 font-black shadow-sm ring-1 ring-cyan-400/50'
+                  : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-800 hover:text-white'
+              }`}
+              title={`${opt.name} [${opt.tag}]: ${opt.description}`}
+            >
+              <span>{opt.type === 'arpeggio' ? '🎯' : opt.type === 'pentatonic' ? '🎸' : '🎼'}</span>
+              <span>{opt.name}</span>
+            </button>
+          );
+        })}
+      </div>
 
       {/* Selector de Patrones 3 a 2 si el sistema activo es 3 a 2 */}
       {progressionSystem === 'three_to_two' && onSelectThreeToTwoPattern && (

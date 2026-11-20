@@ -43,20 +43,18 @@ export function ScaleSystemControls({
       : THREE_TO_TWO_SYSTEM_PATTERNS;
 
   return (
-    <div className="flex flex-col gap-2.5 w-full my-3 px-1 sm:px-0">
-      
-      {/* Barra de Controles: Sistema + Triple Conmutador + Modo Mástil Completo */}
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900/90 dark:bg-slate-950/90 p-2 sm:p-2.5 rounded-2xl border border-slate-800 shadow-md">
-        
-        {/* Selector de Sistema */}
-        <div className="inline-flex p-1 bg-slate-950 dark:bg-slate-900 rounded-xl border border-slate-800 text-xs shadow-inner">
+    <div className="flex flex-col gap-2 w-full my-1.5 px-1 sm:px-0">
+      {/* Barra de Controles Compacta: Selector de Sistema + Sub-Vista Individual vs Mástil Completo */}
+      <div className="flex flex-wrap items-center justify-between gap-1.5 bg-slate-900/90 dark:bg-slate-950/90 p-1.5 sm:p-2 rounded-2xl border border-slate-800 shadow-md">
+        {/* Selector de Sistema (CAGED / 3NPS / 3 a 2) */}
+        <div className="overflow-x-auto no-scrollbar flex items-center gap-1 p-0.5 bg-slate-950 dark:bg-slate-900 rounded-xl border border-slate-800 text-xs shrink-0 max-w-full">
           <button
             type="button"
             onClick={() => {
               onSystemChange('caged');
               onSelectPatternId(1);
             }}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+            className={`px-2.5 py-1 rounded-lg font-bold transition-all shrink-0 ${
               system === 'caged'
                 ? 'bg-cyan-500 text-slate-950 font-black shadow-md ring-2 ring-cyan-400/40'
                 : 'text-slate-400 hover:text-white'
@@ -70,13 +68,13 @@ export function ScaleSystemControls({
               onSystemChange('3nps');
               onSelectPatternId(1);
             }}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+            className={`px-2.5 py-1 rounded-lg font-bold transition-all shrink-0 ${
               system === '3nps'
                 ? 'bg-purple-600 text-white font-black shadow-md ring-2 ring-purple-400/40'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            ⚡ 3 Notas x Cuerda (7 Patrones)
+            ⚡ 3NPS (7 Patrones)
           </button>
           <button
             type="button"
@@ -84,78 +82,43 @@ export function ScaleSystemControls({
               onSystemChange('three_to_two');
               onSelectPatternId(1);
             }}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1 ${
+            className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 shrink-0 ${
               system === 'three_to_two'
                 ? 'bg-amber-400 text-slate-950 font-black shadow-md ring-2 ring-amber-400/40'
                 : 'text-amber-300/80 hover:text-amber-300'
             }`}
           >
-            <span>⚡ Sistema 3 a 2 (7 Patrones)</span>
+            <span>⚡ Sistema 3 a 2</span>
           </button>
         </div>
 
         {/* Selector de Sub-Vista: Por Caja Individual vs Mástil Completo (Mapa de Posiciones) */}
         {onScaleViewModeChange && (
-          <div className="inline-flex p-1 bg-slate-950 dark:bg-slate-900 rounded-xl border border-slate-800 text-xs">
+          <div className="inline-flex p-0.5 bg-slate-950 dark:bg-slate-900 rounded-xl border border-slate-800 text-xs shrink-0">
             <button
               type="button"
               onClick={() => onScaleViewModeChange('single_box')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
                 scaleViewMode === 'single_box'
                   ? 'bg-slate-700 text-white shadow-sm ring-1 ring-slate-500 font-black'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              📦 Por Caja Individual
+              📦 Por Caja
             </button>
             <button
               type="button"
               onClick={() => onScaleViewModeChange('full_neck_map')}
-              className={`px-3 py-1.5 rounded-lg font-black transition-all flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded-lg font-black transition-all flex items-center gap-1 ${
                 scaleViewMode === 'full_neck_map'
                   ? 'bg-cyan-500 text-slate-950 shadow-md ring-2 ring-cyan-400/40'
                   : 'text-cyan-400 hover:text-cyan-300'
               }`}
             >
-              <span>🌐 Mástil Completo (Mapa de Posiciones)</span>
+              <span>🌐 Mástil Completo</span>
             </button>
           </div>
         )}
-
-        {/* Triple Switch: Notas / Grados / Dedos */}
-        <div className="inline-flex p-1 bg-slate-950 dark:bg-slate-900 rounded-xl border border-slate-800 text-xs">
-          <button
-            type="button"
-            onClick={() => onDisplayModeChange('notes')}
-            className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
-              displayMode === 'notes' ? 'bg-slate-700 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Notas
-          </button>
-          <button
-            type="button"
-            onClick={() => onDisplayModeChange('degrees')}
-            className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
-              displayMode === 'degrees' ? 'bg-slate-700 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Grados
-          </button>
-          <button
-            type="button"
-            onClick={() => onDisplayModeChange('fingers')}
-            className={`px-2.5 py-1 rounded-lg font-black transition-all ${
-              displayMode === 'fingers' 
-                ? 'bg-emerald-500 text-slate-950 font-black shadow-sm ring-1 ring-emerald-300' 
-                : 'text-emerald-400 hover:text-emerald-300'
-            }`}
-            title="Ver qué dedo pisa: 1=Índice, 2=Medio, 3=Anular, 4=Meñique"
-          >
-            🖐️ Dedos (1-4)
-          </button>
-        </div>
-
       </div>
 
       {/* Selector de Trayectoria 3 a 2 (Vertical vs Diagonal Ascendente / Descendente) */}

@@ -72,7 +72,81 @@ export function getImprovisationGuide(
     'Modo mayor luminoso y estable; enfatiza la 3ª mayor y 7ª mayor en resoluciones.';
   let alternatives: { name: string; scaleNotes: string[] }[] = [];
 
-  if (/^ii/i.test(normalizedRoman)) {
+  if (/m7b5|ø|°|vii/i.test(normalizedRoman)) {
+    scaleKey = 'locrian';
+    modeLabel = `${chordRoot} Locrio`;
+    description = 'Modo de acorde semidisminuido con 5ª disminuida (♭5).';
+    alternatives = [
+      {
+        name: `Arpegio Semidisminuido de ${chordRoot}`,
+        scaleNotes: buildScaleNotes(chordRoot, [0, 3, 6, 10]),
+      },
+    ];
+  } else if (/^(♭|b)VI/i.test(normalizedRoman)) {
+    scaleKey = 'lydian';
+    modeLabel = `${chordRoot} Lidio (Intercambio Eólico)`;
+    description = 'Sonoridad majestuosa de ♭VI prestado del modo Eólico con 4ª aumentada (#11).';
+    alternatives = [
+      {
+        name: `Pentatónica Mayor de ${chordRoot}`,
+        scaleNotes: buildScaleNotes(chordRoot, SCALES_CATALOG.pentatonic_major.intervals),
+      },
+    ];
+  } else if (/^(♭|b)VII7/i.test(normalizedRoman)) {
+    scaleKey = 'mixolydian';
+    modeLabel = `${chordRoot} Mixolidio (Backdoor ♭VII7)`;
+    description = 'Dominante Backdoor prestado del modo Eólico que resuelve hacia Imaj7.';
+    alternatives = [
+      {
+        name: `Blues de ${chordRoot}`,
+        scaleNotes: buildScaleNotes(chordRoot, SCALES_CATALOG.blues.intervals),
+      },
+    ];
+  } else if (/^(♭|b)VII/i.test(normalizedRoman)) {
+    scaleKey = 'lydian';
+    modeLabel = `${chordRoot} Lidio (♭VIImaj7 Dórico)`;
+    description = 'Acorde mayor prestado de Dórico o Mixolidio con brillo de 4ª aumentada.';
+    alternatives = [
+      {
+        name: `Pentatónica Mayor de ${chordRoot}`,
+        scaleNotes: buildScaleNotes(chordRoot, SCALES_CATALOG.pentatonic_major.intervals),
+      },
+    ];
+  } else if (/^(♭|b)III/i.test(normalizedRoman)) {
+    scaleKey = 'lydian';
+    modeLabel = `${chordRoot} Lidio (♭III Eólico)`;
+    description = 'Tónica menor relativa prestada del modo Eólico.';
+    alternatives = [
+      {
+        name: `Pentatónica Mayor de ${chordRoot}`,
+        scaleNotes: buildScaleNotes(chordRoot, SCALES_CATALOG.pentatonic_major.intervals),
+      },
+    ];
+  } else if (/^(♭|b)II/i.test(normalizedRoman)) {
+    scaleKey = 'lydian';
+    modeLabel = `${chordRoot} Lidio (Napolitano ♭II)`;
+    description = 'Acorde Napolitano prestado del modo Frigio.';
+    alternatives = [
+      {
+        name: `Pentatónica Mayor de ${chordRoot}`,
+        scaleNotes: buildScaleNotes(chordRoot, SCALES_CATALOG.pentatonic_major.intervals),
+      },
+    ];
+  } else if (/^iv/i.test(normalizedRoman) && (normalizedRoman.includes('m') || chordSymbol.includes('m'))) {
+    scaleKey = 'dorian';
+    modeLabel = `${chordRoot} Dórico (IVm Eólico)`;
+    description = 'Subdominante menor clásica de intercambio modal (cadencia plagal ivm → I).';
+    alternatives = [
+      {
+        name: `Pentatónica Menor de ${chordRoot}`,
+        scaleNotes: buildScaleNotes(chordRoot, SCALES_CATALOG.pentatonic_minor.intervals),
+      },
+      {
+        name: `Modo Eólico de ${chordRoot}`,
+        scaleNotes: buildScaleNotes(chordRoot, SCALES_CATALOG.minor_natural.intervals),
+      },
+    ];
+  } else if (/^ii/i.test(normalizedRoman)) {
     scaleKey = 'dorian';
     modeLabel = `${chordRoot} Dórico`;
     description = 'Sonido clásico de jazz y worship menor con 6ª mayor natural.';
