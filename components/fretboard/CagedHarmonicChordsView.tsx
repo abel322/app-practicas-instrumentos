@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { DISPLAY_ROOTS } from '@/lib/music-theory/fretboard';
+import { resolveCleanKeyRoot } from '@/lib/music/diatonicSpelling';
 import {
   CAGED_BOX_DEFINITIONS,
   CagedChordVoicing,
@@ -85,9 +86,11 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
     }
   };
 
+  const cleanKeyRoot = resolveCleanKeyRoot(selectedKeyRoot, tonalityMode);
+
   // Obtenemos los 7 acordes diatónicos calculados para la tonalidad, modo, caja activa y familia de extensiones
   const diatonicChords: CagedChordVoicing[] = getCagedDiatonicChords(
-    selectedKeyRoot,
+    cleanKeyRoot,
     activeCagedBoxId,
     instrumentType,
     activeExtensionFamily,
@@ -95,7 +98,7 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
   );
 
   const baseActiveChord = diatonicChords[activeChordDegreeIndex] || diatonicChords[0];
-  const variations = getVariationsForDegree(activeChordDegreeIndex, selectedKeyRoot, tonalityMode);
+  const variations = getVariationsForDegree(activeChordDegreeIndex, cleanKeyRoot, tonalityMode);
   const currentVariationId = activeVariationId || (variations[0]?.id ?? '');
 
   const activeChord = activeChordOverride || baseActiveChord;
@@ -113,13 +116,13 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
             <span>Tonalidad:</span>
           </label>
           <select
-            value={selectedKeyRoot}
+            value={cleanKeyRoot}
             onChange={(e) => onKeyRootChange(e.target.value)}
             className="h-9 px-3 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700/80 text-slate-900 dark:text-white text-xs font-mono font-black rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-400/40 cursor-pointer shadow-sm"
           >
             {DISPLAY_ROOTS.map((r) => (
               <option key={r.value} value={r.value}>
-                {r.label} {r.value === selectedKeyRoot ? '★' : ''}
+                {r.label} {r.value === cleanKeyRoot ? '★' : ''}
               </option>
             ))}
           </select>
@@ -192,7 +195,7 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
           <span className="text-[10px] font-mono uppercase font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
             <span>Campo Armónico Diatónico en</span>
             <span className="text-slate-900 dark:text-white font-black">
-              {selectedKeyRoot} {TONALITY_MODE_LABELS[tonalityMode]}
+              {cleanKeyRoot} {TONALITY_MODE_LABELS[tonalityMode]}
             </span>
             <span className="text-cyan-600 dark:text-cyan-400 font-bold">
               ({activeBoxMeta.shortLabel} • {EXTENSION_FAMILIES_LIST.find((f) => f.id === activeExtensionFamily)?.label})
@@ -294,7 +297,7 @@ export const CagedHarmonicChordsView: React.FC<CagedHarmonicChordsViewProps> = (
             variations={variations}
             activeVariationId={currentVariationId}
             onSelectVariation={onSelectVariation}
-            chordBaseLabel={`${baseActiveChord?.rootNote || selectedKeyRoot} (${baseActiveChord?.degreeRoman || 'I'})`}
+            chordBaseLabel={`${baseActiveChord?.rootNote || cleanKeyRoot} (${baseActiveChord?.degreeRoman || 'I'})`}
           />
         )}
       </div>

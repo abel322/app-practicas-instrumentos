@@ -6,10 +6,15 @@ import {
   SCALES_CATALOG,
   CHORDS_CATALOG,
 } from './fretboard';
+import {
+  resolveCleanKeyRoot,
+  getCleanNoteNameForTonality,
+  getPitchClass,
+} from '@/lib/music/diatonicSpelling';
 
 export interface ChordImprovisationGuide {
   chordName: string;            // ej: "Dm7"
-  chordRoot: ChromaticNote;     // ej: "D"
+  chordRoot: string;            // ej: "D", "Eb", "Ab"
   degreeRoman: string;          // ej: "ii7"
   chordTones: string[];         // ej: ["D", "F", "A", "C"]
   primaryMode: {
@@ -24,18 +29,18 @@ export interface ChordImprovisationGuide {
   }[];
 }
 
-function buildScaleNotes(root: ChromaticNote, intervals: number[]): string[] {
-  const rootIdx = CHROMATIC_NOTES.indexOf(root);
-  if (rootIdx === -1) return [];
-  return intervals.map((semitones) => CHROMATIC_NOTES[(rootIdx + semitones) % 12]);
+function buildScaleNotes(root: string, intervals: number[]): string[] {
+  const cleanRoot = resolveCleanKeyRoot(root);
+  const rootIdx = getPitchClass(cleanRoot);
+  return intervals.map((semitones) => getCleanNoteNameForTonality((rootIdx + semitones) % 12, cleanRoot));
 }
 
-function extractRootFromSymbol(chordSymbol: string, fallbackRoot: string): ChromaticNote {
-  const match = chordSymbol.match(/^([A-G]#?)/);
-  if (match && CHROMATIC_NOTES.includes(match[1] as ChromaticNote)) {
-    return match[1] as ChromaticNote;
+function extractRootFromSymbol(chordSymbol: string, fallbackRoot: string): string {
+  const match = chordSymbol.match(/^([A-Ga-g][#b♯♭]?)/);
+  if (match) {
+    return resolveCleanKeyRoot(match[1]);
   }
-  return (CHROMATIC_NOTES.includes(fallbackRoot as ChromaticNote) ? fallbackRoot : 'C') as ChromaticNote;
+  return resolveCleanKeyRoot(fallbackRoot || 'C');
 }
 
 function inferChordKey(chordSymbol: string, degreeLabel: string): ChordKey {

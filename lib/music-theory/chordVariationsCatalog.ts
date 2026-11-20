@@ -4,6 +4,11 @@ import {
   TONALITY_DEGREES_CATALOG,
   TonalityMode,
 } from './cagedHarmonics';
+import {
+  resolveCleanKeyRoot,
+  getCleanNoteNameForTonality,
+  getPitchClass,
+} from '@/lib/music/diatonicSpelling';
 
 export interface ChordTensionVariation {
   id: string;
@@ -23,26 +28,13 @@ export interface RawNote {
 }
 
 function normalizeToChromaticIndex(root: string): number {
-  const enharmonics: Record<string, string> = {
-    Db: 'C#',
-    'D♭': 'C#',
-    Eb: 'D#',
-    'E♭': 'D#',
-    Gb: 'F#',
-    'G♭': 'F#',
-    Ab: 'G#',
-    'A♭': 'G#',
-    Bb: 'A#',
-    'B♭': 'A#',
-  };
-  const standard = enharmonics[root] || root;
-  const idx = CHROMATIC_NOTES.indexOf(standard as any);
-  return idx === -1 ? 0 : idx;
+  return getPitchClass(root);
 }
 
-function getDegreeRoot(keyRoot: string, semitones: number): string {
-  const safeRootIndex = normalizeToChromaticIndex(keyRoot);
-  return CHROMATIC_NOTES[(safeRootIndex + semitones) % 12];
+function getDegreeRoot(keyRoot: string, semitones: number, tonalityMode?: TonalityMode): string {
+  const cleanKeyRoot = resolveCleanKeyRoot(keyRoot, tonalityMode);
+  const targetPitch = (getPitchClass(cleanKeyRoot) + semitones) % 12;
+  return getCleanNoteNameForTonality(targetPitch, cleanKeyRoot, tonalityMode);
 }
 
 export function isStandardVariation(variationId: string): boolean {
@@ -871,10 +863,11 @@ export function applyChordTensionVariation(
     return baseChord;
   }
 
-  const safeRootIndex = normalizeToChromaticIndex(keyRoot);
+  const activeMode: TonalityMode = baseChord.tonalityMode || 'ionian';
+  const cleanKeyRoot = resolveCleanKeyRoot(keyRoot, activeMode);
+  const safeRootIndex = getPitchClass(cleanKeyRoot);
   const transposeOffset = safeRootIndex;
   const isBass = instrumentType === 'bass_4' || instrumentType === 'bass_5';
-  const activeMode: TonalityMode = baseChord.tonalityMode || 'ionian';
   const modeCatalog = TONALITY_DEGREES_CATALOG[activeMode] || TONALITY_DEGREES_CATALOG.ionian;
   const foundDegIdx = modeCatalog.findIndex((d) => d.roman === baseChord.degreeRoman);
   const degIdx = foundDegIdx >= 0 ? foundDegIdx : 0;
@@ -1000,14 +993,14 @@ export function applyChordTensionVariation(
   else if (variation.id === 'dom_b13') formattedChordName = `${baseChord.rootNote}7(♭13)`;
   else if (variation.id === 'dom_alt') formattedChordName = `${baseChord.rootNote}7alt`;
   else if (variation.id === 'dom_slash') {
-    const ivRoot = getDegreeRoot(keyRoot, 5);
+    const ivRoot = getDegreeRoot(cleanKeyRoot, 5, activeMode);
     formattedChordName = `${ivRoot}/${baseChord.rootNote}`;
   } else if (variation.id === 'maj_6') formattedChordName = `${baseChord.rootNote}6`;
   else if (variation.id === 'maj_69') formattedChordName = `${baseChord.rootNote}6/9`;
   else if (variation.id === 'maj_add9') formattedChordName = `${baseChord.rootNote}add9`;
   else if (variation.id === 'maj_slash') {
     const isDeg0 = degIdx === 0;
-    const iiRoot = getDegreeRoot(keyRoot, isDeg0 ? 2 : 7);
+    const iiRoot = getDegreeRoot(cleanKeyRoot, isDeg0 ? 2 : 7, activeMode);
     formattedChordName = `${iiRoot}/${baseChord.rootNote}`;
   } else if (variation.id === 'dim_full') formattedChordName = `${baseChord.rootNote}°7`;
   else if (variation.id === 'dim_half') formattedChordName = `${baseChord.rootNote}m7(♭5)`;

@@ -43,6 +43,12 @@ import {
   applyChordTensionVariation,
   isStandardVariation,
 } from '@/lib/music-theory/chordVariationsCatalog';
+import {
+  resolveCleanKeyRoot,
+  getCleanNoteNameForTonality,
+  getPitchClass,
+  getCleanDiatonicScaleNotes,
+} from '@/lib/music/diatonicSpelling';
 import { CagedHarmonicChordsView } from '@/components/fretboard/CagedHarmonicChordsView';
 import { PositionMapBrackets } from '@/components/fretboard/PositionMapBrackets';
 import {
@@ -99,6 +105,12 @@ export default function FretboardPage() {
   const [activeChordDegreeIndex, setActiveChordDegreeIndex] = useState<number>(0);
   const [activeExtensionFamily, setActiveExtensionFamily] = useState<ChordExtensionFamily>('triad');
   const [activeVariationId, setActiveVariationId] = useState<string>('dom_std');
+
+  // Normalización Diatónica Limpia según Círculo de Quintas (Cero ## / bb)
+  const cleanRootNote = useMemo(() => resolveCleanKeyRoot(rootNote, tonalityMode), [rootNote, tonalityMode]);
+  const handleRootNoteChange = useCallback((newRoot: string) => {
+    setRootNote(resolveCleanKeyRoot(newRoot, tonalityMode));
+  }, [tonalityMode]);
 
   // Estado Modo Editor Visual y Persistencia de Acordes en PostgreSQL
   const [isChordEditorActive, setIsChordEditorActive] = useState<boolean>(false);
@@ -171,11 +183,11 @@ export default function FretboardPage() {
   }, [allProgressions, selectedProgressionId]);
 
   const activeStepResourceId = useMemo(() => {
-    const resolved = resolveProgressionChords(activeProgression, rootNote);
+    const resolved = resolveProgressionChords(activeProgression, cleanRootNote);
     const currentStep = resolved[currentProgressionStepIndex] || resolved[0];
     const overrideKey = `${selectedProgressionId}_${currentProgressionStepIndex}`;
     return stepResourceOverrides[overrideKey] || currentStep?.assignedImprovResourceId || 'default';
-  }, [activeProgression, rootNote, currentProgressionStepIndex, selectedProgressionId, stepResourceOverrides]);
+  }, [activeProgression, cleanRootNote, currentProgressionStepIndex, selectedProgressionId, stepResourceOverrides]);
 
   const handleStepImprovResourceChange = useCallback(
     (stepIndex: number, resourceId: string) => {
@@ -189,19 +201,19 @@ export default function FretboardPage() {
   );
 
   const currentImprovGuide = useMemo(() => {
-    const resolved = resolveProgressionChords(activeProgression, rootNote);
+    const resolved = resolveProgressionChords(activeProgression, cleanRootNote);
     const currentStep = resolved[currentProgressionStepIndex] || resolved[0];
     if (!currentStep) return null;
-    const baseGuide = getImprovisationGuide(rootNote, currentStep.fullChordLabel, currentStep.roman);
+    const baseGuide = getImprovisationGuide(cleanRootNote, currentStep.fullChordLabel, currentStep.roman);
     const customResource = findImprovResourceById(activeStepResourceId, currentStep.roman);
     if (!customResource) return baseGuide;
 
-    const rootIdx = CHROMATIC_NOTES.indexOf(currentStep.rootNote);
-    const safeRootIdx = rootIdx === -1 ? 0 : rootIdx;
+    const rootIdx = getPitchClass(currentStep.rootNote);
+    const safeRootIdx = rootIdx;
 
     const customNotes = customResource.intervals.map((intervalItem) => {
       const semitoneValue = typeof intervalItem === 'number' ? intervalItem : intervalItem.semitones;
-      return CHROMATIC_NOTES[(safeRootIdx + semitoneValue + 12) % 12];
+      return getCleanNoteNameForTonality((safeRootIdx + semitoneValue + 12) % 12, currentStep.rootNote);
     });
 
     const resourceTitle = customResource.name || customResource.label || '';
@@ -218,7 +230,7 @@ export default function FretboardPage() {
             : `Escala/Modo asignado (${resourceTitle}) sobre ${currentStep.fullChordLabel}`,
       },
     };
-  }, [activeProgression, rootNote, currentProgressionStepIndex, activeStepResourceId]);
+  }, [activeProgression, cleanRootNote, currentProgressionStepIndex, activeStepResourceId]);
 
   const config = INSTRUMENTS[instrument];
 
@@ -226,13 +238,13 @@ export default function FretboardPage() {
   const cagedChords: CagedChordVoicing[] = useMemo(() => {
     if (studyMode !== 'chords') return [];
     return getCagedDiatonicChords(
-      rootNote,
+      cleanRootNote,
       activeCagedBoxId,
       instrument,
       activeExtensionFamily,
       tonalityMode
     );
-  }, [studyMode, rootNote, activeCagedBoxId, instrument, activeExtensionFamily, tonalityMode]);
+  }, [studyMode, cleanRootNote, activeCagedBoxId, instrument, activeExtensionFamily, tonalityMode]);
 
   // Si cambia la caja o tonalidad, asegurar índice de grado seguro
   useEffect(() => {
@@ -243,8 +255,8 @@ export default function FretboardPage() {
 
   // Lista de Variaciones Armónicas Contextuales para el grado y modo activos
   const degreeVariations = useMemo(() => {
-    return getVariationsForDegree(activeChordDegreeIndex, rootNote, tonalityMode);
-  }, [activeChordDegreeIndex, rootNote, tonalityMode]);
+    return getVariationsForDegree(activeChordDegreeIndex, cleanRootNote, tonalityMode);
+  }, [activeChordDegreeIndex, cleanRootNote, tonalityMode]);
 
   // Sincronizar activeVariationId cuando cambia el grado o modo
   useEffect(() => {
@@ -300,7 +312,7 @@ export default function FretboardPage() {
       return applyChordTensionVariation(
         baseChord,
         activeVariation,
-        rootNote,
+        cleanRootNote,
         activeCagedBoxId,
         instrument
       );
@@ -313,7 +325,7 @@ export default function FretboardPage() {
     activeChordDegreeIndex,
     customChordNotes,
     activeVariation,
-    rootNote,
+    cleanRootNote,
     activeCagedBoxId,
     instrument,
   ]);
@@ -323,24 +335,24 @@ export default function FretboardPage() {
     if (studyMode !== 'scales') return null;
     return calculateScaleSystemNotes(
       instrument,
-      rootNote,
+      cleanRootNote,
       scaleKey,
       scaleSystem,
       activePatternId,
       threeToTwoLayout
     );
-  }, [studyMode, instrument, rootNote, scaleKey, scaleSystem, activePatternId, threeToTwoLayout]);
+  }, [studyMode, instrument, cleanRootNote, scaleKey, scaleSystem, activePatternId, threeToTwoLayout]);
 
   // Zonas / Brackets de Posición a lo largo de todo el mástil (0 a 24 trastes)
   const positionZones = useMemo(() => {
-    return getScalePositionZones(scaleSystem, rootNote, config.totalFrets);
-  }, [scaleSystem, rootNote, config.totalFrets]);
+    return getScalePositionZones(scaleSystem, cleanRootNote, config.totalFrets);
+  }, [scaleSystem, cleanRootNote, config.totalFrets]);
 
   // Todas las notas de la escala en el mástil completo (0 a 24 trastes)
   const fullNeckScaleNotes = useMemo(() => {
     if (studyMode !== 'scales' || scaleViewMode !== 'full_neck_map') return [];
-    return calculateFullNeckScaleNotes(instrument, rootNote, scaleKey);
-  }, [studyMode, scaleViewMode, instrument, rootNote, scaleKey]);
+    return calculateFullNeckScaleNotes(instrument, cleanRootNote, scaleKey);
+  }, [studyMode, scaleViewMode, instrument, cleanRootNote, scaleKey]);
 
   // Carga automática del patrón personalizado desde la Base de Datos PostgreSQL
   useEffect(() => {
@@ -484,9 +496,8 @@ export default function FretboardPage() {
 
         // Si existe un patrón guardado en BD, cargar ese; si no, el patrón teórico calculado
         if (customDbPattern && customDbPattern.notesData.length > 0) {
-          const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
-          const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
-          const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+          const targetRootIdx = getPitchClass(cleanRootNote);
+          const shift = targetRootIdx;
 
           customDbPattern.notesData.forEach((n) => {
             if (!initialGrid[n.stringIndex]) {
@@ -562,9 +573,8 @@ export default function FretboardPage() {
   const handleSaveToDb = useCallback(async () => {
     setIsSavingDb(true);
     try {
-      const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
-      const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
-      const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+      const targetRootIdx = getPitchClass(cleanRootNote);
+      const shift = targetRootIdx;
 
       const flatNotes: ScaleNotePayload[] = [];
       const allFrets: number[] = [];
@@ -1074,10 +1084,14 @@ export default function FretboardPage() {
         )
           role = 'seventh';
 
+        const noteName = isRoot
+          ? (activeCagedChord.rootNote || cleanRootNote)
+          : getCleanNoteNameForTonality(fn.midi % 12, cleanRootNote, tonalityMode);
+
         return {
           stringIndex: cn.stringIndex,
           fret: cn.fret,
-          note: fn.note,
+          note: noteName,
           interval: cn.intervalLabel,
           role,
           finger: cn.finger > 0 ? String(cn.finger) : undefined,
@@ -1097,9 +1111,8 @@ export default function FretboardPage() {
       let activeBoxNotes: ActiveFretNote[] = [];
 
       if (customDbPattern && customDbPattern.notesData.length > 0) {
-        const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
-        const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
-        const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+        const targetRootIdx = getPitchClass(cleanRootNote);
+        const shift = targetRootIdx;
 
         customDbPattern.notesData.forEach((item) => {
           const str = config.strings[item.stringIndex];
@@ -1115,7 +1128,7 @@ export default function FretboardPage() {
           activeBoxNotes.push({
             stringIndex: item.stringIndex,
             fret: f,
-            note: fn.note,
+            note: getCleanNoteNameForTonality(fn.midi % 12, cleanRootNote, scaleKey),
             interval: isRoot ? 'R' : '',
             role: isRoot ? 'root' : 'other',
             finger: item.finger > 0 ? String(item.finger) : undefined,
@@ -1177,9 +1190,10 @@ export default function FretboardPage() {
     // MODO 3: PROGRESIONES ARMÓNICAS + GUÍA DE IMPROVISACIÓN
     // -------------------------------------------------------------
     if (studyMode === 'progressions') {
-      const resolved = resolveProgressionChords(activeProgression, rootNote);
+      const resolved = resolveProgressionChords(activeProgression, cleanRootNote);
       const currentStep = resolved[currentProgressionStepIndex] || resolved[0];
-      const guide = getImprovisationGuide(rootNote, currentStep.fullChordLabel, currentStep.roman);
+      const cleanStepRoot = resolveCleanKeyRoot(currentStep.rootNote);
+      const guide = getImprovisationGuide(cleanRootNote, currentStep.fullChordLabel, currentStep.roman);
       const customResource = findImprovResourceById(activeStepResourceId, currentStep.roman);
 
       const SEMITONE_INTERVAL_LABELS: Record<number, { label: string; role: NoteRole }> = {
@@ -1197,49 +1211,47 @@ export default function FretboardPage() {
         11: { label: '7', role: 'seventh' },
       };
 
-      const chordNotes = getChordNoteList(currentStep.rootNote, currentStep.chordKey);
-      const chordNoteMap = new Map<string, { interval: string; role: NoteRole }>();
+      const chordNotes = getChordNoteList(cleanStepRoot, currentStep.chordKey);
+      const chordNoteMap = new Map<number, { interval: string; role: NoteRole }>();
 
       if (customResource && customResource.type === 'arpeggio') {
-        const rootIdx = CHROMATIC_NOTES.indexOf(currentStep.rootNote);
-        const safeRootIdx = rootIdx === -1 ? 0 : rootIdx;
+        const safeRootIdx = getPitchClass(cleanStepRoot);
         customResource.intervals.forEach((intervalItem) => {
           const semitoneValue = typeof intervalItem === 'number' ? intervalItem : intervalItem.semitones;
-          const noteName = CHROMATIC_NOTES[(safeRootIdx + semitoneValue + 12) % 12];
+          const pitch = (safeRootIdx + semitoneValue + 12) % 12;
           const meta = SEMITONE_INTERVAL_LABELS[((semitoneValue % 12) + 12) % 12] || { label: '', role: 'other' };
           const intervalLabel = typeof intervalItem === 'object' && intervalItem.label ? intervalItem.label : meta.label;
-          chordNoteMap.set(noteName, {
+          chordNoteMap.set(pitch, {
             interval: intervalLabel,
             role: meta.role,
           });
         });
       } else {
         chordNotes.forEach((cn) => {
-          chordNoteMap.set(cn.note, {
+          chordNoteMap.set(getPitchClass(cn.note), {
             interval: cn.interval.label,
             role: cn.interval.role,
           });
         });
       }
 
-      const scaleNoteMap = new Map<string, { interval: string; role: NoteRole }>();
+      const scaleNoteMap = new Map<number, { interval: string; role: NoteRole }>();
       if (customResource && customResource.type !== 'arpeggio') {
-        const rootIdx = CHROMATIC_NOTES.indexOf(currentStep.rootNote);
-        const safeRootIdx = rootIdx === -1 ? 0 : rootIdx;
+        const safeRootIdx = getPitchClass(cleanStepRoot);
         customResource.intervals.forEach((intervalItem) => {
           const semitoneValue = typeof intervalItem === 'number' ? intervalItem : intervalItem.semitones;
-          const noteName = CHROMATIC_NOTES[(safeRootIdx + semitoneValue + 12) % 12];
+          const pitch = (safeRootIdx + semitoneValue + 12) % 12;
           const meta = SEMITONE_INTERVAL_LABELS[((semitoneValue % 12) + 12) % 12] || { label: '', role: 'other' };
           const intervalLabel = typeof intervalItem === 'object' && intervalItem.label ? intervalItem.label : meta.label;
-          scaleNoteMap.set(noteName, {
+          scaleNoteMap.set(pitch, {
             interval: intervalLabel,
             role: meta.role,
           });
         });
       } else {
-        const scaleNotes = getScaleNoteList(currentStep.rootNote, guide.primaryMode.scaleKey);
+        const scaleNotes = getScaleNoteList(cleanStepRoot, guide.primaryMode.scaleKey);
         scaleNotes.forEach((sn) => {
-          scaleNoteMap.set(sn.note, {
+          scaleNoteMap.set(getPitchClass(sn.note), {
             interval: sn.interval.label,
             role: sn.interval.role,
           });
@@ -1257,9 +1269,8 @@ export default function FretboardPage() {
       if (progressionSystem === 'three_to_two') {
         const pat = getThreeToTwoPattern(selectedThreeToTwoPattern);
         stringDistribution = pat.stringDistribution;
-        const targetRootIdx = CHROMATIC_NOTES.indexOf(currentStep.rootNote as ChromaticNote);
-        const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
-        const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+        const targetRootIdx = getPitchClass(cleanStepRoot);
+        const shift = targetRootIdx;
 
         minFret = pat.baseMinFret + shift;
         maxFret = pat.baseMaxFret + shift;
@@ -1275,9 +1286,8 @@ export default function FretboardPage() {
         boxBaseFret = minFret === 0 ? 1 : minFret + pat.baseFretOffset;
       } else if (progressionSystem === 'caged') {
         const cagedBox = CAGED_BASE_BOXES.find((b) => b.id === activeCagedBoxId) || CAGED_BASE_BOXES[0];
-        const targetRootIdx = CHROMATIC_NOTES.indexOf(currentStep.rootNote as ChromaticNote);
-        const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
-        const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+        const targetRootIdx = getPitchClass(cleanStepRoot);
+        const shift = targetRootIdx;
 
         minFret = cagedBox.baseMinFret + shift;
         maxFret = cagedBox.baseMaxFret + shift;
@@ -1293,9 +1303,8 @@ export default function FretboardPage() {
         boxBaseFret = minFret === 0 ? 1 : minFret + cagedBox.baseFretOffset;
       } else if (progressionSystem === '3nps') {
         const npsBox = THREE_NPS_BASE_PATTERNS[0];
-        const targetRootIdx = CHROMATIC_NOTES.indexOf(currentStep.rootNote as ChromaticNote);
-        const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
-        const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+        const targetRootIdx = getPitchClass(cleanStepRoot);
+        const shift = targetRootIdx;
 
         minFret = npsBox.baseMinFret + shift;
         maxFret = npsBox.baseMaxFret + shift;
@@ -1325,8 +1334,9 @@ export default function FretboardPage() {
 
         for (let fret = minFret; fret <= maxFret; fret++) {
           const fn = getFretNote(str.midi, fret);
-          const chordMatch = chordNoteMap.get(fn.note);
-          const scaleMatch = scaleNoteMap.get(fn.note);
+          const pitch = fn.midi % 12;
+          const chordMatch = chordNoteMap.get(pitch);
+          const scaleMatch = scaleNoteMap.get(pitch);
 
           if (improvMode === 'chord_tones' || (customResource && customResource.type === 'arpeggio' && improvMode !== 'both')) {
             if (chordMatch) {
@@ -1408,7 +1418,7 @@ export default function FretboardPage() {
           notes.push({
             stringIndex: sIdx,
             fret: cand.fret,
-            note: cand.fn.note,
+            note: getCleanNoteNameForTonality(cand.fn.midi % 12, cleanStepRoot),
             interval: cand.interval,
             role: cand.role,
             isTargetTone: cand.isTargetTone,
@@ -1457,16 +1467,15 @@ export default function FretboardPage() {
       return scaleResult ? scaleResult.fretRange : [0, 12];
     }
     if (studyMode === 'chords') {
-      return getCagedBoxFretRange(activeCagedBoxId, rootNote);
+      return getCagedBoxFretRange(activeCagedBoxId, cleanRootNote);
     }
     if (studyMode === 'progressions') {
       if (progressionSystem === 'three_to_two') {
-        const resolved = resolveProgressionChords(activeProgression, rootNote);
+        const resolved = resolveProgressionChords(activeProgression, cleanRootNote);
         const currentStep = resolved[currentProgressionStepIndex] || resolved[0];
-        const chordRoot = currentStep ? currentStep.rootNote : rootNote;
-        const targetRootIdx = CHROMATIC_NOTES.indexOf(chordRoot as ChromaticNote);
-        const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
-        const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+        const chordRoot = currentStep ? currentStep.rootNote : cleanRootNote;
+        const targetRootIdx = getPitchClass(chordRoot);
+        const shift = targetRootIdx;
         const pat = getThreeToTwoPattern(selectedThreeToTwoPattern);
         let minF = pat.baseMinFret + shift;
         let maxF = pat.baseMaxFret + shift;
@@ -1480,7 +1489,7 @@ export default function FretboardPage() {
         return [Math.max(0, minF), Math.min(config.totalFrets, maxF)];
       }
       if (progressionSystem === 'caged') {
-        return getCagedBoxFretRange(activeCagedBoxId, rootNote);
+        return getCagedBoxFretRange(activeCagedBoxId, cleanRootNote);
       }
       return null;
     }
@@ -1489,9 +1498,8 @@ export default function FretboardPage() {
         return scaleResult ? scaleResult.fretRange : [0, 24];
       }
       if (customDbPattern && customDbPattern.notesData.length > 0) {
-        const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
-        const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
-        const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+        const targetRootIdx = getPitchClass(cleanRootNote);
+        const shift = targetRootIdx;
 
         let minF = customDbPattern.minFret + shift;
         let maxF = customDbPattern.maxFret + shift;
@@ -1521,7 +1529,7 @@ export default function FretboardPage() {
     activeProgression,
     currentProgressionStepIndex,
     scaleResult,
-    rootNote,
+    cleanRootNote,
     config.totalFrets,
   ]);
 
@@ -1556,11 +1564,11 @@ export default function FretboardPage() {
     setCurrentProgressionStepIndex((prev) => {
       const nextIdx = (prev + 1) % prog.steps.length;
 
-      const resolved = resolveProgressionChords(prog, rootNote);
+      const resolved = resolveProgressionChords(prog, cleanRootNote);
       const stepChord = resolved[nextIdx];
       if (stepChord) {
         const chordNotes = getChordNoteList(stepChord.rootNote, stepChord.chordKey);
-        const rootMidi = 40 + CHROMATIC_NOTES.indexOf(stepChord.rootNote);
+        const rootMidi = 40 + getPitchClass(stepChord.rootNote);
         const midis = chordNotes.map((cn) => rootMidi + cn.interval.semitones);
         getFretboardAudioEngine().playChord(midis, 'strum', 0.05);
       }
@@ -1694,8 +1702,8 @@ export default function FretboardPage() {
           onStudyModeChange={setStudyMode}
           instrument={instrument}
           onInstrumentChange={setInstrument}
-          rootNote={rootNote}
-          onRootNoteChange={setRootNote}
+          rootNote={cleanRootNote}
+          onRootNoteChange={handleRootNoteChange}
           scaleKey={scaleKey}
           onScaleKeyChange={setScaleKey}
           displayMode={displayMode}
@@ -1736,8 +1744,8 @@ export default function FretboardPage() {
         {/* 3.0 Laboratorio de Armonía Diatónica CAGED (Pestaña Acordes) */}
         {studyMode === 'chords' && (
           <CagedHarmonicChordsView
-            selectedKeyRoot={rootNote}
-            onKeyRootChange={setRootNote}
+            selectedKeyRoot={cleanRootNote}
+            onKeyRootChange={handleRootNoteChange}
             tonalityMode={tonalityMode}
             onTonalityModeChange={(mode) => {
               setTonalityMode(mode);
@@ -1846,10 +1854,10 @@ export default function FretboardPage() {
           }
           title={
             studyMode === 'chords'
-              ? `${rootNote} ${TONALITY_MODE_LABELS[tonalityMode]} • ${activeCagedChord?.fullName || ''} (${CAGED_BOX_DEFINITIONS.find((b) => b.id === activeCagedBoxId)?.shortLabel || ''})`
+              ? `${cleanRootNote} ${TONALITY_MODE_LABELS[tonalityMode]} • ${activeCagedChord?.fullName || ''} (${CAGED_BOX_DEFINITIONS.find((b) => b.id === activeCagedBoxId)?.shortLabel || ''})`
               : studyMode === 'scales'
-              ? `${scaleViewMode === 'full_neck_map' ? '🌐 [MÁSTIL COMPLETO] ' : ''}${isEditorActive ? '🛠️ [MODO EDITOR ACTIVO] ' : isCustomFromDb ? '☁️ [PERSONALIZADO EN NUBE] ' : ''}${rootNote} ${SCALES_CATALOG[scaleKey]?.name || ''} • ${scaleSystem === 'caged' ? 'CAGED' : '3NPS'} (${(scaleSystem === 'caged' ? CAGED_BOXES : THREE_NPS_PATTERNS).find((p) => p.id === activePatternId)?.shortLabel || ''})`
-              : currentImprovGuide ? `${currentImprovGuide.chordName} (${currentImprovGuide.degreeRoman}) • ${currentImprovGuide.primaryMode.name}` : `${rootNote} ${PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId)?.name || ''}`
+              ? `${scaleViewMode === 'full_neck_map' ? '🌐 [MÁSTIL COMPLETO] ' : ''}${isEditorActive ? '🛠️ [MODO EDITOR ACTIVO] ' : isCustomFromDb ? '☁️ [PERSONALIZADO EN NUBE] ' : ''}${cleanRootNote} ${SCALES_CATALOG[scaleKey]?.name || ''} • ${scaleSystem === 'caged' ? 'CAGED' : '3NPS'} (${(scaleSystem === 'caged' ? CAGED_BOXES : THREE_NPS_PATTERNS).find((p) => p.id === activePatternId)?.shortLabel || ''})`
+              : currentImprovGuide ? `${currentImprovGuide.chordName} (${currentImprovGuide.degreeRoman}) • ${currentImprovGuide.primaryMode.name}` : `${cleanRootNote} ${PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId)?.name || ''}`
           }
         />
 
@@ -1857,7 +1865,7 @@ export default function FretboardPage() {
         <ChordTheoryAccordion
           studyMode={studyMode}
           instrument={instrument}
-          rootNote={rootNote}
+          rootNote={cleanRootNote}
           scaleKey={scaleKey}
           selectedProgressionId={selectedProgressionId}
           currentProgressionStepIndex={currentProgressionStepIndex}

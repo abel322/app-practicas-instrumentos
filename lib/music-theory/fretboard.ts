@@ -1,5 +1,13 @@
 // Motor de Teoría Musical y Afinaciones para SoundLab Fretboard Lab
 
+import {
+  resolveCleanKeyRoot,
+  getCleanDiatonicScaleNotes,
+  getCleanNoteNameForTonality,
+  getPitchClass,
+  DISPLAY_ROOTS as DIATONIC_DISPLAY_ROOTS,
+} from '@/lib/music/diatonicSpelling';
+
 export type InstrumentType = 'guitar_6' | 'bass_4' | 'bass_5';
 
 export interface InstrumentConfig {
@@ -58,16 +66,16 @@ export const ENHARMONIC_MAP: Record<string, ChromaticNote> = {
 
 export const DISPLAY_ROOTS = [
   { value: 'C', label: 'C' },
-  { value: 'C#', label: 'C# / Db' },
+  { value: 'Db', label: 'C# / Db' },
   { value: 'D', label: 'D' },
-  { value: 'D#', label: 'D# / Eb' },
+  { value: 'Eb', label: 'D# / Eb' },
   { value: 'E', label: 'E' },
   { value: 'F', label: 'F' },
   { value: 'F#', label: 'F# / Gb' },
   { value: 'G', label: 'G' },
-  { value: 'G#', label: 'G# / Ab' },
+  { value: 'Ab', label: 'G# / Ab' },
   { value: 'A', label: 'A' },
-  { value: 'A#', label: 'A# / Bb' },
+  { value: 'Bb', label: 'A# / Bb' },
   { value: 'B', label: 'B' },
 ];
 
@@ -163,16 +171,17 @@ export function getIntervalBetween(rootNote: string, targetNote: string): Interv
   };
 }
 
-// Notas pertenecientes a una escala
-export function getScaleNoteList(rootNote: string, scaleKey: ScaleKey): { note: ChromaticNote; interval: IntervalInfo }[] {
+// Notas pertenecientes a una escala (Ortografía Diatónica Limpia Cero ## / bb)
+export function getScaleNoteList(rootNote: string, scaleKey: ScaleKey): { note: string; interval: IntervalInfo }[] {
   const scale = SCALES_CATALOG[scaleKey];
-  const rootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
-  if (rootIdx === -1) return [];
+  if (!scale) return [];
+  const cleanRoot = resolveCleanKeyRoot(rootNote, scaleKey);
+  const rootIdx = getPitchClass(cleanRoot);
+  const cleanNotes = getCleanDiatonicScaleNotes(cleanRoot, scaleKey, scale.intervals);
 
-  return scale.intervals.map((interval) => {
+  return scale.intervals.map((interval, idx) => {
     const semitones = interval % 12;
-    const noteIdx = (rootIdx + semitones) % 12;
-    const note = CHROMATIC_NOTES[noteIdx];
+    const note = cleanNotes[idx] || getCleanNoteNameForTonality((rootIdx + semitones) % 12, cleanRoot, scaleKey);
     const info = INTERVAL_MAP[semitones] || { label: `${semitones}`, role: 'other', fullName: `Intervalo ${semitones}` };
     return {
       note,
@@ -186,16 +195,16 @@ export function getScaleNoteList(rootNote: string, scaleKey: ScaleKey): { note: 
   });
 }
 
-// Notas pertenecientes a un acorde
-export function getChordNoteList(rootNote: string, chordKey: ChordKey): { note: ChromaticNote; interval: IntervalInfo }[] {
+// Notas pertenecientes a un acorde (Ortografía Diatónica Limpia Cero ## / bb)
+export function getChordNoteList(rootNote: string, chordKey: ChordKey): { note: string; interval: IntervalInfo }[] {
   const chord = CHORDS_CATALOG[chordKey];
-  const rootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
-  if (rootIdx === -1) return [];
+  if (!chord) return [];
+  const cleanRoot = resolveCleanKeyRoot(rootNote);
+  const rootIdx = getPitchClass(cleanRoot);
 
   return chord.formula.map((interval, idx) => {
     const semitones = interval % 12;
-    const noteIdx = (rootIdx + semitones) % 12;
-    const note = CHROMATIC_NOTES[noteIdx];
+    const note = idx === 0 ? cleanRoot : getCleanNoteNameForTonality((rootIdx + semitones) % 12, cleanRoot);
     const customLabel = chord.labels[idx] || INTERVAL_MAP[semitones]?.label || `${semitones}`;
     const role: NoteRole =
       customLabel === 'R'
@@ -1028,26 +1037,26 @@ export function convertCustomProgressionToDef(record: {
   };
 }
 
-// Resolver los acordes reales de una progresión según la tonalidad elegida
+// Resolver los acordes reales de una progresión según la tonalidad elegida (Ortografía Diatónica Limpia Cero ## / bb)
 export function resolveProgressionChords(
   progression: ProgressionDef,
   keyRoot: string
 ): {
   roman: string;
   stepName: string;
-  rootNote: ChromaticNote;
+  rootNote: string;
   chordKey: ChordKey;
   chordName: string;
   fullChordLabel: string;
   bars: number;
   assignedImprovResourceId?: string;
 }[] {
-  const rootIdx = CHROMATIC_NOTES.indexOf(keyRoot as ChromaticNote);
-  if (rootIdx === -1) return [];
+  const cleanKeyRoot = resolveCleanKeyRoot(keyRoot);
+  const rootIdx = getPitchClass(cleanKeyRoot);
 
   return progression.steps.map((step) => {
     const chordRootIdx = (rootIdx + step.semitoneOffset) % 12;
-    const chordRoot = CHROMATIC_NOTES[chordRootIdx];
+    const chordRoot = getCleanNoteNameForTonality(chordRootIdx, cleanKeyRoot);
     const chordDef = CHORDS_CATALOG[step.chordKey];
     const fullChordLabel = `${chordRoot}${
       step.chordKey === 'major'

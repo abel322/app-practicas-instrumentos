@@ -13,6 +13,7 @@ import {
   resolveProgressionChords,
 } from '@/lib/music-theory/fretboard';
 import { CagedChordVoicing, TONALITY_MODE_LABELS } from '@/lib/music-theory/cagedHarmonics';
+import { resolveCleanKeyRoot } from '@/lib/music/diatonicSpelling';
 import { StudyMode } from './FretboardToolbar';
 import { Sparkles, BookOpen, Award, Zap, ChevronDown, ChevronUp } from 'lucide-react';
 
@@ -43,18 +44,19 @@ export const ChordTheoryAccordion: React.FC<ChordTheoryAccordionProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState<boolean>(defaultExpanded);
   const isBass = instrument.startsWith('bass');
+  const cleanRoot = resolveCleanKeyRoot(rootNote, cagedChord?.tonalityMode || scaleKey);
 
   // Título resumen para la barra del acordeón
   const summaryBadge =
     studyMode === 'chords'
       ? cagedChord
         ? `${cagedChord.fullName} (${cagedBoxName || 'CAGED'})`
-        : `${rootNote} Mayor`
+        : `${cleanRoot} Mayor`
       : studyMode === 'scales'
-      ? `${rootNote} ${SCALES_CATALOG[scaleKey]?.name || ''}`
+      ? `${cleanRoot} ${SCALES_CATALOG[scaleKey]?.name || ''}`
       : (() => {
           const prog = PROGRESSIONS_CATALOG.find((p) => p.id === selectedProgressionId) || PROGRESSIONS_CATALOG[0];
-          const resolved = resolveProgressionChords(prog, rootNote);
+          const resolved = resolveProgressionChords(prog, cleanRoot);
           const cur = resolved[currentProgressionStepIndex] || resolved[0];
           return `${cur?.fullChordLabel || ''} (${cur?.roman || ''})`;
         })();
@@ -99,7 +101,7 @@ export const ChordTheoryAccordion: React.FC<ChordTheoryAccordionProps> = ({
                   <span>Campo Armónico Diatónico</span>
                 </div>
                 <div className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                  {cagedChord ? cagedChord.fullName : `${rootNote} Mayor`}
+                  {cagedChord ? cagedChord.fullName : `${cleanRoot} Mayor`}
                 </div>
                 <div className="text-xs font-mono text-slate-600 dark:text-slate-300">
                   <span>Grado: </span>
@@ -110,7 +112,7 @@ export const ChordTheoryAccordion: React.FC<ChordTheoryAccordionProps> = ({
                 <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
                   <span>Tonalidad: </span>
                   <strong className="text-slate-800 dark:text-slate-200">
-                    {rootNote} {TONALITY_MODE_LABELS[cagedChord?.tonalityMode || 'ionian']}
+                    {cleanRoot} {TONALITY_MODE_LABELS[cagedChord?.tonalityMode || 'ionian']}
                   </strong>
                   <span> • Forma: </span>
                   <strong className="text-purple-600 dark:text-purple-400">{cagedBoxName || 'CAGED'}</strong>
@@ -163,7 +165,7 @@ export const ChordTheoryAccordion: React.FC<ChordTheoryAccordionProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {(() => {
                 const scaleInfo = SCALES_CATALOG[scaleKey];
-                const notes = getScaleNoteList(rootNote, scaleKey);
+                const notes = getScaleNoteList(cleanRoot, scaleKey);
                 return (
                   <>
                     <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-white/80 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -172,7 +174,7 @@ export const ChordTheoryAccordion: React.FC<ChordTheoryAccordionProps> = ({
                         <span>Modo / Escala</span>
                       </div>
                       <div className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                        {rootNote} {scaleInfo.name}
+                        {cleanRoot} {scaleInfo.name}
                       </div>
                       <div className="text-xs text-slate-500 dark:text-slate-400 font-mono">
                         {notes.length} notas en el mapa tonal

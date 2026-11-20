@@ -12,6 +12,7 @@ import {
   ChordVoicing,
   resolveProgressionChords,
 } from '@/lib/music-theory/fretboard';
+import { resolveCleanKeyRoot } from '@/lib/music/diatonicSpelling';
 import { getImprovOptionsForChord } from '@/lib/music-theory/chordImprovOptions';
 import { NoteDisplayMode } from '@/lib/music-theory/scaleSystems';
 import {
@@ -193,7 +194,7 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
                     Tónica (Root)
                   </label>
                   <select
-                    value={rootNote}
+                    value={resolveCleanKeyRoot(rootNote, scaleKey)}
                     onChange={(e) => onRootNoteChange(e.target.value)}
                     className="w-full h-9 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700/80 text-slate-900 dark:text-white text-xs font-mono font-bold rounded-xl px-2.5 focus:outline-none focus:border-[#0891b2] dark:focus:border-cyan-400 cursor-pointer"
                   >
@@ -248,7 +249,7 @@ export const FretboardToolbar: React.FC<FretboardToolbarProps> = ({
                     Tonalidad (Key)
                   </label>
                   <select
-                    value={rootNote}
+                    value={resolveCleanKeyRoot(rootNote, scaleKey)}
                     onChange={(e) => onRootNoteChange(e.target.value)}
                     className="w-full h-9 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700/80 text-slate-900 dark:text-white text-xs font-mono font-bold rounded-xl px-2.5 focus:outline-none focus:border-[#0891b2] dark:focus:border-cyan-400 cursor-pointer"
                   >

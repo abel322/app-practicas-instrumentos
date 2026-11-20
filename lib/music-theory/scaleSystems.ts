@@ -7,6 +7,11 @@ import {
   getFretNote,
   NoteRole,
 } from './fretboard';
+import {
+  resolveCleanKeyRoot,
+  getCleanNoteNameForTonality,
+  getPitchClass,
+} from '@/lib/music/diatonicSpelling';
 import { ActiveFretNote } from '@/components/fretboard/InteractiveFretboard';
 import { PositionZone } from '@/components/fretboard/PositionMapBrackets';
 import { ALL_SCALES_CATALOG, ScaleFormula } from './scaleDefinitions';
@@ -220,11 +225,8 @@ export function transposePattern(
   rootNote: string,
   totalFrets: number = 24
 ): SystemPatternDefinition {
-  const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
-  const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
-  if (targetRootIdx === -1) return basePattern;
-
-  let shift = (targetRootIdx - baseRootIdx + 12) % 12;
+  const targetRootIdx = getPitchClass(rootNote);
+  let shift = targetRootIdx;
   if (shift === 0) return basePattern;
 
   let minFret = basePattern.minFret + shift;
@@ -465,11 +467,11 @@ export function calculateScaleSystemNotes(
 
   // 1. Obtener la fórmula teórica de la escala seleccionada
   const formula: ScaleFormula = ALL_SCALES_CATALOG[scaleKey] || ALL_SCALES_CATALOG.major;
+  const cleanRoot = resolveCleanKeyRoot(rootNote, scaleKey);
 
   // 2. Calcular el desplazamiento relativo de la tónica respecto a C
-  const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
-  const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
-  const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+  const targetRootIdx = getPitchClass(cleanRoot);
+  const shift = targetRootIdx;
 
   // 3. Determinar la ventana de trastes [minFret, maxFret] y el traste base de la mano
   let minFret = 0;
@@ -551,7 +553,7 @@ export function calculateScaleSystemNotes(
         }
 
         fretDataMap.set(fret, {
-          note: fn.note,
+          note: getCleanNoteNameForTonality(fn.midi % 12, cleanRoot, scaleKey),
           interval: degree,
           role,
           isRoot: semitones === 0,
@@ -605,9 +607,9 @@ export function getScalePositionZones(
   rootNote: string,
   totalFrets: number = 24
 ): PositionZone[] {
-  const baseRootIdx = CHROMATIC_NOTES.indexOf('C');
-  const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
-  const shift = targetRootIdx === -1 ? 0 : (targetRootIdx - baseRootIdx + 12) % 12;
+  const cleanRoot = resolveCleanKeyRoot(rootNote);
+  const targetRootIdx = getPitchClass(cleanRoot);
+  const shift = targetRootIdx;
 
   const zones: PositionZone[] = [];
 
@@ -730,7 +732,8 @@ export function calculateFullNeckScaleNotes(
   scaleKey: ScaleKey
 ): ActiveFretNote[] {
   const config = INSTRUMENTS[instrument];
-  const targetRootIdx = CHROMATIC_NOTES.indexOf(rootNote as ChromaticNote);
+  const cleanRoot = resolveCleanKeyRoot(rootNote, scaleKey);
+  const targetRootIdx = getPitchClass(cleanRoot);
   const formula = ALL_SCALES_CATALOG[scaleKey] || ALL_SCALES_CATALOG.major;
   const totalFrets = config.totalFrets;
 
@@ -761,7 +764,7 @@ export function calculateFullNeckScaleNotes(
         notes.push({
           stringIndex: sIdx,
           fret,
-          note: fn.note,
+          note: getCleanNoteNameForTonality(fn.midi % 12, cleanRoot, scaleKey),
           interval: degree,
           role,
           fingerAssignment: { finger: 0, isStretch: false },

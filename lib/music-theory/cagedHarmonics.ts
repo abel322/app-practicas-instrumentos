@@ -1,4 +1,10 @@
 import { CHROMATIC_NOTES, InstrumentType } from './fretboard';
+import {
+  resolveCleanKeyRoot,
+  getCleanDiatonicDegreeRoot,
+  getCleanNoteNameForTonality,
+  getPitchClass,
+} from '@/lib/music/diatonicSpelling';
 
 export type ChordExtensionFamily = 
   | 'triad' 
@@ -55,7 +61,7 @@ export const TONALITY_DEGREES_CATALOG: Record<TonalityMode, TonalityDegreeConfig
     { degreeIndex: 3, roman: 'IV', semitonesFromRoot: 5, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: 'maj7', seventhFullName: 'Maj7', seventhType: 'maj', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'7', semitones:11}] },
     { degreeIndex: 4, roman: 'V', semitonesFromRoot: 7, triadSuffix: '', triadFullName: 'Mayor', triadType: 'maj', triadIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}], seventhSuffix: '7', seventhFullName: 'Dominante 7', seventhType: 'dom7', seventhIntervals: [{label:'R', semitones:0}, {label:'3', semitones:4}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
     { degreeIndex: 5, roman: 'VI', semitonesFromRoot: 9, triadSuffix: 'm', triadFullName: 'menor', triadType: 'min', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}], seventhSuffix: 'm7', seventhFullName: 'menor 7', seventhType: 'min', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'5', semitones:7}, {label:'b7', semitones:10}] },
-    { degreeIndex: 6, roman: 'VII°', semitonesFromRoot: 11, triadSuffix: 'dim', triadFullName: 'disminuido', triadType: 'dim', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}], seventhSuffix: 'm7b5', seventhFullName: 'Semidisminuido', seventhType: 'dim', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}, {label:'b7', semitones:10}] },
+    { degreeIndex: 6, roman: 'VII°', semitonesFromRoot: 11, triadSuffix: 'm7b5', triadFullName: 'Semidisminuido', triadType: 'dim', triadIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}], seventhSuffix: 'm7b5', seventhFullName: 'Semidisminuido', seventhType: 'dim', seventhIntervals: [{label:'R', semitones:0}, {label:'b3', semitones:3}, {label:'b5', semitones:6}, {label:'b7', semitones:10}] },
   ],
 
   // 2. DÓRICO
@@ -165,7 +171,7 @@ export const HARMONIC_FAMILIES_CONFIG: Record<ChordExtensionFamily, ChordFormula
     { degreeIndex: 3, roman: 'IV', labelSuffix: '', fullNameSuffix: 'Mayor', chordType: 'maj', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: '5', semitones: 7 }] },
     { degreeIndex: 4, roman: 'V', labelSuffix: '', fullNameSuffix: 'Mayor', chordType: 'maj', intervals: [{ label: 'R', semitones: 0 }, { label: '3', semitones: 4 }, { label: '5', semitones: 7 }] },
     { degreeIndex: 5, roman: 'vi', labelSuffix: 'm', fullNameSuffix: 'menor', chordType: 'min', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: '5', semitones: 7 }] },
-    { degreeIndex: 6, roman: 'vii°', labelSuffix: 'dim', fullNameSuffix: 'disminuido', chordType: 'dim', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b5', semitones: 6 }] },
+    { degreeIndex: 6, roman: 'vii°', labelSuffix: 'm7b5', fullNameSuffix: 'Semidisminuido', chordType: 'dim', intervals: [{ label: 'R', semitones: 0 }, { label: 'b3', semitones: 3 }, { label: 'b5', semitones: 6 }] },
   ],
 
   // 2. SÉPTIMAS (R - 3 - 5 - 7)
@@ -2368,73 +2374,28 @@ export function getIntervalLabel(
 }
 
 /**
- * Normaliza cualquier nombre de tónica (ej: Bb, B♭, Db, D♭, F#, C) a la escala cromática estándar de sostenidos
+ * Normaliza cualquier nombre de tónica al índice cromático 0..11 estándar
  */
 function normalizeToChromaticIndex(root: string): number {
-  const enharmonics: Record<string, string> = {
-    Db: 'C#',
-    'D♭': 'C#',
-    Eb: 'D#',
-    'E♭': 'D#',
-    Gb: 'F#',
-    'G♭': 'F#',
-    Ab: 'G#',
-    'A♭': 'G#',
-    Bb: 'A#',
-    'B♭': 'A#',
-  };
-  const standard = enharmonics[root] || root;
-  const idx = CHROMATIC_NOTES.indexOf(standard as any);
-  return idx === -1 ? 0 : idx;
+  return getPitchClass(root);
 }
-
-const NATURAL_LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
-const LETTER_SEMITONES: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
 /**
  * Obtiene el nombre ortográficamente correcto de la fundamental diatónica (ej. Eb, Bb, F#)
  * según la tónica de la escala, el índice del grado y la distancia en semitonos.
+ * CERO dobles alteraciones (## / bb).
  */
-export function getDiatonicRootName(keyRoot: string, semitonesFromRoot: number, degreeIndex: number): string {
-  const rootLetter = keyRoot.charAt(0).toUpperCase();
-  const rootLetterIdx = NATURAL_LETTERS.indexOf(rootLetter);
-  if (rootLetterIdx === -1) {
-    const safeIdx = normalizeToChromaticIndex(keyRoot);
-    return CHROMATIC_NOTES[(safeIdx + semitonesFromRoot) % 12];
-  }
-
-  const targetLetterIdx = (rootLetterIdx + degreeIndex) % 7;
-  const targetLetter = NATURAL_LETTERS[targetLetterIdx];
-  const naturalSemitone = LETTER_SEMITONES[targetLetter];
-
-  const rootChromaticIdx = normalizeToChromaticIndex(keyRoot);
-  const targetChromaticIdx = (rootChromaticIdx + semitonesFromRoot) % 12;
-
-  let diff = (targetChromaticIdx - naturalSemitone + 12) % 12;
-  if (diff > 6) diff -= 12;
-
-  if (diff === 0) return targetLetter;
-  if (diff === 1) return `${targetLetter}#`;
-  if (diff === 2) return `${targetLetter}##`;
-  if (diff === -1) return `${targetLetter}b`;
-  if (diff === -2) return `${targetLetter}bb`;
-
-  return CHROMATIC_NOTES[targetChromaticIdx];
+export function getDiatonicRootName(
+  keyRoot: string,
+  semitonesFromRoot: number,
+  degreeIndex: number,
+  tonalityMode: TonalityMode = 'ionian'
+): string {
+  return getCleanDiatonicDegreeRoot(keyRoot, semitonesFromRoot, degreeIndex, tonalityMode);
 }
 
-const SHARP_TO_FLAT_SYMBOL: Record<string, string> = {
-  'C#': 'Db',
-  'D#': 'Eb',
-  'F#': 'Gb',
-  'G#': 'Ab',
-  'A#': 'Bb',
-};
-
 function formatDegreeRootNote(chromaticNote: string, roman: string): string {
-  if (roman.includes('♭') && SHARP_TO_FLAT_SYMBOL[chromaticNote]) {
-    return SHARP_TO_FLAT_SYMBOL[chromaticNote];
-  }
-  return chromaticNote;
+  return getCleanNoteNameForTonality(chromaticNote, roman.includes('♭') ? 'Eb' : 'C');
 }
 
 /**
@@ -3127,7 +3088,8 @@ export function getCagedDiatonicChords(
   extension: ChordExtensionFamily = 'triad',
   tonalityMode: TonalityMode = 'ionian'
 ): CagedChordVoicing[] {
-  const safeRootIndex = normalizeToChromaticIndex(keyRoot);
+  const cleanKeyRoot = resolveCleanKeyRoot(keyRoot, tonalityMode);
+  const safeRootIndex = getPitchClass(cleanKeyRoot);
   const transposeOffset = safeRootIndex; // C = 0, C# = 1, D = 2...
 
   const isBass = instrument === 'bass_4' || instrument === 'bass_5';
@@ -3137,8 +3099,7 @@ export function getCagedDiatonicChords(
   return familyConfigs.map((formulaDef, degIdx) => {
     const degConfig = degreeCatalog[degIdx] || degreeCatalog[0];
     const chordRootMidi = (safeRootIndex + degConfig.semitonesFromRoot) % 12;
-    const rawRootName = CHROMATIC_NOTES[chordRootMidi];
-    const chordRootName = getDiatonicRootName(keyRoot, degConfig.semitonesFromRoot, degIdx);
+    const chordRootName = getCleanDiatonicDegreeRoot(cleanKeyRoot, degConfig.semitonesFromRoot, degIdx, tonalityMode);
     const chordName = `${chordRootName}${formulaDef.labelSuffix}`;
     const fullName = `${formulaDef.roman} - ${chordName}`;
 
