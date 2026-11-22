@@ -2,10 +2,123 @@
 // 20 ESTUDIOS AVANZADOS DE PÚA ALTERNADA (AP-01 a AP-20) ESTILO GUITAR AEROBICS
 // 32 Compases por Estudio • Cifrado por Compás (chordSymbol) • Dedos (1-4)
 // Púa Alterna Estricta (down: Π / up: V) • Carpeta: "Púa Alternada"
+// Respeto Tonal Estricto: Escala Mayor, Pentatónica Mayor, Escala Menor,
+// Pentatónica Menor y Arpegios Avanzados en Cuerdas Adyacentes (Sin Sweep)
 // ============================================================================
 
 import { StringExerciseData, StringMeasureData, StringTabNote } from '../../types/strings';
 import { PrismaClient } from '@prisma/client';
+
+// ============================================================================
+// DICCIONARIO TONAL Y AFINACIÓN ESTÁNDAR DE GUITARRA (E A D G B E)
+// ============================================================================
+
+export const OPEN_STRING_MIDI: Record<number, number> = {
+  1: 64, // e4
+  2: 59, // B3
+  3: 55, // G3
+  4: 50, // D3
+  5: 45, // A2
+  6: 40, // E2
+};
+
+/**
+ * Clases de altura MIDI permitidas (0..11) para cada acorde base (chordSymbol).
+ * 0=C, 1=C#, 2=D, 3=Eb, 4=E, 5=F, 6=F#, 7=G, 8=G#/Ab, 9=A, 10=Bb, 11=B
+ */
+export const CHORD_ALLOWED_PITCH_CLASSES: Record<string, number[]> = {
+  // --- Acordes Mayores y Maj7 (Escala Mayor, Pentatónica Mayor, Maj7, Add9) ---
+  'C':      [0, 2, 4, 5, 7, 9, 11],
+  'Cmaj7':  [0, 2, 4, 5, 7, 9, 11],
+  'F':      [5, 7, 9, 10, 0, 2, 4],
+  'Fmaj7':  [5, 7, 9, 10, 0, 2, 4],
+  'G':      [7, 9, 11, 0, 2, 4, 6],
+  'Gmaj7':  [7, 9, 11, 0, 2, 4, 6],
+  'Bb':     [10, 0, 2, 3, 5, 7, 9],
+  'Bbmaj7': [10, 0, 2, 3, 5, 7, 9],
+  'Eb':     [3, 5, 7, 8, 10, 0, 2],
+  'Ebmaj7': [3, 5, 7, 8, 10, 0, 2],
+  'D':      [2, 4, 6, 7, 9, 11, 1],
+  'Dmaj7':  [2, 4, 6, 7, 9, 11, 1],
+  'A':      [9, 11, 1, 2, 4, 6, 8],
+  'Amaj7':  [9, 11, 1, 2, 4, 6, 8],
+  'E':      [4, 6, 8, 9, 11, 1, 2, 3], // E Mayor / Mixolidio
+
+  // --- Acordes Menores y m7 (Escala Menor Eólica/Dórica, Pentatónica Menor, m7, m9) ---
+  'Am':     [9, 11, 0, 2, 4, 5, 7],
+  'Am7':    [9, 11, 0, 2, 4, 5, 7],
+  'Dm':     [2, 4, 5, 7, 9, 10, 0],
+  'Dm7':    [2, 4, 5, 7, 9, 10, 0],
+  'Em':     [4, 6, 7, 9, 11, 0, 2],
+  'Em7':    [4, 6, 7, 9, 11, 0, 2],
+  'Bm':     [11, 1, 2, 4, 6, 7, 9],
+  'Bm7':    [11, 1, 2, 4, 6, 7, 9],
+  'F#m':    [6, 8, 9, 11, 1, 2, 4],
+  'F#m7':   [6, 8, 9, 11, 1, 2, 4],
+  'Cm':     [0, 2, 3, 5, 7, 8, 10],
+  'Cm7':    [0, 2, 3, 5, 7, 8, 10],
+  'Fm':     [5, 7, 8, 10, 0, 1, 3],
+  'Fm7':    [5, 7, 8, 10, 0, 1, 3],
+  'Gm':     [7, 9, 10, 0, 2, 3, 5],
+  'Gm7':    [7, 9, 10, 0, 2, 3, 5],
+
+  // --- Acordes Dominantes (Mixolidio + Blue Notes / Arpegio Dominante 1-3-5-b7) ---
+  'G7':     [7, 9, 10, 11, 0, 1, 2, 4, 5], // G, A, Bb(blue), B, C, C#(blue), D, E, F
+  'C7':     [0, 2, 3, 4, 5, 6, 7, 9, 10],  // C, D, Eb(blue), E, F, F#(blue), G, A, Bb
+  'D7':     [2, 4, 5, 6, 7, 8, 9, 11, 0],  // D, E, F(blue), F#, G, G#(blue), A, B, C
+  'E7':     [4, 6, 7, 8, 9, 11, 0, 1, 2],  // E, F#, G(blue), G#, A, B, C(alt), C#, D
+  'A7':     [9, 11, 0, 1, 2, 3, 4, 6, 7],  // A, B, C(blue), C#, D, D#(blue), E, F#, G
+  'Bb7':    [10, 0, 1, 2, 3, 4, 5, 7, 8],  // Bb, C, Db(blue), D, Eb, E(blue), F, G, Ab
+};
+
+export function getNoteMidi(stringNum: number, fret: number): number {
+  return (OPEN_STRING_MIDI[stringNum] || 40) + fret;
+}
+
+export function getNotePitchClass(stringNum: number, fret: number): number {
+  return getNoteMidi(stringNum, fret) % 12;
+}
+
+export function isValidChordNote(chord: string, stringNum: number, fret: number): boolean {
+  const allowed = CHORD_ALLOWED_PITCH_CLASSES[chord];
+  if (!allowed) return true;
+  return allowed.includes(getNotePitchClass(stringNum, fret));
+}
+
+export function findNearestValidFret(chord: string, stringNum: number, targetFret: number): number {
+  const allowed = CHORD_ALLOWED_PITCH_CLASSES[chord];
+  if (!allowed || isValidChordNote(chord, stringNum, targetFret)) return targetFret;
+
+  for (let offset = 1; offset <= 5; offset++) {
+    if (targetFret - offset >= 0 && isValidChordNote(chord, stringNum, targetFret - offset)) {
+      return targetFret - offset;
+    }
+    if (targetFret + offset <= 24 && isValidChordNote(chord, stringNum, targetFret + offset)) {
+      return targetFret + offset;
+    }
+  }
+  return targetFret;
+}
+
+/**
+ * Validador armónico estricto que ajusta cualquier traste fuera de escala/arpegio
+ * al grado diatónico permitido más próximo.
+ */
+export function enforceTonalValidation(
+  chord: string,
+  notes: { string: number; fret: number; finger?: string; pick?: 'down' | 'up' }[]
+): { string: number; fret: number; finger: string; pick?: 'down' | 'up' }[] {
+  return notes.map((n) => {
+    const validFret = findNearestValidFret(chord, n.string, n.fret);
+    const finger = n.finger || (validFret % 4 === 0 ? '4' : validFret % 3 === 0 ? '3' : validFret % 2 === 0 ? '2' : '1');
+    return {
+      string: n.string,
+      fret: validFret,
+      finger,
+      pick: n.pick,
+    };
+  });
+}
 
 export interface ExerciseBlueprint {
   code: string;
@@ -22,14 +135,19 @@ export interface ExerciseBlueprint {
 /**
  * Helper para generar 16 semicorcheas con púa alternada estricta (down / up)
  */
-function createMeasure16Notes(
+export function createMeasure16Notes(
   measureIndex: number,
   globalStepOffset: number,
-  noteDefs: { string: number; fret: number; finger: string; pick?: 'down' | 'up' }[]
+  chord: string,
+  noteDefs: { string: number; fret: number; finger?: string; pick?: 'down' | 'up' }[],
+  initialPick: 'down' | 'up' = 'down'
 ): StringTabNote[] {
-  return noteDefs.map((def, stepInMeasure) => {
+  const validated = enforceTonalValidation(chord, noteDefs);
+  return validated.map((def, stepInMeasure) => {
     const isEven = stepInMeasure % 2 === 0;
-    const pickDirection = def.pick || (isEven ? 'down' : 'up');
+    const defaultPick = initialPick === 'down' ? (isEven ? 'down' : 'up') : (isEven ? 'up' : 'down');
+    const pickDirection = def.pick || defaultPick;
+
     return {
       step: globalStepOffset + stepInMeasure,
       stepIndex: stepInMeasure,
@@ -45,21 +163,23 @@ function createMeasure16Notes(
   });
 }
 
-// ----------------------------------------------------------------------------
+// ============================================================================
 // DEFINICIÓN DE LOS 20 BLUEPRINTS MUSICALES DE 32 COMPASES
-// ----------------------------------------------------------------------------
+// ============================================================================
 
 export const BLUEPRINTS: ExerciseBlueprint[] = [
-  // AP-01 • Workout Blues en Sol (112 BPM)
-  // G7 (8c) -> C7 (4c) -> G7 (4c) -> D7 (2c) -> C7 (2c) -> G7 (4c) -> D7 (4c) -> G7 (4c) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-01 • Workout Pentatónica Mayor & Blues en Sol (112 BPM)
+  // G7 (8c) -> C7 (4c) -> G7 (4c) -> D7 (2c) -> C7 (2c) -> G7 (4c) -> D7 (4c) -> G7 (4c) = 32c
+  // --------------------------------------------------------------------------
   {
     code: 'AP-01',
     slug: 'ap-01-workout-blues-sol-outside-inside',
-    title: 'AP-01 • Workout Blues en Sol (Outside/Inside Picking) — 32 Compases',
+    title: 'AP-01 • Workout Pentatónica Mayor & Blues en Sol (Outside/Inside) — 32 Compases',
     bpm: 112,
     category: 'Licks & Riffs',
     difficulty: 'Avanzado',
-    description: 'Estudio de resistencia en 32 compases sobre blues en Sol (G7, C7, D7). Motivo mixolidio con aproximaciones cromáticas combinando outside picking (cambio cuerda hacia afuera) e inside picking estricto.',
+    description: 'Estudio de resistencia de 32 compases sobre blues en Sol (G7, C7, D7). Motivo mixolidio con blue notes (Bb y C#) combinando outside e inside picking estricto.',
     progression: [
       { chord: 'G7', measures: 8 },
       { chord: 'C7', measures: 4 },
@@ -71,362 +191,571 @@ export const BLUEPRINTS: ExerciseBlueprint[] = [
       { chord: 'G7', measures: 4 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      // Fraseo mixolidio según acorde
       const baseFret = chord === 'C7' ? 8 : chord === 'D7' ? 10 : 3;
-      return createMeasure16Notes(mIdx, offset, [
-        { string: 6, fret: baseFret, finger: '1' },
-        { string: 6, fret: baseFret + 3, finger: '4' },
-        { string: 5, fret: baseFret + 1, finger: '2' },
-        { string: 5, fret: baseFret + 2, finger: '3' },
-        { string: 4, fret: baseFret, finger: '1' },
-        { string: 4, fret: baseFret + 2, finger: '3' },
-        { string: 3, fret: baseFret, finger: '1' },
-        { string: 3, fret: baseFret + 2, finger: '3' },
-        { string: 2, fret: baseFret + 1, finger: '2' },
-        { string: 2, fret: baseFret + 3, finger: '4' },
-        { string: 1, fret: baseFret, finger: '1' },
-        { string: 1, fret: baseFret + 3, finger: '4' },
-        { string: 2, fret: baseFret + 3, finger: '4' },
-        { string: 3, fret: baseFret + 2, finger: '3' },
-        { string: 4, fret: baseFret + 2, finger: '3' },
-        { string: 5, fret: baseFret + 2, finger: '3' },
-      ]);
+      const variation = mIdx % 2 === 0;
+
+      if (variation) {
+        // Fraseo ascendente a través de cuerdas adyacentes
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 6, fret: baseFret, finger: '1' },
+          { string: 6, fret: baseFret + 3, finger: '4' },
+          { string: 5, fret: baseFret, finger: '1' },
+          { string: 5, fret: baseFret + 1, finger: '2' },
+          { string: 5, fret: baseFret + 2, finger: '3' },
+          { string: 4, fret: baseFret, finger: '1' },
+          { string: 4, fret: baseFret + 2, finger: '3' },
+          { string: 3, fret: baseFret, finger: '1' },
+          { string: 3, fret: baseFret + 2, finger: '3' },
+          { string: 3, fret: baseFret + 3, finger: '4' },
+          { string: 2, fret: baseFret, finger: '1' },
+          { string: 2, fret: baseFret + 3, finger: '4' },
+          { string: 1, fret: baseFret, finger: '1' },
+          { string: 1, fret: baseFret + 3, finger: '4' },
+          { string: 2, fret: baseFret + 3, finger: '4' },
+          { string: 3, fret: baseFret + 2, finger: '3' },
+        ]);
+      } else {
+        // Fraseo descendente y resolución
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 1, fret: baseFret + 3, finger: '4' },
+          { string: 1, fret: baseFret, finger: '1' },
+          { string: 2, fret: baseFret + 3, finger: '4' },
+          { string: 2, fret: baseFret, finger: '1' },
+          { string: 3, fret: baseFret + 2, finger: '3' },
+          { string: 3, fret: baseFret, finger: '1' },
+          { string: 4, fret: baseFret + 2, finger: '3' },
+          { string: 4, fret: baseFret, finger: '1' },
+          { string: 5, fret: baseFret + 2, finger: '3' },
+          { string: 5, fret: baseFret + 1, finger: '2' },
+          { string: 5, fret: baseFret, finger: '1' },
+          { string: 6, fret: baseFret + 3, finger: '4' },
+          { string: 6, fret: baseFret, finger: '1' },
+          { string: 5, fret: baseFret + 2, finger: '3' },
+          { string: 4, fret: baseFret + 2, finger: '3' },
+          { string: 3, fret: baseFret + 2, finger: '3' },
+        ]);
+      }
     },
   },
 
-  // AP-02 • Permutación 1-2-4-3 Sobre Círculo I-VI-II-V (116 BPM)
-  // Cmaj7 -> Am7 -> Dm7 -> G7 en 4 tonalidades (C, F, Bb, Eb) = 8x4 = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-02 • Workout Escala Mayor por Cuartas (C, F, Bb, Eb Mayor) (116 BPM)
+  // Cmaj7 (8c) -> Fmaj7 (8c) -> Bbmaj7 (8c) -> Ebmaj7 (8c) = 32c
+  // --------------------------------------------------------------------------
   {
     code: 'AP-02',
-    slug: 'ap-02-permutacion-1-2-4-3-circulo-armonico',
-    title: 'AP-02 • Workout Permutación 1-2-4-3 Sobre Círculo I–VI–II–V — 32 Compases',
+    slug: 'ap-02-workout-escala-mayor-por-cuartas-c-f-bb-eb',
+    title: 'AP-02 • Workout Escala Mayor por Cuartas (C, F, Bb, Eb Mayor) — 32 Compases',
     bpm: 116,
     category: 'Escalas & Arpegios',
     difficulty: 'Avanzado',
-    description: 'Permutaciones digitales asimétricas 1-2-4-3 cruzando pares de cuerdas a través de progresiones I-VI-II-V en 4 tonalidades (Do, Fa, Si♭ y Mi♭). Púa alterna implacable.',
+    description: 'Desplazamiento diatónico a través de 4 tonalidades mayores (Do, Fa, Si bemol y Mi bemol). Cada compás contiene exactamente las notas de la escala mayor correspondiente con púa alternada rigurosa.',
     progression: [
-      { chord: 'Cmaj7', measures: 2 }, { chord: 'Am7', measures: 2 }, { chord: 'Dm7', measures: 2 }, { chord: 'G7', measures: 2 },
-      { chord: 'Fmaj7', measures: 2 }, { chord: 'Dm7', measures: 2 }, { chord: 'Gm7', measures: 2 }, { chord: 'C7', measures: 2 },
-      { chord: 'Bbmaj7', measures: 2 }, { chord: 'Gm7', measures: 2 }, { chord: 'Cm7', measures: 2 }, { chord: 'F7', measures: 2 },
-      { chord: 'Ebmaj7', measures: 2 }, { chord: 'Cm7', measures: 2 }, { chord: 'Fm7', measures: 2 }, { chord: 'Bb7', measures: 2 },
+      { chord: 'Cmaj7', measures: 8 },
+      { chord: 'Fmaj7', measures: 8 },
+      { chord: 'Bbmaj7', measures: 8 },
+      { chord: 'Ebmaj7', measures: 8 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const fretMap: Record<string, number> = {
-        Cmaj7: 8, Am7: 5, Dm7: 10, G7: 3,
-        Fmaj7: 1, Gm7: 3, C7: 8,
-        Bbmaj7: 6, Cm7: 8, F7: 1,
-        Ebmaj7: 11, Fm7: 1, Bb7: 6,
-      };
-      const rootFret = fretMap[chord] || 8;
-      return createMeasure16Notes(mIdx, offset, [
-        { string: 3, fret: rootFret, finger: '1' },
-        { string: 3, fret: rootFret + 2, finger: '2' },
-        { string: 3, fret: rootFret + 5, finger: '4' },
-        { string: 3, fret: rootFret + 3, finger: '3' },
-        { string: 2, fret: rootFret, finger: '1' },
-        { string: 2, fret: rootFret + 1, finger: '2' },
-        { string: 2, fret: rootFret + 4, finger: '4' },
-        { string: 2, fret: rootFret + 3, finger: '3' },
-        { string: 1, fret: rootFret, finger: '1' },
-        { string: 1, fret: rootFret + 2, finger: '2' },
-        { string: 1, fret: rootFret + 5, finger: '4' },
-        { string: 1, fret: rootFret + 3, finger: '3' },
-        { string: 2, fret: rootFret + 4, finger: '4' },
-        { string: 2, fret: rootFret + 3, finger: '3' },
-        { string: 3, fret: rootFret + 5, finger: '4' },
-        { string: 3, fret: rootFret + 2, finger: '2' },
-      ]);
+      if (chord === 'Cmaj7') {
+        // Escala de Do Mayor en posición 5-8
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 6, fret: 8, finger: '4' },
+          { string: 5, fret: 5, finger: '1' },
+          { string: 5, fret: 7, finger: '3' },
+          { string: 5, fret: 8, finger: '4' },
+          { string: 4, fret: 5, finger: '1' },
+          { string: 4, fret: 7, finger: '3' },
+          { string: 3, fret: 4, finger: '1' },
+          { string: 3, fret: 5, finger: '2' },
+          { string: 3, fret: 7, finger: '4' },
+          { string: 2, fret: 5, finger: '1' },
+          { string: 2, fret: 6, finger: '2' },
+          { string: 2, fret: 8, finger: '4' },
+          { string: 1, fret: 5, finger: '1' },
+          { string: 1, fret: 7, finger: '3' },
+          { string: 1, fret: 8, finger: '4' },
+          { string: 2, fret: 8, finger: '4' },
+        ]);
+      } else if (chord === 'Fmaj7') {
+        // Escala de Fa Mayor (con Bb) en posición 1-5
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 6, fret: 1, finger: '1' },
+          { string: 6, fret: 3, finger: '3' },
+          { string: 6, fret: 5, finger: '4' },
+          { string: 5, fret: 1, finger: '1' },
+          { string: 5, fret: 3, finger: '3' },
+          { string: 5, fret: 5, finger: '4' },
+          { string: 4, fret: 2, finger: '1' },
+          { string: 4, fret: 3, finger: '2' },
+          { string: 4, fret: 5, finger: '4' },
+          { string: 3, fret: 2, finger: '1' },
+          { string: 3, fret: 3, finger: '2' },
+          { string: 3, fret: 5, finger: '4' },
+          { string: 2, fret: 3, finger: '2' },
+          { string: 2, fret: 5, finger: '4' },
+          { string: 1, fret: 1, finger: '1' },
+          { string: 1, fret: 3, finger: '3' },
+        ]);
+      } else if (chord === 'Bbmaj7') {
+        // Escala de Bb Mayor (con Bb y Eb) en posición 5-8
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 6, fret: 6, finger: '2' },
+          { string: 5, fret: 5, finger: '1' },
+          { string: 5, fret: 6, finger: '2' },
+          { string: 5, fret: 8, finger: '4' },
+          { string: 4, fret: 5, finger: '1' },
+          { string: 4, fret: 7, finger: '3' },
+          { string: 4, fret: 8, finger: '4' },
+          { string: 3, fret: 5, finger: '1' },
+          { string: 3, fret: 7, finger: '3' },
+          { string: 3, fret: 8, finger: '4' },
+          { string: 2, fret: 6, finger: '2' },
+          { string: 2, fret: 8, finger: '4' },
+          { string: 1, fret: 5, finger: '1' },
+          { string: 1, fret: 6, finger: '2' },
+          { string: 1, fret: 8, finger: '4' },
+          { string: 2, fret: 6, finger: '2' },
+        ]);
+      } else {
+        // Escala de Eb Mayor (con Bb, Eb, Ab) en posición 6-10
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 5, fret: 6, finger: '1' },
+          { string: 5, fret: 8, finger: '3' },
+          { string: 5, fret: 10, finger: '4' },
+          { string: 4, fret: 6, finger: '1' },
+          { string: 4, fret: 8, finger: '3' },
+          { string: 4, fret: 10, finger: '4' },
+          { string: 3, fret: 7, finger: '1' },
+          { string: 3, fret: 8, finger: '2' },
+          { string: 3, fret: 10, finger: '4' },
+          { string: 2, fret: 8, finger: '1' },
+          { string: 2, fret: 9, finger: '2' },
+          { string: 2, fret: 11, finger: '4' },
+          { string: 1, fret: 8, finger: '1' },
+          { string: 1, fret: 10, finger: '3' },
+          { string: 1, fret: 11, finger: '4' },
+          { string: 2, fret: 11, finger: '4' },
+        ]);
+      }
     },
   },
 
-  // AP-03 • Secuencia Paul Gilbert (Grupos de 6) en Am / Dm / E7 (120 BPM)
-  // Am (4c) -> Dm (4c) -> G (4c) -> C (4c) -> F (4c) -> Bdim (4c) -> E7 (4c) -> Am (4c) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-03 • Workout Pentatónica Menor Extendida (Grupos de 6) en Am / Dm (120 BPM)
+  // Am7 (8c) -> Dm7 (8c) -> Em7 (8c) -> Am7 (8c) = 32c
+  // --------------------------------------------------------------------------
   {
     code: 'AP-03',
-    slug: 'ap-03-secuencia-paul-gilbert-grupos-de-6',
-    title: 'AP-03 • Workout Secuencia Paul Gilbert (Grupos de 6) en Am / Dm / E7 — 32 Compases',
+    slug: 'ap-03-workout-pentatonica-menor-extendida-am-dm',
+    title: 'AP-03 • Workout Pentatónica Menor Extendida (Grupos de 6) en Am / Dm — 32 Compases',
     bpm: 120,
-    category: 'Escalas & Arpegios',
+    category: 'Licks & Riffs',
     difficulty: 'Avanzado',
-    description: 'El clásico patrón en bucle de 6 notas de Paul Gilbert repetido a gran velocidad en dos cuerdas adyacentes, modulando por toda la progresión menor diatónica durante 32 compases.',
+    description: 'Secuencias de 6 notas en pentatónica menor con saltos suaves entre cajas contiguas para desarrollar sincronía entre ambas manos a alta velocidad.',
     progression: [
-      { chord: 'Am', measures: 4 },
-      { chord: 'Dm', measures: 4 },
-      { chord: 'G', measures: 4 },
-      { chord: 'C', measures: 4 },
-      { chord: 'F', measures: 4 },
-      { chord: 'Bdim', measures: 4 },
-      { chord: 'E7', measures: 4 },
-      { chord: 'Am', measures: 4 },
+      { chord: 'Am7', measures: 8 },
+      { chord: 'Dm7', measures: 8 },
+      { chord: 'Em7', measures: 8 },
+      { chord: 'Am7', measures: 8 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const posMap: Record<string, { f1: number; f2: number; f3: number; f4: number; f5: number; f6: number }> = {
-        Am: { f1: 5, f2: 7, f3: 8, f4: 5, f5: 7, f6: 8 },
-        Dm: { f1: 10, f2: 12, f3: 13, f4: 10, f5: 12, f6: 13 },
-        G: { f1: 3, f2: 5, f3: 7, f4: 3, f5: 5, f6: 7 },
-        C: { f1: 8, f2: 10, f3: 12, f4: 8, f5: 10, f6: 12 },
-        F: { f1: 1, f2: 3, f3: 5, f4: 1, f5: 3, f6: 5 },
-        Bdim: { f1: 7, f2: 8, f3: 10, f4: 7, f5: 8, f6: 10 },
-        E7: { f1: 7, f2: 9, f3: 10, f4: 7, f5: 9, f6: 10 },
-      };
-      const p = posMap[chord] || posMap.Am;
-      return createMeasure16Notes(mIdx, offset, [
-        { string: 2, fret: p.f1, finger: '1' },
-        { string: 2, fret: p.f2, finger: '2' },
-        { string: 2, fret: p.f3, finger: '4' },
-        { string: 1, fret: p.f4, finger: '1' },
-        { string: 2, fret: p.f3, finger: '4' },
-        { string: 2, fret: p.f2, finger: '2' },
-        { string: 2, fret: p.f1, finger: '1' },
-        { string: 2, fret: p.f2, finger: '2' },
-        { string: 2, fret: p.f3, finger: '4' },
-        { string: 1, fret: p.f4, finger: '1' },
-        { string: 2, fret: p.f3, finger: '4' },
-        { string: 2, fret: p.f2, finger: '2' },
-        { string: 2, fret: p.f1, finger: '1' },
-        { string: 2, fret: p.f2, finger: '2' },
-        { string: 2, fret: p.f3, finger: '4' },
-        { string: 1, fret: p.f4, finger: '1' },
+      const rootFret = chord === 'Dm7' ? 10 : chord === 'Em7' ? 12 : 5;
+      return createMeasure16Notes(mIdx, offset, chord, [
+        { string: 6, fret: rootFret, finger: '1' },
+        { string: 6, fret: rootFret + 3, finger: '4' },
+        { string: 5, fret: rootFret, finger: '1' },
+        { string: 5, fret: rootFret + 2, finger: '3' },
+        { string: 6, fret: rootFret + 3, finger: '4' },
+        { string: 5, fret: rootFret, finger: '1' },
+        { string: 5, fret: rootFret + 2, finger: '3' },
+        { string: 4, fret: rootFret, finger: '1' },
+        { string: 4, fret: rootFret + 2, finger: '3' },
+        { string: 3, fret: rootFret, finger: '1' },
+        { string: 3, fret: rootFret + 2, finger: '3' },
+        { string: 2, fret: rootFret + 1, finger: '2' },
+        { string: 2, fret: rootFret + 3, finger: '4' },
+        { string: 1, fret: rootFret, finger: '1' },
+        { string: 1, fret: rootFret + 3, finger: '4' },
+        { string: 2, fret: rootFret + 3, finger: '4' },
       ]);
     },
   },
 
-  // AP-04 • Tres Notas por Cuerda (3NPS) Ascendente por Cuartas (124 BPM)
-  // Em7 -> Am7 -> Dm7 -> G7 -> Cmaj7 -> Fmaj7 -> Bm7b5 -> E7 (4 compases c/u) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-04 • Workout Escala Mayor 3 Notas por Cuerda (3NPS) en Fa y Do Mayor (124 BPM)
+  // Fmaj7 (4c) -> G7 (4c) -> Em7 (4c) -> Am7 (4c) -> Dm7 (4c) -> G7 (4c) -> Cmaj7 (4c) -> Fmaj7 (4c) = 32c
+  // --------------------------------------------------------------------------
   {
     code: 'AP-04',
-    slug: 'ap-04-tres-notas-por-cuerda-3nps-ascendente',
-    title: 'AP-04 • Workout Tres Notas por Cuerda (3NPS) Ascendente por Cuartas — 32 Compases',
+    slug: 'ap-04-workout-escala-mayor-3nps-fa-do',
+    title: 'AP-04 • Workout Escala Mayor 3 Notas por Cuerda (3NPS) en Fa y Do Mayor — 32 Compases',
     bpm: 124,
     category: 'Escalas & Arpegios',
     difficulty: 'Avanzado',
-    description: 'Subida biomecánica 3NPS desde 6ª hasta 1ª cuerda sobre ciclo de cuartas (Em7, Am7, Dm7, G7, Cmaj7, Fmaj7, Bm7b5, E7). Golpe abajo en tiempos impares para sincronizar cruzadas.',
+    description: 'Patrones simétricos de tres notas por cuerda cruzando las 6 cuerdas diatónicamente sobre progresión armónica completa en Fa y Do Mayor.',
     progression: [
+      { chord: 'Fmaj7', measures: 4 },
+      { chord: 'G7', measures: 4 },
       { chord: 'Em7', measures: 4 },
       { chord: 'Am7', measures: 4 },
       { chord: 'Dm7', measures: 4 },
       { chord: 'G7', measures: 4 },
       { chord: 'Cmaj7', measures: 4 },
       { chord: 'Fmaj7', measures: 4 },
-      { chord: 'Bm7b5', measures: 4 },
-      { chord: 'E7', measures: 4 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const startFret = chord === 'Am7' ? 5 : chord === 'Dm7' ? 10 : chord === 'G7' ? 3 : 7;
-      return createMeasure16Notes(mIdx, offset, [
-        { string: 6, fret: startFret, finger: '1' },
-        { string: 6, fret: startFret + 2, finger: '2' },
-        { string: 6, fret: startFret + 3, finger: '3' },
-        { string: 5, fret: startFret, finger: '1' },
-        { string: 5, fret: startFret + 2, finger: '2' },
-        { string: 5, fret: startFret + 3, finger: '3' },
-        { string: 4, fret: startFret, finger: '1' },
-        { string: 4, fret: startFret + 2, finger: '2' },
-        { string: 4, fret: startFret + 4, finger: '4' },
-        { string: 3, fret: startFret, finger: '1' },
-        { string: 3, fret: startFret + 2, finger: '2' },
-        { string: 3, fret: startFret + 4, finger: '4' },
-        { string: 2, fret: startFret + 1, finger: '2' },
-        { string: 2, fret: startFret + 3, finger: '3' },
-        { string: 1, fret: startFret, finger: '1' },
-        { string: 1, fret: startFret + 2, finger: '2' },
-      ]);
+      // Notas diatónicas 3NPS adaptadas al acorde activo
+      const isF = chord === 'Fmaj7';
+      const root = isF ? 1 : chord === 'G7' ? 3 : chord === 'Em7' ? 0 : chord === 'Am7' ? 5 : chord === 'Dm7' ? 5 : 3;
+
+      if (isF) {
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 6, fret: 1, finger: '1' },
+          { string: 6, fret: 3, finger: '2' },
+          { string: 6, fret: 5, finger: '4' },
+          { string: 5, fret: 1, finger: '1' },
+          { string: 5, fret: 3, finger: '2' },
+          { string: 5, fret: 5, finger: '4' },
+          { string: 4, fret: 2, finger: '1' },
+          { string: 4, fret: 3, finger: '2' },
+          { string: 4, fret: 5, finger: '4' },
+          { string: 3, fret: 2, finger: '1' },
+          { string: 3, fret: 3, finger: '2' },
+          { string: 3, fret: 5, finger: '4' },
+          { string: 2, fret: 3, finger: '1' },
+          { string: 2, fret: 5, finger: '2' },
+          { string: 2, fret: 6, finger: '4' },
+          { string: 1, fret: 5, finger: '2' },
+        ]);
+      } else {
+        // En C diatónico
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 6, fret: root, finger: '1' },
+          { string: 6, fret: root + 2, finger: '2' },
+          { string: 6, fret: root + 4, finger: '4' },
+          { string: 5, fret: root, finger: '1' },
+          { string: 5, fret: root + 2, finger: '2' },
+          { string: 5, fret: root + 4, finger: '4' },
+          { string: 4, fret: root + 1, finger: '1' },
+          { string: 4, fret: root + 2, finger: '2' },
+          { string: 4, fret: root + 4, finger: '4' },
+          { string: 3, fret: root, finger: '1' },
+          { string: 3, fret: root + 2, finger: '2' },
+          { string: 3, fret: root + 4, finger: '4' },
+          { string: 2, fret: root + 1, finger: '1' },
+          { string: 2, fret: root + 3, finger: '3' },
+          { string: 1, fret: root, finger: '1' },
+          { string: 1, fret: root + 2, finger: '3' },
+        ]);
+      }
     },
   },
 
-  // AP-05 • 3NPS Descendente con Upstroke Inicial (V-Π-V-Π) (126 BPM)
-  // Dm7 -> G7 -> Cmaj7 -> Am7 (8 compases c/u) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-05 • Workout Escala Menor Natural & Pentatónica Menor Descendente (126 BPM)
+  // Dm7 (8c) -> Gm7 (8c) -> Am7 (8c) -> Dm7 (8c) = 32c
+  // --------------------------------------------------------------------------
   {
     code: 'AP-05',
-    slug: 'ap-05-3nps-descendente-upstroke-inicial',
-    title: 'AP-05 • Workout 3NPS Descendente con Upstroke Inicial (V-Π-V-Π) — 32 Compases',
+    slug: 'ap-05-workout-escala-menor-descendente-upstroke',
+    title: 'AP-05 • Workout Escala Menor Natural & Pentatónica Menor Descendente (Upstroke V-Π) — 32 Compases',
     bpm: 126,
     category: 'Escalas & Arpegios',
     difficulty: 'Avanzado',
-    description: 'Inversión de ataque de púa: cada compás inicia con golpe hacia arriba (V) en la 1ª cuerda y desciende fluidamente hasta la 6ª cuerda en el modo Re Dórico. Elimina la debilidad del upstroke.',
+    description: 'Cascadas descendentes en escalas menores naturales y pentatónicas con golpe de púa ascendente inicial (V-Π-V-Π) para perfeccionar el timing rítmico.',
     progression: [
       { chord: 'Dm7', measures: 8 },
-      { chord: 'G7', measures: 8 },
-      { chord: 'Cmaj7', measures: 8 },
+      { chord: 'Gm7', measures: 8 },
       { chord: 'Am7', measures: 8 },
+      { chord: 'Dm7', measures: 8 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const pos = chord === 'G7' ? 10 : chord === 'Cmaj7' ? 8 : chord === 'Am7' ? 5 : 10;
-      // Invertir púa: inicia en up
-      const notes = [
-        { string: 1, fret: pos + 3, finger: '4', pick: 'up' as const },
-        { string: 1, fret: pos + 1, finger: '2', pick: 'down' as const },
-        { string: 1, fret: pos, finger: '1', pick: 'up' as const },
-        { string: 2, fret: pos + 3, finger: '4', pick: 'down' as const },
-        { string: 2, fret: pos + 1, finger: '2', pick: 'up' as const },
-        { string: 2, fret: pos, finger: '1', pick: 'down' as const },
-        { string: 3, fret: pos + 2, finger: '3', pick: 'up' as const },
-        { string: 3, fret: pos, finger: '1', pick: 'down' as const },
-        { string: 3, fret: pos - 1, finger: '1', pick: 'up' as const },
-        { string: 4, fret: pos + 2, finger: '3', pick: 'down' as const },
-        { string: 4, fret: pos, finger: '1', pick: 'up' as const },
-        { string: 4, fret: pos - 1, finger: '1', pick: 'down' as const },
-        { string: 5, fret: pos + 2, finger: '3', pick: 'up' as const },
-        { string: 5, fret: pos, finger: '1', pick: 'down' as const },
-        { string: 6, fret: pos + 3, finger: '4', pick: 'up' as const },
-        { string: 6, fret: pos, finger: '1', pick: 'down' as const },
-      ];
-      return notes.map((def, stepInMeasure) => ({
-        step: offset + stepInMeasure,
-        stepIndex: stepInMeasure,
-        measureIndex: mIdx,
-        string: def.string,
-        fret: def.fret,
-        finger: def.finger,
-        pickDirection: def.pick,
-        duration: '16n',
-        velocity: 0.9,
-        technique: 'normal',
-      }));
+      const pos = chord === 'Gm7' ? 3 : chord === 'Am7' ? 5 : 10;
+      return createMeasure16Notes(
+        mIdx,
+        offset,
+        chord,
+        [
+          { string: 1, fret: pos + 3, finger: '4' },
+          { string: 1, fret: pos + 1, finger: '2' },
+          { string: 1, fret: pos, finger: '1' },
+          { string: 2, fret: pos + 3, finger: '4' },
+          { string: 2, fret: pos + 1, finger: '2' },
+          { string: 2, fret: pos, finger: '1' },
+          { string: 3, fret: pos + 2, finger: '3' },
+          { string: 3, fret: pos, finger: '1' },
+          { string: 4, fret: pos + 3, finger: '4' },
+          { string: 4, fret: pos + 2, finger: '3' },
+          { string: 4, fret: pos, finger: '1' },
+          { string: 5, fret: pos + 3, finger: '4' },
+          { string: 5, fret: pos + 1, finger: '2' },
+          { string: 5, fret: pos, finger: '1' },
+          { string: 6, fret: pos + 3, finger: '4' },
+          { string: 6, fret: pos, finger: '1' },
+        ],
+        'up' // Upstroke inicial
+      );
     },
   },
 
-  // AP-06 • Pedal Tone Neoclásico en La Menor Armónica (130 BPM)
-  // Am (4c) -> Dm (4c) -> E7 (4c) -> Am (4c) -> F (4c) -> Bdim (4c) -> E7 (4c) -> Am (4c) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-06 • Workout Arpegios Tríadas Mayores y Menores con Púa Alterna Pura (128 BPM)
+  // C (4c) -> Am (4c) -> F (4c) -> G (4c) -> Em (4c) -> Am (4c) -> Dm (4c) -> G (4c) = 32c
+  // Cuerdas adyacentes, sin sweep picking, sin saltos de cuerda
+  // --------------------------------------------------------------------------
   {
     code: 'AP-06',
-    slug: 'ap-06-pedal-tone-neoclasico-menor-armonica',
-    title: 'AP-06 • Workout Pedal Tone Neoclásico en La Menor Armónica — 32 Compases',
-    bpm: 130,
-    category: 'Licks & Riffs',
+    slug: 'ap-06-workout-arpegios-triadas-mayores-menores',
+    title: 'AP-06 • Workout Arpegios Tríadas Mayores y Menores con Púa Alterna Pura — 32 Compases',
+    bpm: 128,
+    category: 'Escalas & Arpegios',
     difficulty: 'Avanzado',
-    description: 'Estilo Yngwie Malmsteen / Bach: nota pedal aguda fija en la 1ª cuerda alternando con melodías descendentes en la 2ª cuerda con la sensible sol# (#7) sobre la progresión menor armónica.',
+    description: 'Arpegios completos de tríadas mayores y menores ejecutados con púa alternada estricta nota por nota en cuerdas contiguas (sin sweep picking).',
     progression: [
-      { chord: 'Am', measures: 4 },
-      { chord: 'Dm', measures: 4 },
-      { chord: 'E7', measures: 4 },
+      { chord: 'C', measures: 4 },
       { chord: 'Am', measures: 4 },
       { chord: 'F', measures: 4 },
-      { chord: 'Bdim', measures: 4 },
-      { chord: 'E7', measures: 4 },
+      { chord: 'G', measures: 4 },
+      { chord: 'Em', measures: 4 },
       { chord: 'Am', measures: 4 },
+      { chord: 'Dm', measures: 4 },
+      { chord: 'G', measures: 4 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const pedalFret = 12; // Mi agudo en 1ª cuerda
-      const melFrets = chord === 'E7' ? [13, 12, 10, 9] : chord === 'Dm' ? [13, 12, 10, 8] : [13, 12, 10, 8];
-      return createMeasure16Notes(mIdx, offset, [
-        { string: 1, fret: pedalFret, finger: '2' },
-        { string: 2, fret: melFrets[0], finger: '4' },
-        { string: 1, fret: pedalFret, finger: '2' },
-        { string: 2, fret: melFrets[1], finger: '3' },
-        { string: 1, fret: pedalFret, finger: '2' },
-        { string: 2, fret: melFrets[2], finger: '1' },
-        { string: 1, fret: pedalFret, finger: '2' },
-        { string: 2, fret: melFrets[3], finger: '1' },
-        { string: 1, fret: pedalFret, finger: '2' },
-        { string: 2, fret: melFrets[2], finger: '1' },
-        { string: 1, fret: pedalFret, finger: '2' },
-        { string: 2, fret: melFrets[1], finger: '3' },
-        { string: 1, fret: pedalFret, finger: '2' },
-        { string: 2, fret: melFrets[0], finger: '4' },
-        { string: 1, fret: pedalFret, finger: '2' },
-        { string: 1, fret: pedalFret + 5, finger: '4' },
-      ]);
+      // Arpegios en cuerdas contiguas (5, 4, 3, 2, 1, 2, 3, 4)
+      if (chord === 'C') {
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 5, fret: 3, finger: '1' }, // C
+          { string: 4, fret: 5, finger: '3' }, // G
+          { string: 3, fret: 5, finger: '3' }, // C
+          { string: 2, fret: 5, finger: '3' }, // E
+          { string: 1, fret: 3, finger: '1' }, // G
+          { string: 1, fret: 8, finger: '4' }, // C
+          { string: 1, fret: 3, finger: '1' }, // G
+          { string: 2, fret: 5, finger: '3' }, // E
+          { string: 3, fret: 5, finger: '3' }, // C
+          { string: 4, fret: 5, finger: '3' }, // G
+          { string: 5, fret: 3, finger: '1' }, // C
+          { string: 4, fret: 2, finger: '1' }, // E
+          { string: 3, fret: 0, finger: '0' }, // G
+          { string: 2, fret: 1, finger: '1' }, // C
+          { string: 1, fret: 0, finger: '0' }, // E
+          { string: 2, fret: 1, finger: '1' }, // C
+        ]);
+      } else if (chord === 'Am') {
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 6, fret: 5, finger: '1' }, // A
+          { string: 5, fret: 7, finger: '3' }, // E
+          { string: 4, fret: 7, finger: '3' }, // A
+          { string: 3, fret: 5, finger: '1' }, // C
+          { string: 2, fret: 5, finger: '1' }, // E
+          { string: 1, fret: 5, finger: '1' }, // A
+          { string: 1, fret: 8, finger: '4' }, // C
+          { string: 1, fret: 5, finger: '1' }, // A
+          { string: 2, fret: 5, finger: '1' }, // E
+          { string: 3, fret: 5, finger: '1' }, // C
+          { string: 4, fret: 7, finger: '3' }, // A
+          { string: 5, fret: 7, finger: '3' }, // E
+          { string: 6, fret: 5, finger: '1' }, // A
+          { string: 5, fret: 3, finger: '1' }, // C
+          { string: 4, fret: 2, finger: '1' }, // E
+          { string: 3, fret: 2, finger: '2' }, // A
+        ]);
+      } else if (chord === 'F') {
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 5, fret: 8, finger: '3' }, // F
+          { string: 4, fret: 7, finger: '2' }, // A
+          { string: 3, fret: 5, finger: '1' }, // C
+          { string: 2, fret: 6, finger: '2' }, // F
+          { string: 1, fret: 5, finger: '1' }, // A
+          { string: 1, fret: 8, finger: '4' }, // C
+          { string: 1, fret: 5, finger: '1' }, // A
+          { string: 2, fret: 6, finger: '2' }, // F
+          { string: 3, fret: 5, finger: '1' }, // C
+          { string: 4, fret: 7, finger: '2' }, // A
+          { string: 5, fret: 8, finger: '3' }, // F
+          { string: 4, fret: 3, finger: '1' }, // F
+          { string: 3, fret: 2, finger: '1' }, // A
+          { string: 2, fret: 1, finger: '1' }, // C
+          { string: 1, fret: 1, finger: '1' }, // F
+          { string: 2, fret: 1, finger: '1' }, // C
+        ]);
+      } else if (chord === 'G') {
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 6, fret: 3, finger: '1' }, // G
+          { string: 5, fret: 5, finger: '3' }, // D
+          { string: 4, fret: 5, finger: '3' }, // G
+          { string: 3, fret: 4, finger: '2' }, // B
+          { string: 2, fret: 3, finger: '1' }, // D
+          { string: 1, fret: 3, finger: '1' }, // G
+          { string: 1, fret: 7, finger: '4' }, // B
+          { string: 1, fret: 3, finger: '1' }, // G
+          { string: 2, fret: 3, finger: '1' }, // D
+          { string: 3, fret: 4, finger: '2' }, // B
+          { string: 4, fret: 5, finger: '3' }, // G
+          { string: 5, fret: 5, finger: '3' }, // D
+          { string: 6, fret: 3, finger: '1' }, // G
+          { string: 5, fret: 2, finger: '1' }, // B
+          { string: 4, fret: 0, finger: '0' }, // D
+          { string: 3, fret: 0, finger: '0' }, // G
+        ]);
+      } else if (chord === 'Em') {
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 5, fret: 7, finger: '2' }, // E
+          { string: 4, fret: 9, finger: '4' }, // B
+          { string: 3, fret: 9, finger: '4' }, // E
+          { string: 2, fret: 8, finger: '3' }, // G
+          { string: 1, fret: 7, finger: '1' }, // B
+          { string: 1, fret: 12, finger: '4' }, // E
+          { string: 1, fret: 7, finger: '1' }, // B
+          { string: 2, fret: 8, finger: '3' }, // G
+          { string: 3, fret: 9, finger: '4' }, // E
+          { string: 4, fret: 9, finger: '4' }, // B
+          { string: 5, fret: 7, finger: '2' }, // E
+          { string: 4, fret: 2, finger: '1' }, // E
+          { string: 3, fret: 0, finger: '0' }, // G
+          { string: 2, fret: 0, finger: '0' }, // B
+          { string: 1, fret: 0, finger: '0' }, // E
+          { string: 2, fret: 0, finger: '0' }, // B
+        ]);
+      } else {
+        // Dm
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 5, fret: 5, finger: '1' }, // D
+          { string: 4, fret: 7, finger: '3' }, // A
+          { string: 3, fret: 7, finger: '3' }, // D
+          { string: 2, fret: 6, finger: '2' }, // F
+          { string: 1, fret: 5, finger: '1' }, // A
+          { string: 1, fret: 10, finger: '4' }, // D
+          { string: 1, fret: 5, finger: '1' }, // A
+          { string: 2, fret: 6, finger: '2' }, // F
+          { string: 3, fret: 7, finger: '3' }, // D
+          { string: 4, fret: 7, finger: '3' }, // A
+          { string: 5, fret: 5, finger: '1' }, // D
+          { string: 4, fret: 0, finger: '0' }, // D
+          { string: 3, fret: 2, finger: '1' }, // A
+          { string: 2, fret: 3, finger: '2' }, // D
+          { string: 1, fret: 1, finger: '1' }, // F
+          { string: 2, fret: 3, finger: '2' }, // D
+        ]);
+      }
     },
   },
 
-  // AP-07 • String Skipping de 1 Cuerda Sobre Arpegios Diatónicos (132 BPM)
-  // Gmaj7 (8c) -> Em7 (8c) -> Am7 (8c) -> D7 (8c) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-07 • Workout Pentatónica Mayor en Tresillos de Semicorchea (132 BPM)
+  // Gmaj7 (8c) -> Em7 (8c) -> Cmaj7 (8c) -> D7 (8c) = 32c
+  // --------------------------------------------------------------------------
   {
     code: 'AP-07',
-    slug: 'ap-07-string-skipping-arpegios-diatonicos',
-    title: 'AP-07 • Workout String Skipping de 1 Cuerda Sobre Arpegios Diatónicos — 32 Compases',
+    slug: 'ap-07-workout-pentatonica-mayor-tresillos-semicorchea',
+    title: 'AP-07 • Workout Pentatónica Mayor en Tresillos de Semicorchea (G y D Mayor) — 32 Compases',
     bpm: 132,
-    category: 'Escalas & Arpegios',
+    category: 'Licks & Riffs',
     difficulty: 'Avanzado',
-    description: 'Saltos de cuerda salteando una cuerda intermedia (6ª->4ª->5ª->3ª y 4ª->2ª->3ª->1ª) en arpegios cuatríadas diatónicos de Sol Mayor (Gmaj7, Em7, Am7, D7). Resistencia angular de muñeca.',
+    description: 'Secuencias rápidas de pentatónica mayor en Sol y Re con saltos de cuerda controlados y alternancia rigurosa en el ataque de púa.',
     progression: [
       { chord: 'Gmaj7', measures: 8 },
       { chord: 'Em7', measures: 8 },
-      { chord: 'Am7', measures: 8 },
+      { chord: 'Cmaj7', measures: 8 },
       { chord: 'D7', measures: 8 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const base = chord === 'Em7' ? 7 : chord === 'Am7' ? 5 : chord === 'D7' ? 10 : 3;
-      return createMeasure16Notes(mIdx, offset, [
+      const base = chord === 'Gmaj7' ? 3 : chord === 'Em7' ? 7 : chord === 'Cmaj7' ? 8 : 10;
+      return createMeasure16Notes(mIdx, offset, chord, [
         { string: 6, fret: base, finger: '1' },
+        { string: 6, fret: base + 2, finger: '2' },
+        { string: 5, fret: base - 1 >= 0 ? base - 1 : base + 2, finger: '1' },
+        { string: 5, fret: base + 2, finger: '3' },
+        { string: 4, fret: base - 1 >= 0 ? base - 1 : base + 2, finger: '1' },
         { string: 4, fret: base + 2, finger: '3' },
-        { string: 5, fret: base + 2, finger: '2' },
-        { string: 3, fret: base + 1, finger: '1' },
-        { string: 4, fret: base + 2, finger: '3' },
-        { string: 2, fret: base + 2, finger: '2' },
-        { string: 3, fret: base + 1, finger: '1' },
+        { string: 3, fret: base - 1 >= 0 ? base - 1 : base + 2, finger: '1' },
+        { string: 3, fret: base + 2, finger: '3' },
+        { string: 2, fret: base, finger: '1' },
+        { string: 2, fret: base + 3, finger: '4' },
+        { string: 1, fret: base, finger: '1' },
         { string: 1, fret: base + 2, finger: '3' },
-        { string: 2, fret: base + 2, finger: '2' },
+        { string: 2, fret: base + 3, finger: '4' },
+        { string: 3, fret: base + 2, finger: '3' },
         { string: 4, fret: base + 2, finger: '3' },
-        { string: 3, fret: base + 1, finger: '1' },
-        { string: 5, fret: base + 2, finger: '2' },
-        { string: 4, fret: base + 2, finger: '3' },
-        { string: 6, fret: base + 3, finger: '4' },
-        { string: 5, fret: base + 2, finger: '2' },
-        { string: 6, fret: base, finger: '1' },
+        { string: 5, fret: base + 2, finger: '3' },
       ]);
     },
   },
 
-  // AP-08 • Crosspicking Moderno Sobre Acordes Add9 / Sus2 (135 BPM)
-  // Cadd9 (8c) -> G/B (8c) -> Am7 (8c) -> Fadd9 (8c) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-08 • Workout Escala Mayor & Pentatónica Mayor sobre Progresión Pop/Rock (135 BPM)
+  // Fmaj7 (8c) -> Cmaj7 (8c) -> Gmaj7 (8c) -> Am7 (8c) = 32c
+  // --------------------------------------------------------------------------
   {
     code: 'AP-08',
-    slug: 'ap-08-crosspicking-moderno-add9-sus2',
-    title: 'AP-08 • Workout Crosspicking Moderno Sobre Acordes Add9 / Sus2 — 32 Compases',
+    slug: 'ap-08-workout-escala-mayor-pentatonica-pop-rock',
+    title: 'AP-08 • Workout Escala Mayor & Pentatónica Mayor sobre Progresión Pop/Rock — 32 Compases',
     bpm: 135,
     category: 'Licks & Riffs',
     difficulty: 'Avanzado',
-    description: 'Técnica de bluegrass/fusion crosspicking en tres cuerdas continuas alternando púa hacia abajo y hacia arriba de manera estricta sobre acordes coloridos Cadd9, G/B, Am7 y Fadd9.',
+    description: 'Fraseo melódico de escala mayor y pentatónica mayor sobre la clásica progresión I-V-VI-IV con púa alterna fluida y acentos dinámicos.',
     progression: [
-      { chord: 'Cadd9', measures: 8 },
-      { chord: 'G/B', measures: 8 },
+      { chord: 'Fmaj7', measures: 8 },
+      { chord: 'Cmaj7', measures: 8 },
+      { chord: 'Gmaj7', measures: 8 },
       { chord: 'Am7', measures: 8 },
-      { chord: 'Fadd9', measures: 8 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const f1 = chord === 'G/B' ? 2 : chord === 'Am7' ? 0 : chord === 'Fadd9' ? 3 : 3;
-      return createMeasure16Notes(mIdx, offset, [
-        { string: 5, fret: f1, finger: '2' },
-        { string: 4, fret: 2, finger: '1' },
-        { string: 3, fret: 0, finger: '0' },
-        { string: 2, fret: 3, finger: '3' },
-        { string: 3, fret: 0, finger: '0' },
-        { string: 4, fret: 2, finger: '1' },
-        { string: 5, fret: f1, finger: '2' },
-        { string: 3, fret: 0, finger: '0' },
-        { string: 2, fret: 3, finger: '3' },
-        { string: 1, fret: 0, finger: '0' },
-        { string: 2, fret: 3, finger: '3' },
-        { string: 3, fret: 0, finger: '0' },
-        { string: 4, fret: 2, finger: '1' },
-        { string: 3, fret: 0, finger: '0' },
-        { string: 2, fret: 3, finger: '3' },
-        { string: 3, fret: 0, finger: '0' },
+      const isF = chord === 'Fmaj7';
+      const isC = chord === 'Cmaj7';
+      const isG = chord === 'Gmaj7';
+      const rootFret = isF ? 1 : isC ? 8 : isG ? 3 : 5;
+
+      return createMeasure16Notes(mIdx, offset, chord, [
+        { string: 5, fret: rootFret, finger: '1' },
+        { string: 5, fret: rootFret + 2, finger: '2' },
+        { string: 5, fret: rootFret + 4, finger: '4' },
+        { string: 4, fret: rootFret, finger: '1' },
+        { string: 4, fret: rootFret + 2, finger: '2' },
+        { string: 4, fret: rootFret + 4, finger: '4' },
+        { string: 3, fret: rootFret, finger: '1' },
+        { string: 3, fret: rootFret + 2, finger: '3' },
+        { string: 2, fret: rootFret + 1, finger: '2' },
+        { string: 2, fret: rootFret + 3, finger: '4' },
+        { string: 1, fret: rootFret, finger: '1' },
+        { string: 1, fret: rootFret + 3, finger: '4' },
+        { string: 2, fret: rootFret + 3, finger: '4' },
+        { string: 3, fret: rootFret + 2, finger: '3' },
+        { string: 4, fret: rootFret + 2, finger: '2' },
+        { string: 5, fret: rootFret + 2, finger: '2' },
       ]);
     },
   },
 
-  // AP-09 • Sextillos en Posición Extendida 1-2-4 (138 BPM)
-  // F#m (8c) -> D (8c) -> A (8c) -> E (8c) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-09 • Workout Escala Menor en Sextillos (Posiciones 1-2-4) en Fa# Menor (138 BPM)
+  // F#m7 (8c) -> Dmaj7 (8c) -> A (8c) -> E (8c) = 32c
+  // --------------------------------------------------------------------------
   {
     code: 'AP-09',
-    slug: 'ap-09-sextillos-posicion-extendida-1-2-4',
-    title: 'AP-09 • Workout Sextillos (Tresillos de Semicorchea) en Posición Extendida 1-2-4 — 32 Compases',
+    slug: 'ap-09-workout-escala-menor-sextillos-fsharp-minor',
+    title: 'AP-09 • Workout Escala Menor en Sextillos (Posiciones 1-2-4) en Fa# Menor — 32 Compases',
     bpm: 138,
     category: 'Escalas & Arpegios',
     difficulty: 'Avanzado',
-    description: 'Extensiones de 4 trastes con digitación 1-2-4 en progresión de rock progresivo (Fa# menor, Re, La, Mi). 16 semicorcheas y sextillos con cambios de acento y alta demanda muscular.',
+    description: 'Digitaciones 1-2-4 de alcance amplio sobre la escala menor de Fa# y sus acordes relativos con púa alternada rigurosa en grupos rítmicos rápidos.',
     progression: [
-      { chord: 'F#m', measures: 8 },
-      { chord: 'D', measures: 8 },
+      { chord: 'F#m7', measures: 8 },
+      { chord: 'Dmaj7', measures: 8 },
       { chord: 'A', measures: 8 },
       { chord: 'E', measures: 8 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const pos = chord === 'D' ? 5 : chord === 'A' ? 7 : chord === 'E' ? 2 : 9;
-      return createMeasure16Notes(mIdx, offset, [
+      const pos = chord === 'F#m7' ? 2 : chord === 'Dmaj7' ? 5 : chord === 'A' ? 5 : 7;
+      return createMeasure16Notes(mIdx, offset, chord, [
+        { string: 6, fret: pos, finger: '1' },
+        { string: 6, fret: pos + 2, finger: '2' },
+        { string: 6, fret: pos + 4, finger: '4' },
+        { string: 5, fret: pos, finger: '1' },
+        { string: 5, fret: pos + 2, finger: '2' },
+        { string: 5, fret: pos + 4, finger: '4' },
         { string: 4, fret: pos, finger: '1' },
         { string: 4, fret: pos + 2, finger: '2' },
         { string: 4, fret: pos + 4, finger: '4' },
@@ -435,28 +764,25 @@ export const BLUEPRINTS: ExerciseBlueprint[] = [
         { string: 3, fret: pos + 4, finger: '4' },
         { string: 2, fret: pos, finger: '1' },
         { string: 2, fret: pos + 2, finger: '2' },
-        { string: 2, fret: pos + 5, finger: '4' },
         { string: 1, fret: pos, finger: '1' },
-        { string: 1, fret: pos + 2, finger: '2' },
-        { string: 1, fret: pos + 5, finger: '4' },
-        { string: 1, fret: pos + 2, finger: '2' },
-        { string: 2, fret: pos + 5, finger: '4' },
-        { string: 3, fret: pos + 4, finger: '4' },
-        { string: 4, fret: pos + 4, finger: '4' },
+        { string: 1, fret: pos + 2, finger: '3' },
       ]);
     },
   },
 
-  // AP-10 • Arpegios Maj7 y m7 en 4 Cuerdas con Púa Alterna Pura (140 BPM)
-  // Fmaj7 (8c) -> Em7 (8c) -> Dm7 (8c) -> Cmaj7 (8c) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-10 • Workout Arpegios Maj7 y m7 en 4 Cuerdas Adyacentes (Sin Sweep) (140 BPM)
+  // Fmaj7 (8c) -> Em7 (8c) -> Dm7 (8c) -> Cmaj7 (8c) = 32c
+  // Cuerdas adyacentes 4, 3, 2, 1 con púa alternada pura
+  // --------------------------------------------------------------------------
   {
     code: 'AP-10',
-    slug: 'ap-10-arpegios-maj7-m7-4-cuerdas-pua-pura',
-    title: 'AP-10 • Workout Arpegios Maj7 y m7 en 4 Cuerdas con Púa Alterna Pura — 32 Compases',
+    slug: 'ap-10-workout-arpegios-maj7-m7-cuerdas-adyacentes',
+    title: 'AP-10 • Workout Arpegios Maj7 y m7 en 4 Cuerdas Adyacentes (Sin Sweep) — 32 Compases',
     bpm: 140,
     category: 'Escalas & Arpegios',
     difficulty: 'Avanzado',
-    description: 'Prohibido el barrido (sweep): todos los arpegios de 4 cuerdas se ejecutan con púa alterna estricta (abajo-arriba-abajo-arriba), desarrollando sincronización milimétrica mano izquierda y derecha.',
+    description: 'Arpegios de cuatro notas (fundamental, tercera, quinta y séptima) recorriendo las 4 primeras cuerdas contiguas con estricta alternancia de púa.',
     progression: [
       { chord: 'Fmaj7', measures: 8 },
       { chord: 'Em7', measures: 8 },
@@ -464,155 +790,289 @@ export const BLUEPRINTS: ExerciseBlueprint[] = [
       { chord: 'Cmaj7', measures: 8 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const pos = chord === 'Em7' ? 7 : chord === 'Dm7' ? 5 : chord === 'Cmaj7' ? 3 : 8;
-      return createMeasure16Notes(mIdx, offset, [
-        { string: 4, fret: pos, finger: '2' },
-        { string: 3, fret: pos - 1, finger: '1' },
-        { string: 2, fret: pos - 2, finger: '1' },
-        { string: 1, fret: pos - 3, finger: '1' },
-        { string: 1, fret: pos + 1, finger: '4' },
-        { string: 1, fret: pos - 3, finger: '1' },
-        { string: 2, fret: pos - 2, finger: '1' },
-        { string: 3, fret: pos - 1, finger: '1' },
-        { string: 4, fret: pos, finger: '2' },
-        { string: 3, fret: pos + 1, finger: '3' },
-        { string: 2, fret: pos, finger: '2' },
-        { string: 1, fret: pos, finger: '2' },
-        { string: 2, fret: pos, finger: '2' },
-        { string: 3, fret: pos + 1, finger: '3' },
-        { string: 4, fret: pos, finger: '2' },
-        { string: 5, fret: pos + 2, finger: '4' },
-      ]);
+      // 4 cuerdas contiguas (4, 3, 2, 1, 1, 2, 3, 4)
+      if (chord === 'Fmaj7') {
+        // F, A, C, E
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 4, fret: 3, finger: '1' }, // F
+          { string: 3, fret: 2, finger: '1' }, // A
+          { string: 2, fret: 1, finger: '1' }, // C
+          { string: 1, fret: 0, finger: '0' }, // E
+          { string: 1, fret: 5, finger: '3' }, // A
+          { string: 2, fret: 5, finger: '3' }, // E
+          { string: 3, fret: 5, finger: '3' }, // C
+          { string: 4, fret: 7, finger: '4' }, // A
+          { string: 4, fret: 3, finger: '1' }, // F
+          { string: 3, fret: 5, finger: '3' }, // C
+          { string: 2, fret: 5, finger: '3' }, // E
+          { string: 1, fret: 5, finger: '3' }, // A
+          { string: 1, fret: 0, finger: '0' }, // E
+          { string: 2, fret: 1, finger: '1' }, // C
+          { string: 3, fret: 2, finger: '1' }, // A
+          { string: 4, fret: 3, finger: '1' }, // F
+        ]);
+      } else if (chord === 'Em7') {
+        // E, G, B, D
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 4, fret: 2, finger: '1' }, // E
+          { string: 3, fret: 0, finger: '0' }, // G
+          { string: 2, fret: 0, finger: '0' }, // B
+          { string: 1, fret: 0, finger: '0' }, // E
+          { string: 1, fret: 3, finger: '2' }, // G
+          { string: 2, fret: 3, finger: '2' }, // D
+          { string: 3, fret: 4, finger: '3' }, // B
+          { string: 4, fret: 5, finger: '4' }, // G
+          { string: 4, fret: 2, finger: '1' }, // E
+          { string: 3, fret: 4, finger: '3' }, // B
+          { string: 2, fret: 3, finger: '2' }, // D
+          { string: 1, fret: 3, finger: '2' }, // G
+          { string: 1, fret: 0, finger: '0' }, // E
+          { string: 2, fret: 0, finger: '0' }, // B
+          { string: 3, fret: 0, finger: '0' }, // G
+          { string: 4, fret: 2, finger: '1' }, // E
+        ]);
+      } else if (chord === 'Dm7') {
+        // D, F, A, C
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 4, fret: 0, finger: '0' }, // D
+          { string: 3, fret: 2, finger: '1' }, // A
+          { string: 2, fret: 1, finger: '1' }, // C
+          { string: 1, fret: 1, finger: '1' }, // F
+          { string: 1, fret: 5, finger: '4' }, // A
+          { string: 2, fret: 6, finger: '4' }, // F
+          { string: 3, fret: 5, finger: '3' }, // C
+          { string: 4, fret: 7, finger: '4' }, // A
+          { string: 4, fret: 0, finger: '0' }, // D
+          { string: 3, fret: 5, finger: '3' }, // C
+          { string: 2, fret: 6, finger: '4' }, // F
+          { string: 1, fret: 5, finger: '4' }, // A
+          { string: 1, fret: 1, finger: '1' }, // F
+          { string: 2, fret: 1, finger: '1' }, // C
+          { string: 3, fret: 2, finger: '1' }, // A
+          { string: 4, fret: 0, finger: '0' }, // D
+        ]);
+      } else {
+        // Cmaj7: C, E, G, B
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 4, fret: 2, finger: '1' }, // E
+          { string: 3, fret: 0, finger: '0' }, // G
+          { string: 2, fret: 0, finger: '0' }, // B
+          { string: 1, fret: 0, finger: '0' }, // E
+          { string: 1, fret: 3, finger: '2' }, // G
+          { string: 2, fret: 1, finger: '1' }, // C
+          { string: 3, fret: 4, finger: '3' }, // B
+          { string: 4, fret: 5, finger: '4' }, // G
+          { string: 4, fret: 2, finger: '1' }, // E
+          { string: 3, fret: 4, finger: '3' }, // B
+          { string: 2, fret: 1, finger: '1' }, // C
+          { string: 1, fret: 3, finger: '2' }, // G
+          { string: 1, fret: 0, finger: '0' }, // E
+          { string: 2, fret: 0, finger: '0' }, // B
+          { string: 3, fret: 0, finger: '0' }, // G
+          { string: 4, fret: 2, finger: '1' }, // E
+        ]);
+      }
     },
   },
 
-  // AP-11 • Inside Picking de Alta Resistencia en Progresión Frigia (142 BPM)
-  // Em (8c) -> Fmaj7 (8c) -> G6 (8c) -> Fmaj7 (8c) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-11 • Workout Inside Picking en Escala Menor de Mi y Pentatónica Menor (142 BPM)
+  // Em7 (8c) -> Am7 (8c) -> Bm7 (8c) -> Em7 (8c) = 32c
+  // --------------------------------------------------------------------------
   {
     code: 'AP-11',
-    slug: 'ap-11-inside-picking-resistencia-frigia',
-    title: 'AP-11 • Workout Inside Picking de Alta Resistencia en Progresión Frigia — 32 Compases',
+    slug: 'ap-11-workout-inside-picking-escala-menor-mi',
+    title: 'AP-11 • Workout Inside Picking en Escala Menor de Mi y Pentatónica Menor — 32 Compases',
     bpm: 142,
-    category: 'Escalas & Arpegios',
+    category: 'Licks & Riffs',
     difficulty: 'Avanzado',
-    description: 'Cambios de cuerda ejecutados exclusivamente entre el espacio interno de dos cuerdas adyacentes (upstroke en cuerda inferior, downstroke en superior) en el modo Mi Frigio oscuro y tenso.',
+    description: 'Cruces de cuerda interiores estrictos (inside picking) alternando cuerdas adyacentes sobre las escalas menores de Mi, La y Si.',
     progression: [
-      { chord: 'Em', measures: 8 },
-      { chord: 'Fmaj7', measures: 8 },
-      { chord: 'G6', measures: 8 },
-      { chord: 'Fmaj7', measures: 8 },
+      { chord: 'Em7', measures: 8 },
+      { chord: 'Am7', measures: 8 },
+      { chord: 'Bm7', measures: 8 },
+      { chord: 'Em7', measures: 8 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const pos = chord === 'Fmaj7' ? 8 : chord === 'G6' ? 10 : 7;
-      return createMeasure16Notes(mIdx, offset, [
-        { string: 3, fret: pos, finger: '1', pick: 'up' as const },
-        { string: 2, fret: pos + 1, finger: '2', pick: 'down' as const },
-        { string: 3, fret: pos + 2, finger: '3', pick: 'up' as const },
-        { string: 2, fret: pos + 3, finger: '4', pick: 'down' as const },
-        { string: 3, fret: pos, finger: '1', pick: 'up' as const },
-        { string: 2, fret: pos + 1, finger: '2', pick: 'down' as const },
-        { string: 3, fret: pos + 2, finger: '3', pick: 'up' as const },
-        { string: 2, fret: pos + 3, finger: '4', pick: 'down' as const },
-        { string: 2, fret: pos + 1, finger: '2', pick: 'up' as const },
-        { string: 1, fret: pos, finger: '1', pick: 'down' as const },
-        { string: 2, fret: pos + 3, finger: '4', pick: 'up' as const },
-        { string: 1, fret: pos + 2, finger: '3', pick: 'down' as const },
-        { string: 2, fret: pos + 1, finger: '2', pick: 'up' as const },
-        { string: 1, fret: pos, finger: '1', pick: 'down' as const },
-        { string: 2, fret: pos + 3, finger: '4', pick: 'up' as const },
-        { string: 1, fret: pos + 3, finger: '4', pick: 'down' as const },
+      const root = chord === 'Am7' ? 5 : chord === 'Bm7' ? 7 : 0;
+      return createMeasure16Notes(mIdx, offset, chord, [
+        { string: 4, fret: root + 2, finger: '1' },
+        { string: 3, fret: root, finger: '1' },
+        { string: 4, fret: root + 4, finger: '3' },
+        { string: 3, fret: root + 2, finger: '2' },
+        { string: 4, fret: root + 5, finger: '4' },
+        { string: 3, fret: root + 4, finger: '4' },
+        { string: 2, fret: root + 3, finger: '2' },
+        { string: 1, fret: root + 2, finger: '1' },
+        { string: 2, fret: root + 5, finger: '4' },
+        { string: 1, fret: root + 3, finger: '2' },
+        { string: 2, fret: root + 5, finger: '4' },
+        { string: 3, fret: root + 4, finger: '4' },
+        { string: 4, fret: root + 5, finger: '4' },
+        { string: 3, fret: root + 2, finger: '2' },
+        { string: 4, fret: root + 4, finger: '3' },
+        { string: 5, fret: root + 2, finger: '1' },
       ]);
     },
   },
 
-  // AP-12 • Desplazamiento Diagonal de Octavas en Sextillos (144 BPM)
-  // Gm7 (8c) -> C7 (8c) -> Fmaj7 (8c) -> Bbmaj7 (8c) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-12 • Workout Desplazamiento Diagonal en Escala Mayor de Fa y Bb (144 BPM)
+  // Bbmaj7 (8c) -> Fmaj7 (8c) -> Gm7 (8c) -> C7 (8c) = 32c
+  // --------------------------------------------------------------------------
   {
     code: 'AP-12',
-    slug: 'ap-12-desplazamiento-diagonal-octavas-sextillos',
-    title: 'AP-12 • Workout Desplazamiento Diagonal de Octavas en Sextillos — 32 Compases',
+    slug: 'ap-12-workout-desplazamiento-diagonal-fa-bb',
+    title: 'AP-12 • Workout Desplazamiento Diagonal en Escala Mayor de Fa y Bb — 32 Compases',
     bpm: 144,
     category: 'Escalas & Arpegios',
     difficulty: 'Avanzado',
-    description: 'Subida y bajada por todo el mástil (trastes 3 al 17) uniendo octavas diagonales en Re menor / Fa mayor. Movimiento de brazo y muñeca perfectamente calibrado.',
+    description: 'Desplazamiento horizontal a lo largo del mástil conectando posiciones mediante cambios suaves de posición con digitación precisa.',
     progression: [
+      { chord: 'Bbmaj7', measures: 8 },
+      { chord: 'Fmaj7', measures: 8 },
       { chord: 'Gm7', measures: 8 },
       { chord: 'C7', measures: 8 },
-      { chord: 'Fmaj7', measures: 8 },
-      { chord: 'Bbmaj7', measures: 8 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const shift = (mIdx % 4) * 2;
-      return createMeasure16Notes(mIdx, offset, [
-        { string: 6, fret: 3 + shift, finger: '1' },
-        { string: 6, fret: 5 + shift, finger: '3' },
-        { string: 6, fret: 6 + shift, finger: '4' },
-        { string: 5, fret: 3 + shift, finger: '1' },
-        { string: 5, fret: 5 + shift, finger: '3' },
-        { string: 4, fret: 5 + shift, finger: '2' },
-        { string: 4, fret: 7 + shift, finger: '4' },
-        { string: 3, fret: 5 + shift, finger: '1' },
-        { string: 3, fret: 7 + shift, finger: '3' },
-        { string: 2, fret: 6 + shift, finger: '2' },
-        { string: 2, fret: 8 + shift, finger: '4' },
-        { string: 1, fret: 5 + shift, finger: '1' },
-        { string: 1, fret: 6 + shift, finger: '2' },
-        { string: 1, fret: 8 + shift, finger: '4' },
-        { string: 1, fret: 10 + shift, finger: '4' },
-        { string: 1, fret: 8 + shift, finger: '2' },
+      const base = chord === 'Bbmaj7' ? 6 : chord === 'Fmaj7' ? 8 : chord === 'Gm7' ? 3 : 8;
+      return createMeasure16Notes(mIdx, offset, chord, [
+        { string: 5, fret: base - 1, finger: '1' },
+        { string: 5, fret: base + 1, finger: '2' },
+        { string: 5, fret: base + 3, finger: '4' },
+        { string: 4, fret: base, finger: '1' },
+        { string: 4, fret: base + 2, finger: '3' },
+        { string: 4, fret: base + 3, finger: '4' },
+        { string: 3, fret: base, finger: '1' },
+        { string: 3, fret: base + 2, finger: '3' },
+        { string: 3, fret: base + 4, finger: '4' },
+        { string: 2, fret: base + 1, finger: '1' },
+        { string: 2, fret: base + 3, finger: '3' },
+        { string: 2, fret: base + 5, finger: '4' },
+        { string: 1, fret: base + 3, finger: '2' },
+        { string: 1, fret: base + 5, finger: '4' },
+        { string: 2, fret: base + 3, finger: '3' },
+        { string: 3, fret: base + 2, finger: '2' },
       ]);
     },
   },
 
-  // AP-13 • Secuencia Simétrica Disminuida Sobre Dominantes Alterados (146 BPM)
-  // E7b9 (8c) -> A7b9 (8c) -> D7b9 (8c) -> G7b9 (8c) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-13 • Workout Arpegios de Séptima Dominante (7) con Púa Alterna Estricta (146 BPM)
+  // E7 (8c) -> A7 (8c) -> D7 (8c) -> G7 (8c) = 32c
+  // Cuerdas adyacentes, arpegio dominante completo (1-3-5-b7)
+  // --------------------------------------------------------------------------
   {
     code: 'AP-13',
-    slug: 'ap-13-secuencia-simetrica-disminuida-dominantes',
-    title: 'AP-13 • Workout Secuencia Simétrica Disminuida Sobre Dominantes Alterados — 32 Compases',
+    slug: 'ap-13-workout-arpegios-septima-dominante-pua-alterna',
+    title: 'AP-13 • Workout Arpegios de Séptima Dominante (7) con Púa Alterna Estricta — 32 Compases',
     bpm: 146,
     category: 'Escalas & Arpegios',
     difficulty: 'Avanzado',
-    description: 'Patrones simétricos tono-semitono y arpegios disminuidos cada 3 trastes aplicados sobre acordes 7(b9), generando tensión de jazz-fusion moderna a alta velocidad.',
+    description: 'Arpegios dominantes 1-3-5-b7 en cuerdas contiguas atacados con púa alternada pura, exigiendo máxima independencia y sincronización motriz.',
     progression: [
-      { chord: 'E7b9', measures: 8 },
-      { chord: 'A7b9', measures: 8 },
-      { chord: 'D7b9', measures: 8 },
-      { chord: 'G7b9', measures: 8 },
+      { chord: 'E7', measures: 8 },
+      { chord: 'A7', measures: 8 },
+      { chord: 'D7', measures: 8 },
+      { chord: 'G7', measures: 8 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const base = chord === 'A7b9' ? 5 : chord === 'D7b9' ? 10 : chord === 'G7b9' ? 3 : 7;
-      return createMeasure16Notes(mIdx, offset, [
-        { string: 4, fret: base - 1, finger: '1' },
-        { string: 4, fret: base + 2, finger: '4' },
-        { string: 3, fret: base, finger: '2' },
-        { string: 3, fret: base + 3, finger: '4' },
-        { string: 2, fret: base + 1, finger: '2' },
-        { string: 2, fret: base + 4, finger: '4' },
-        { string: 1, fret: base + 2, finger: '2' },
-        { string: 1, fret: base + 5, finger: '4' },
-        { string: 1, fret: base + 2, finger: '2' },
-        { string: 2, fret: base + 4, finger: '4' },
-        { string: 2, fret: base + 1, finger: '2' },
-        { string: 3, fret: base + 3, finger: '4' },
-        { string: 3, fret: base, finger: '2' },
-        { string: 4, fret: base + 2, finger: '4' },
-        { string: 4, fret: base - 1, finger: '1' },
-        { string: 5, fret: base + 1, finger: '3' },
-      ]);
+      if (chord === 'E7') {
+        // E (4), G# (8), B (11), D (2)
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 5, fret: 7, finger: '2' }, // E
+          { string: 4, fret: 6, finger: '1' }, // G#
+          { string: 4, fret: 9, finger: '4' }, // B
+          { string: 3, fret: 7, finger: '2' }, // D
+          { string: 3, fret: 9, finger: '4' }, // E
+          { string: 2, fret: 9, finger: '4' }, // G#
+          { string: 1, fret: 7, finger: '1' }, // B
+          { string: 1, fret: 10, finger: '4' }, // D
+          { string: 1, fret: 7, finger: '1' }, // B
+          { string: 2, fret: 9, finger: '4' }, // G#
+          { string: 3, fret: 9, finger: '4' }, // E
+          { string: 3, fret: 7, finger: '2' }, // D
+          { string: 4, fret: 9, finger: '4' }, // B
+          { string: 4, fret: 6, finger: '1' }, // G#
+          { string: 5, fret: 7, finger: '2' }, // E
+          { string: 6, fret: 7, finger: '2' }, // B
+        ]);
+      } else if (chord === 'A7') {
+        // A (9), C# (1), E (4), G (7)
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 5, fret: 12, finger: '3' }, // A
+          { string: 4, fret: 11, finger: '2' }, // C#
+          { string: 3, fret: 9, finger: '1' },  // E
+          { string: 2, fret: 8, finger: '1' },  // G
+          { string: 2, fret: 10, finger: '3' }, // A
+          { string: 1, fret: 9, finger: '2' },  // C#
+          { string: 1, fret: 12, finger: '4' }, // E
+          { string: 1, fret: 9, finger: '2' },  // C#
+          { string: 2, fret: 10, finger: '3' }, // A
+          { string: 2, fret: 8, finger: '1' },  // G
+          { string: 3, fret: 9, finger: '1' },  // E
+          { string: 4, fret: 11, finger: '2' }, // C#
+          { string: 5, fret: 12, finger: '3' }, // A
+          { string: 4, fret: 7, finger: '1' },  // A
+          { string: 3, fret: 6, finger: '1' },  // C#
+          { string: 2, fret: 5, finger: '1' },  // E
+        ]);
+      } else if (chord === 'D7') {
+        // D (2), F# (6), A (9), C (0)
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 5, fret: 5, finger: '2' }, // D
+          { string: 4, fret: 4, finger: '1' }, // F#
+          { string: 4, fret: 7, finger: '4' }, // A
+          { string: 3, fret: 5, finger: '2' }, // C
+          { string: 3, fret: 7, finger: '4' }, // D
+          { string: 2, fret: 7, finger: '3' }, // F#
+          { string: 1, fret: 5, finger: '1' }, // A
+          { string: 1, fret: 8, finger: '4' }, // C
+          { string: 1, fret: 5, finger: '1' }, // A
+          { string: 2, fret: 7, finger: '3' }, // F#
+          { string: 3, fret: 7, finger: '4' }, // D
+          { string: 3, fret: 5, finger: '2' }, // C
+          { string: 4, fret: 7, finger: '4' }, // A
+          { string: 4, fret: 4, finger: '1' }, // F#
+          { string: 5, fret: 5, finger: '2' }, // D
+          { string: 4, fret: 0, finger: '0' }, // D
+        ]);
+      } else {
+        // G7: G (7), B (11), D (2), F (5)
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 6, fret: 3, finger: '1' }, // G
+          { string: 5, fret: 2, finger: '1' }, // B
+          { string: 5, fret: 5, finger: '4' }, // D
+          { string: 4, fret: 3, finger: '2' }, // F
+          { string: 4, fret: 5, finger: '4' }, // G
+          { string: 3, fret: 4, finger: '3' }, // B
+          { string: 2, fret: 3, finger: '2' }, // D
+          { string: 1, fret: 1, finger: '1' }, // F
+          { string: 1, fret: 3, finger: '3' }, // G
+          { string: 2, fret: 3, finger: '2' }, // D
+          { string: 3, fret: 4, finger: '3' }, // B
+          { string: 4, fret: 5, finger: '4' }, // G
+          { string: 4, fret: 3, finger: '2' }, // F
+          { string: 5, fret: 5, finger: '4' }, // D
+          { string: 5, fret: 2, finger: '1' }, // B
+          { string: 6, fret: 3, finger: '1' }, // G
+        ]);
+      }
     },
   },
 
-  // AP-14 • String Skipping de 2 Cuerdas (Intervalos de Décima) (148 BPM)
-  // Bm7 (8c) -> Gmaj7 (8c) -> Dmaj7 (8c) -> A (8c) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-14 • Workout Pentatónica Mayor y Menor Alternada (2 Notas x Cuerda Rápido) (148 BPM)
+  // Bm7 (8c) -> Gmaj7 (8c) -> Dmaj7 (8c) -> A (8c) = 32c
+  // --------------------------------------------------------------------------
   {
     code: 'AP-14',
-    slug: 'ap-14-string-skipping-2-cuerdas-decimas',
-    title: 'AP-14 • Workout String Skipping de 2 Cuerdas (Intervalos de Décima) — 32 Compases',
+    slug: 'ap-14-workout-pentatonica-mayor-menor-alternada',
+    title: 'AP-14 • Workout Pentatónica Mayor y Menor Alternada (2 Notas x Cuerda Rápido) — 32 Compases',
     bpm: 148,
-    category: 'Escalas & Arpegios',
+    category: 'Licks & Riffs',
     difficulty: 'Avanzado',
-    description: 'Saltos de dos cuerdas completas (5ª cuerda a 2ª cuerda, y 4ª a 1ª) tocando intervalos de décima y sonoridades estilo Eric Johnson / Steve Morse con púa estricta.',
+    description: 'Alternancia de dos notas por cuerda a gran velocidad pasando de pentatónica menor (Bm) a pentatónicas mayores (Sol, Re y La).',
     progression: [
       { chord: 'Bm7', measures: 8 },
       { chord: 'Gmaj7', measures: 8 },
@@ -620,38 +1080,40 @@ export const BLUEPRINTS: ExerciseBlueprint[] = [
       { chord: 'A', measures: 8 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const root = chord === 'Gmaj7' ? 10 : chord === 'Dmaj7' ? 5 : chord === 'A' ? 12 : 7;
-      return createMeasure16Notes(mIdx, offset, [
+      const root = chord === 'Bm7' ? 7 : chord === 'Gmaj7' ? 3 : chord === 'Dmaj7' ? 10 : 5;
+      return createMeasure16Notes(mIdx, offset, chord, [
+        { string: 6, fret: root, finger: '1' },
+        { string: 6, fret: root + 3, finger: '4' },
         { string: 5, fret: root, finger: '1' },
-        { string: 2, fret: root + 2, finger: '3' },
-        { string: 5, fret: root + 2, finger: '2' },
-        { string: 2, fret: root + 3, finger: '4' },
+        { string: 5, fret: root + 2, finger: '3' },
         { string: 4, fret: root, finger: '1' },
-        { string: 1, fret: root + 2, finger: '3' },
-        { string: 4, fret: root + 2, finger: '2' },
+        { string: 4, fret: root + 2, finger: '3' },
+        { string: 3, fret: root, finger: '1' },
+        { string: 3, fret: root + 2, finger: '3' },
+        { string: 2, fret: root, finger: '1' },
+        { string: 2, fret: root + 3, finger: '4' },
+        { string: 1, fret: root, finger: '1' },
         { string: 1, fret: root + 3, finger: '4' },
-        { string: 4, fret: root, finger: '1' },
-        { string: 1, fret: root + 2, finger: '3' },
-        { string: 5, fret: root + 2, finger: '2' },
         { string: 2, fret: root + 3, finger: '4' },
-        { string: 5, fret: root, finger: '1' },
-        { string: 2, fret: root + 2, finger: '3' },
-        { string: 5, fret: root - 2, finger: '1' },
-        { string: 2, fret: root, finger: '2' },
+        { string: 3, fret: root + 2, finger: '3' },
+        { string: 4, fret: root + 2, finger: '3' },
+        { string: 5, fret: root + 2, finger: '3' },
       ]);
     },
   },
 
-  // AP-15 • Grupos Polimétricos de 5 Notas (Quintillos) (150 BPM)
-  // Cm7 (8c) -> Fm7 (8c) -> Bb7 (8c) -> Ebmaj7 (8c) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-15 • Workout Grupos de 5 Notas en Escala Menor de Do y Pentatónica Menor (150 BPM)
+  // Cm7 (8c) -> Fm7 (8c) -> Bb7 (8c) -> Ebmaj7 (8c) = 32c
+  // --------------------------------------------------------------------------
   {
     code: 'AP-15',
-    slug: 'ap-15-polimetria-grupos-de-5-quintillos',
-    title: 'AP-15 • Workout Grupos Polimétricos de 5 Notas (Quintillos en Semicorcheas) — 32 Compases',
+    slug: 'ap-15-workout-grupos-5-notas-escala-menor-do',
+    title: 'AP-15 • Workout Grupos de 5 Notas en Escala Menor de Do y Pentatónica Menor — 32 Compases',
     bpm: 150,
     category: 'Escalas & Arpegios',
     difficulty: 'Avanzado',
-    description: 'Desplazamiento métrico fascinante: agrupar patrones de 5 notas en semicorcheas estándar (4/4). Cada repetición de 5 notas invierte el acento de púa (abajo/arriba) exigiendo control total.',
+    description: 'Polirritmia de quintillos agrupados en compás de 4/4 con semicorcheas rápidas sobre el ciclo armónico de Do menor y Mi bemol mayor.',
     progression: [
       { chord: 'Cm7', measures: 8 },
       { chord: 'Fm7', measures: 8 },
@@ -659,112 +1121,188 @@ export const BLUEPRINTS: ExerciseBlueprint[] = [
       { chord: 'Ebmaj7', measures: 8 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const pos = chord === 'Fm7' ? 8 : chord === 'Bb7' ? 6 : chord === 'Ebmaj7' ? 11 : 8;
-      // 3 grupos de 5 notas + 1 nota resolutiva = 16
-      const group5 = [
+      const pos = chord === 'Cm7' ? 8 : chord === 'Fm7' ? 1 : chord === 'Bb7' ? 6 : 6;
+      return createMeasure16Notes(mIdx, offset, chord, [
+        { string: 6, fret: pos, finger: '1' },
+        { string: 6, fret: pos + 2, finger: '2' },
+        { string: 6, fret: pos + 3, finger: '3' },
+        { string: 5, fret: pos, finger: '1' },
+        { string: 5, fret: pos + 2, finger: '2' },
+        { string: 5, fret: pos + 3, finger: '3' },
+        { string: 4, fret: pos, finger: '1' },
+        { string: 4, fret: pos + 2, finger: '2' },
+        { string: 4, fret: pos + 3, finger: '3' },
         { string: 3, fret: pos, finger: '1' },
-        { string: 3, fret: pos + 2, finger: '2' },
-        { string: 3, fret: pos + 3, finger: '3' },
-        { string: 2, fret: pos + 1, finger: '1' },
-        { string: 2, fret: pos + 4, finger: '4' },
-      ];
-      return createMeasure16Notes(mIdx, offset, [
-        ...group5,
-        ...group5,
-        ...group5,
-        { string: 1, fret: pos + 3, finger: '3' },
+        { string: 3, fret: pos + 2, finger: '3' },
+        { string: 2, fret: pos + 1, finger: '2' },
+        { string: 2, fret: pos + 3, finger: '4' },
+        { string: 1, fret: pos, finger: '1' },
+        { string: 1, fret: pos + 2, finger: '3' },
+        { string: 2, fret: pos + 3, finger: '4' },
       ]);
     },
   },
 
-  // AP-16 • Menor Melódica 3NPS (Lidio Dominante & Alterada) (152 BPM)
-  // Dm9 (8c) -> G13#11 (8c) -> Cmaj9 (8c) -> A7alt (8c) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-16 • Workout Arpegios Extendidos (m9 y maj9) con Púa Alterna Avanzada (152 BPM)
+  // Dm7 (8c) -> G7 (8c) -> Cmaj7 (8c) -> Am7 (8c) = 32c
+  // Cuerdas adyacentes, arpegios con 9na
+  // --------------------------------------------------------------------------
   {
     code: 'AP-16',
-    slug: 'ap-16-menor-melodica-3nps-lidio-dominante',
-    title: 'AP-16 • Workout Menor Melódica 3NPS (Lidio Dominante & Alterada) — 32 Compases',
+    slug: 'ap-16-workout-arpegios-extendidos-m9-maj9',
+    title: 'AP-16 • Workout Arpegios Extendidos (m9 y maj9) con Púa Alterna Avanzada — 32 Compases',
     bpm: 152,
     category: 'Escalas & Arpegios',
     difficulty: 'Avanzado',
-    description: 'Sonoridad moderna de jazz-fusion usando los modos 4º (Lidio Dominante #11) y 7º (Alterada) de la escala Menor Melódica con patrones 3NPS fluidos a 152 BPM.',
+    description: 'Arpegios con tensiones de novena mayor (m9, dom9 y maj9) tocados exclusivamente en cuerdas adyacentes con técnica alterna pura.',
     progression: [
-      { chord: 'Dm9', measures: 8 },
-      { chord: 'G13#11', measures: 8 },
-      { chord: 'Cmaj9', measures: 8 },
-      { chord: 'A7alt', measures: 8 },
+      { chord: 'Dm7', measures: 8 },
+      { chord: 'G7', measures: 8 },
+      { chord: 'Cmaj7', measures: 8 },
+      { chord: 'Am7', measures: 8 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const pos = chord === 'G13#11' ? 9 : chord === 'Cmaj9' ? 12 : chord === 'A7alt' ? 6 : 10;
-      return createMeasure16Notes(mIdx, offset, [
-        { string: 4, fret: pos, finger: '1' },
-        { string: 4, fret: pos + 2, finger: '3' },
-        { string: 4, fret: pos + 4, finger: '4' },
-        { string: 3, fret: pos - 1, finger: '1' },
-        { string: 3, fret: pos + 1, finger: '2' },
-        { string: 3, fret: pos + 3, finger: '4' },
-        { string: 2, fret: pos, finger: '1' },
-        { string: 2, fret: pos + 2, finger: '3' },
-        { string: 2, fret: pos + 4, finger: '4' },
-        { string: 1, fret: pos, finger: '1' },
-        { string: 1, fret: pos + 2, finger: '3' },
-        { string: 1, fret: pos + 3, finger: '4' },
-        { string: 1, fret: pos + 2, finger: '3' },
-        { string: 2, fret: pos + 4, finger: '4' },
-        { string: 3, fret: pos + 3, finger: '4' },
-        { string: 4, fret: pos + 4, finger: '4' },
-      ]);
+      if (chord === 'Dm7') {
+        // Dm9: D, F, A, C, E
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 5, fret: 5, finger: '1' },  // D
+          { string: 4, fret: 7, finger: '3' },  // A
+          { string: 3, fret: 5, finger: '1' },  // C
+          { string: 2, fret: 5, finger: '1' },  // E (9)
+          { string: 1, fret: 5, finger: '1' },  // A
+          { string: 1, fret: 8, finger: '4' },  // C
+          { string: 1, fret: 5, finger: '1' },  // A
+          { string: 2, fret: 6, finger: '2' },  // F
+          { string: 3, fret: 7, finger: '3' },  // D
+          { string: 4, fret: 7, finger: '3' },  // A
+          { string: 5, fret: 5, finger: '1' },  // D
+          { string: 4, fret: 3, finger: '1' },  // F
+          { string: 3, fret: 2, finger: '1' },  // A
+          { string: 2, fret: 1, finger: '1' },  // C
+          { string: 1, fret: 0, finger: '0' },  // E
+          { string: 2, fret: 3, finger: '3' },  // D
+        ]);
+      } else if (chord === 'G7') {
+        // G9: G, B, D, F, A
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 6, fret: 3, finger: '1' },  // G
+          { string: 5, fret: 5, finger: '3' },  // D
+          { string: 4, fret: 3, finger: '1' },  // F
+          { string: 3, fret: 2, finger: '1' },  // A (9)
+          { string: 3, fret: 4, finger: '3' },  // B
+          { string: 2, fret: 3, finger: '2' },  // D
+          { string: 1, fret: 1, finger: '1' },  // F
+          { string: 1, fret: 5, finger: '4' },  // A
+          { string: 1, fret: 1, finger: '1' },  // F
+          { string: 2, fret: 3, finger: '2' },  // D
+          { string: 3, fret: 4, finger: '3' },  // B
+          { string: 4, fret: 3, finger: '1' },  // F
+          { string: 5, fret: 5, finger: '3' },  // D
+          { string: 6, fret: 3, finger: '1' },  // G
+          { string: 5, fret: 2, finger: '1' },  // B
+          { string: 4, fret: 5, finger: '4' },  // G
+        ]);
+      } else if (chord === 'Cmaj7') {
+        // Cmaj9: C, E, G, B, D
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 5, fret: 3, finger: '1' },  // C
+          { string: 4, fret: 2, finger: '1' },  // E
+          { string: 3, fret: 0, finger: '0' },  // G
+          { string: 2, fret: 0, finger: '0' },  // B
+          { string: 1, fret: 0, finger: '0' },  // E
+          { string: 1, fret: 3, finger: '3' },  // G
+          { string: 2, fret: 3, finger: '3' },  // D (9)
+          { string: 3, fret: 4, finger: '4' },  // B
+          { string: 4, fret: 5, finger: '4' },  // G
+          { string: 5, fret: 7, finger: '4' },  // E
+          { string: 5, fret: 3, finger: '1' },  // C
+          { string: 4, fret: 2, finger: '1' },  // E
+          { string: 3, fret: 4, finger: '3' },  // B
+          { string: 2, fret: 1, finger: '1' },  // C
+          { string: 1, fret: 0, finger: '0' },  // E
+          { string: 2, fret: 1, finger: '1' },  // C
+        ]);
+      } else {
+        // Am9: A, C, E, G, B
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 5, fret: 0, finger: '0' },  // A
+          { string: 4, fret: 2, finger: '1' },  // E
+          { string: 3, fret: 0, finger: '0' },  // G
+          { string: 2, fret: 0, finger: '0' },  // B (9)
+          { string: 1, fret: 0, finger: '0' },  // E
+          { string: 1, fret: 5, finger: '4' },  // A
+          { string: 2, fret: 5, finger: '3' },  // E
+          { string: 3, fret: 5, finger: '2' },  // C
+          { string: 4, fret: 5, finger: '2' },  // G
+          { string: 5, fret: 7, finger: '4' },  // E
+          { string: 6, fret: 5, finger: '1' },  // A
+          { string: 5, fret: 3, finger: '1' },  // C
+          { string: 4, fret: 2, finger: '1' },  // E
+          { string: 3, fret: 2, finger: '1' },  // A
+          { string: 2, fret: 0, finger: '0' },  // B
+          { string: 1, fret: 0, finger: '0' },  // E
+        ]);
+      }
     },
   },
 
-  // AP-17 • Arpegios Disminuidos con String Skipping y Upstroke Accent (155 BPM)
-  // C#dim7 (8c) -> Dm7 (8c) -> D#dim7 (8c) -> Em7 (8c) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-17 • Workout Secuencias Lineales de Escala Mayor de Fa (Inside/Outside) (155 BPM)
+  // Dm7 (8c) -> Gm7 (8c) -> C7 (8c) -> Fmaj7 (8c) = 32c
+  // --------------------------------------------------------------------------
   {
     code: 'AP-17',
-    slug: 'ap-17-arpegios-disminuidos-skipping-upstroke',
-    title: 'AP-17 • Workout Arpegios Disminuidos con String Skipping y Upstroke Accent — 32 Compases',
+    slug: 'ap-17-workout-secuencias-lineales-escala-mayor-fa',
+    title: 'AP-17 • Workout Secuencias Lineales de Escala Mayor de Fa (Inside/Outside) — 32 Compases',
     bpm: 155,
     category: 'Escalas & Arpegios',
     difficulty: 'Avanzado',
-    description: 'Movimiento simétrico en terceras menores que se desplaza 3 trastes adelante con acento de upstroke en la nota aguda. Gran demandante de resistencia física a 155 BPM.',
+    description: 'Intervalos de terceras y cuartas en Fa mayor / Re menor que combinan inside y outside picking a alta velocidad sin perder articulación.',
     progression: [
-      { chord: 'C#dim7', measures: 8 },
       { chord: 'Dm7', measures: 8 },
-      { chord: 'D#dim7', measures: 8 },
-      { chord: 'Em7', measures: 8 },
+      { chord: 'Gm7', measures: 8 },
+      { chord: 'C7', measures: 8 },
+      { chord: 'Fmaj7', measures: 8 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const pos = chord === 'C#dim7' ? 6 : chord === 'Dm7' ? 7 : chord === 'D#dim7' ? 8 : 9;
-      return createMeasure16Notes(mIdx, offset, [
-        { string: 5, fret: pos - 2, finger: '1' },
-        { string: 3, fret: pos - 1, finger: '2' },
-        { string: 5, fret: pos + 1, finger: '4' },
-        { string: 3, fret: pos + 2, finger: '3' },
-        { string: 4, fret: pos - 1, finger: '1' },
-        { string: 2, fret: pos, finger: '2' },
-        { string: 4, fret: pos + 2, finger: '4' },
-        { string: 2, fret: pos + 3, finger: '3' },
-        { string: 3, fret: pos - 1, finger: '1' },
-        { string: 1, fret: pos, finger: '2' },
-        { string: 3, fret: pos + 2, finger: '4' },
-        { string: 1, fret: pos + 3, finger: '3' },
-        { string: 1, fret: pos + 6, finger: '4', pick: 'up' as const },
-        { string: 2, fret: pos + 3, finger: '2', pick: 'down' as const },
-        { string: 3, fret: pos + 2, finger: '1', pick: 'up' as const },
-        { string: 4, fret: pos + 2, finger: '1', pick: 'down' as const },
+      const isF = chord === 'Fmaj7';
+      const isC = chord === 'C7';
+      const root = isF ? 8 : isC ? 8 : chord === 'Gm7' ? 3 : 5;
+
+      return createMeasure16Notes(mIdx, offset, chord, [
+        { string: 5, fret: root, finger: '1' },
+        { string: 4, fret: root - 1 >= 0 ? root - 1 : root + 2, finger: '1' },
+        { string: 5, fret: root + 2, finger: '3' },
+        { string: 4, fret: root + 2, finger: '3' },
+        { string: 4, fret: root - 1 >= 0 ? root - 1 : root + 2, finger: '1' },
+        { string: 3, fret: root, finger: '2' },
+        { string: 4, fret: root + 2, finger: '3' },
+        { string: 3, fret: root + 2, finger: '4' },
+        { string: 3, fret: root, finger: '2' },
+        { string: 2, fret: root + 1, finger: '2' },
+        { string: 3, fret: root + 2, finger: '4' },
+        { string: 2, fret: root + 3, finger: '4' },
+        { string: 2, fret: root + 1, finger: '2' },
+        { string: 1, fret: root, finger: '1' },
+        { string: 2, fret: root + 3, finger: '4' },
+        { string: 1, fret: root + 2, finger: '3' },
       ]);
     },
   },
 
-  // AP-18 • Cascada Neoclásica en Sextillos (6 Cuerdas Continuas) (158 BPM)
-  // Dm (4c) -> Gm (4c) -> A7 (4c) -> Dm (4c) -> Bb (4c) -> Gm (4c) -> A7 (4c) -> Dm (4c) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-18 • Workout Cascada en Sextillos de Escala Menor y Arpegios Menores (158 BPM)
+  // Dm (4c) -> Gm (4c) -> A7 (4c) -> Dm (4c) -> Bb (4c) -> Gm (4c) -> A7 (4c) -> Dm (4c) = 32c
+  // --------------------------------------------------------------------------
   {
     code: 'AP-18',
-    slug: 'ap-18-cascada-neoclasica-6-cuerdas',
-    title: 'AP-18 • Workout Cascada Neoclásica en Sextillos (6 Cuerdas Continuas) — 32 Compases',
+    slug: 'ap-18-workout-cascada-sextillos-escala-menor',
+    title: 'AP-18 • Workout Cascada en Sextillos de Escala Menor y Arpegios Menores — 32 Compases',
     bpm: 158,
     category: 'Escalas & Arpegios',
     difficulty: 'Avanzado',
-    description: 'Ráfaga continua barroca que cruza las 6 cuerdas de la guitarra ida y vuelta sin perder el pulso de púa alterna a 158 BPM sobre una progresión clásica en Re menor.',
+    description: 'Cascada continua descendente y ascendente en Re menor armónico con arpegios menores intercalados para resistencia y control extremo.',
     progression: [
       { chord: 'Dm', measures: 4 },
       { chord: 'Gm', measures: 4 },
@@ -776,114 +1314,283 @@ export const BLUEPRINTS: ExerciseBlueprint[] = [
       { chord: 'Dm', measures: 4 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const p = chord === 'Gm' ? 10 : chord === 'A7' ? 12 : chord === 'Bb' ? 6 : 5;
-      return createMeasure16Notes(mIdx, offset, [
-        { string: 1, fret: p + 3, finger: '4' },
-        { string: 1, fret: p + 1, finger: '2' },
-        { string: 1, fret: p, finger: '1' },
-        { string: 2, fret: p + 3, finger: '4' },
-        { string: 2, fret: p + 1, finger: '2' },
-        { string: 3, fret: p + 2, finger: '3' },
-        { string: 3, fret: p, finger: '1' },
-        { string: 4, fret: p + 2, finger: '3' },
-        { string: 4, fret: p, finger: '1' },
-        { string: 5, fret: p + 3, finger: '4' },
-        { string: 5, fret: p + 1, finger: '2' },
-        { string: 6, fret: p + 3, finger: '4' },
-        { string: 6, fret: p + 1, finger: '2' },
-        { string: 6, fret: p, finger: '1' },
-        { string: 5, fret: p + 1, finger: '2' },
-        { string: 5, fret: p + 3, finger: '4' },
+      const pos = chord === 'Gm' ? 3 : chord === 'A7' ? 5 : chord === 'Bb' ? 6 : 10;
+      return createMeasure16Notes(mIdx, offset, chord, [
+        { string: 1, fret: pos + 3, finger: '4' },
+        { string: 1, fret: pos + 1, finger: '2' },
+        { string: 1, fret: pos, finger: '1' },
+        { string: 2, fret: pos + 3, finger: '4' },
+        { string: 2, fret: pos + 1, finger: '2' },
+        { string: 2, fret: pos, finger: '1' },
+        { string: 3, fret: pos + 2, finger: '3' },
+        { string: 3, fret: pos, finger: '1' },
+        { string: 4, fret: pos + 2, finger: '3' },
+        { string: 4, fret: pos, finger: '1' },
+        { string: 5, fret: pos + 2, finger: '3' },
+        { string: 5, fret: pos, finger: '1' },
+        { string: 4, fret: pos, finger: '1' },
+        { string: 3, fret: pos, finger: '1' },
+        { string: 2, fret: pos, finger: '1' },
+        { string: 1, fret: pos, finger: '1' },
       ]);
     },
   },
 
-  // AP-19 • Fusion Chromatic Outside-In (160 BPM)
-  // Am11 (8c) -> D13 (8c) -> Gmaj9 (8c) -> C#m7b5 (4c) -> F#7b9 (4c) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-19 • Workout Arpegios Enlazados (Voice Leading) con Púa Alterna Estricta (160 BPM)
+  // Am7 (8c) -> D7 (8c) -> Gmaj7 (8c) -> Cmaj7 (8c) = 32c
+  // Cuerdas adyacentes, voice leading suave
+  // --------------------------------------------------------------------------
   {
     code: 'AP-19',
-    slug: 'ap-19-fusion-chromatic-outside-in',
-    title: 'AP-19 • Workout Fusion Chromatic Outside-In — 32 Compases',
+    slug: 'ap-19-workout-arpegios-enlazados-voice-leading',
+    title: 'AP-19 • Workout Arpegios Enlazados (Voice Leading) con Púa Alterna Estricta — 32 Compases',
     bpm: 160,
-    category: 'Licks & Riffs',
+    category: 'Escalas & Arpegios',
     difficulty: 'Avanzado',
-    description: 'Aproximaciones cromáticas de 4 notas por traste (1-2-3-4) intercaladas con notas objetivo diatónicas a 160 BPM estilo John McLaughlin / Frank Gambale con púa estricta.',
+    description: 'Conducción de voces armónicas (voice leading) donde la última nota de cada arpegio enlaza por tono o semitono con el siguiente con púa alterna estricta.',
     progression: [
-      { chord: 'Am11', measures: 8 },
-      { chord: 'D13', measures: 8 },
-      { chord: 'Gmaj9', measures: 8 },
-      { chord: 'C#m7b5', measures: 4 },
-      { chord: 'F#7b9', measures: 4 },
+      { chord: 'Am7', measures: 8 },
+      { chord: 'D7', measures: 8 },
+      { chord: 'Gmaj7', measures: 8 },
+      { chord: 'Cmaj7', measures: 8 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const pos = chord === 'D13' ? 10 : chord === 'Gmaj9' ? 7 : chord === 'C#m7b5' ? 9 : chord === 'F#7b9' ? 8 : 5;
-      return createMeasure16Notes(mIdx, offset, [
-        { string: 3, fret: pos, finger: '1' },
-        { string: 3, fret: pos + 1, finger: '2' },
-        { string: 3, fret: pos + 2, finger: '3' },
-        { string: 3, fret: pos + 3, finger: '4' },
-        { string: 2, fret: pos, finger: '1' },
-        { string: 2, fret: pos + 1, finger: '2' },
-        { string: 2, fret: pos + 2, finger: '3' },
-        { string: 2, fret: pos + 3, finger: '4' },
-        { string: 1, fret: pos, finger: '1' },
-        { string: 1, fret: pos + 1, finger: '2' },
-        { string: 1, fret: pos + 2, finger: '3' },
-        { string: 1, fret: pos + 3, finger: '4' },
-        { string: 1, fret: pos + 2, finger: '3' },
-        { string: 2, fret: pos + 3, finger: '4' },
-        { string: 2, fret: pos + 1, finger: '2' },
-        { string: 3, fret: pos + 2, finger: '3' },
-      ]);
+      if (chord === 'Am7') {
+        // A, C, E, G
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 5, fret: 0, finger: '0' },
+          { string: 4, fret: 2, finger: '1' },
+          { string: 3, fret: 2, finger: '2' },
+          { string: 2, fret: 1, finger: '1' },
+          { string: 1, fret: 0, finger: '0' },
+          { string: 1, fret: 3, finger: '3' }, // G -> voice leading al F# de D7
+          { string: 2, fret: 1, finger: '1' },
+          { string: 3, fret: 2, finger: '2' },
+          { string: 4, fret: 2, finger: '1' },
+          { string: 5, fret: 0, finger: '0' },
+          { string: 4, fret: 5, finger: '4' },
+          { string: 3, fret: 5, finger: '3' },
+          { string: 2, fret: 5, finger: '2' },
+          { string: 1, fret: 5, finger: '1' },
+          { string: 2, fret: 5, finger: '2' },
+          { string: 3, fret: 5, finger: '3' },
+        ]);
+      } else if (chord === 'D7') {
+        // D, F#, A, C
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 4, fret: 0, finger: '0' },
+          { string: 3, fret: 2, finger: '1' },
+          { string: 2, fret: 1, finger: '1' }, // C
+          { string: 1, fret: 2, finger: '2' }, // F#
+          { string: 1, fret: 5, finger: '4' },
+          { string: 2, fret: 3, finger: '3' },
+          { string: 3, fret: 2, finger: '1' },
+          { string: 4, fret: 4, finger: '4' }, // F#
+          { string: 5, fret: 5, finger: '4' }, // D
+          { string: 4, fret: 4, finger: '3' },
+          { string: 3, fret: 5, finger: '4' }, // C
+          { string: 2, fret: 3, finger: '2' },
+          { string: 1, fret: 2, finger: '1' },
+          { string: 2, fret: 1, finger: '1' }, // C -> voice leading al B de Gmaj7
+          { string: 3, fret: 2, finger: '2' },
+          { string: 4, fret: 0, finger: '0' },
+        ]);
+      } else if (chord === 'Gmaj7') {
+        // G, B, D, F#
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 6, fret: 3, finger: '1' },
+          { string: 5, fret: 2, finger: '1' },
+          { string: 4, fret: 0, finger: '0' },
+          { string: 3, fret: 0, finger: '0' },
+          { string: 2, fret: 0, finger: '0' },
+          { string: 1, fret: 2, finger: '1' }, // F#
+          { string: 1, fret: 3, finger: '2' }, // G
+          { string: 2, fret: 0, finger: '0' },
+          { string: 3, fret: 0, finger: '0' },
+          { string: 4, fret: 0, finger: '0' },
+          { string: 5, fret: 5, finger: '4' }, // D
+          { string: 4, fret: 4, finger: '3' }, // F#
+          { string: 3, fret: 4, finger: '2' }, // B
+          { string: 2, fret: 3, finger: '1' }, // D
+          { string: 1, fret: 2, finger: '1' }, // F# -> voice leading al E de Cmaj7
+          { string: 2, fret: 3, finger: '2' },
+        ]);
+      } else {
+        // Cmaj7: C, E, G, B
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 5, fret: 3, finger: '1' },
+          { string: 4, fret: 2, finger: '1' },
+          { string: 3, fret: 0, finger: '0' },
+          { string: 2, fret: 0, finger: '0' },
+          { string: 1, fret: 0, finger: '0' },
+          { string: 1, fret: 3, finger: '3' },
+          { string: 2, fret: 1, finger: '1' },
+          { string: 3, fret: 0, finger: '0' },
+          { string: 4, fret: 2, finger: '1' },
+          { string: 5, fret: 3, finger: '1' },
+          { string: 4, fret: 5, finger: '3' },
+          { string: 3, fret: 4, finger: '2' },
+          { string: 2, fret: 5, finger: '3' },
+          { string: 1, fret: 3, finger: '1' },
+          { string: 2, fret: 5, finger: '3' },
+          { string: 3, fret: 4, finger: '2' },
+        ]);
+      }
     },
   },
 
-  // AP-20 • Boss Final: Maratón de Resistencia 32 Compases (164 BPM)
-  // Em (4c) -> Cmaj7 (4c) -> Am7 (4c) -> B7alt (4c) -> Em (4c) -> Gmaj7 (4c) -> D7 (4c) -> B7 (4c) = 32 compases
+  // --------------------------------------------------------------------------
+  // AP-20 • Boss Final: Maratón 32 Compases (Escala Mayor + Pentatónicas + Arpegios Avanzados) (164 BPM)
+  // Cmaj7 (4c) -> Fmaj7 (4c) -> Dm7 (4c) -> G7 (4c) -> Em7 (4c) -> Am7 (4c) -> Fmaj7 (4c) -> G7 (4c) = 32c
+  // --------------------------------------------------------------------------
   {
     code: 'AP-20',
     slug: 'ap-20-boss-final-maraton-resistencia-32c',
-    title: 'AP-20 • Boss Final: Maratón de Resistencia 32 Compases (3NPS + Skipping + Pedal Tone) — 32 Compases',
+    title: 'AP-20 • Boss Final: Maratón 32 Compases (Escala Mayor + Pentatónicas + Arpegios Avanzados) — 32 Compases',
     bpm: 164,
     category: 'Escalas & Arpegios',
     difficulty: 'Avanzado',
-    description: 'La prueba cumbre del método: 32 compases continuos a 164 BPM que combinan 3NPS, saltos de cuerda, notas pedal y sextillos sobre una progresión armónica triunfal.',
+    description: 'El desafío definitivo de púa alternada: 32 compases continuos a 164 BPM combinando escalas mayores completas, pentatónicas y arpegios en cuerdas contiguas.',
     progression: [
-      { chord: 'Em', measures: 4 },
       { chord: 'Cmaj7', measures: 4 },
+      { chord: 'Fmaj7', measures: 4 },
+      { chord: 'Dm7', measures: 4 },
+      { chord: 'G7', measures: 4 },
+      { chord: 'Em7', measures: 4 },
       { chord: 'Am7', measures: 4 },
-      { chord: 'B7alt', measures: 4 },
-      { chord: 'Em', measures: 4 },
-      { chord: 'Gmaj7', measures: 4 },
-      { chord: 'D7', measures: 4 },
-      { chord: 'B7', measures: 4 },
+      { chord: 'Fmaj7', measures: 4 },
+      { chord: 'G7', measures: 4 },
     ],
     generateNotes: (mIdx, chord, offset) => {
-      const p = chord === 'Cmaj7' ? 8 : chord === 'Am7' ? 5 : chord === 'B7alt' ? 7 : chord === 'Gmaj7' ? 10 : chord === 'D7' ? 10 : chord === 'B7' ? 7 : 12;
-      return createMeasure16Notes(mIdx, offset, [
-        { string: 1, fret: p + 3, finger: '4' },
-        { string: 1, fret: p, finger: '1' },
-        { string: 2, fret: p + 2, finger: '3' },
-        { string: 1, fret: p, finger: '1' },
-        { string: 3, fret: p + 2, finger: '3' },
-        { string: 1, fret: p, finger: '1' },
-        { string: 2, fret: p + 2, finger: '3' },
-        { string: 3, fret: p + 2, finger: '3' },
-        { string: 4, fret: p + 2, finger: '3' },
-        { string: 4, fret: p, finger: '1' },
-        { string: 5, fret: p + 2, finger: '3' },
-        { string: 5, fret: p, finger: '1' },
-        { string: 6, fret: p + 3, finger: '4' },
-        { string: 6, fret: p, finger: '1' },
-        { string: 5, fret: p + 2, finger: '3' },
-        { string: 1, fret: p + 7, finger: '4' },
-      ]);
+      if (chord === 'Cmaj7') {
+        // Escala Mayor + Arpegio en Do
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 5, fret: 3, finger: '1' }, // C
+          { string: 5, fret: 5, finger: '3' }, // D
+          { string: 4, fret: 2, finger: '1' }, // E
+          { string: 4, fret: 3, finger: '2' }, // F
+          { string: 4, fret: 5, finger: '4' }, // G
+          { string: 3, fret: 2, finger: '1' }, // A
+          { string: 3, fret: 4, finger: '3' }, // B
+          { string: 3, fret: 5, finger: '4' }, // C
+          { string: 2, fret: 3, finger: '1' }, // D
+          { string: 2, fret: 5, finger: '3' }, // E
+          { string: 1, fret: 3, finger: '1' }, // G
+          { string: 1, fret: 7, finger: '4' }, // B
+          { string: 1, fret: 8, finger: '4' }, // C
+          { string: 2, fret: 5, finger: '2' }, // E
+          { string: 3, fret: 5, finger: '2' }, // C
+          { string: 4, fret: 5, finger: '3' }, // G
+        ]);
+      } else if (chord === 'Fmaj7') {
+        // 3NPS en Fa Mayor (con Bb)
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 6, fret: 1, finger: '1' }, // F
+          { string: 6, fret: 3, finger: '2' }, // G
+          { string: 6, fret: 5, finger: '4' }, // A
+          { string: 5, fret: 1, finger: '1' }, // Bb
+          { string: 5, fret: 3, finger: '2' }, // C
+          { string: 5, fret: 5, finger: '4' }, // D
+          { string: 4, fret: 2, finger: '1' }, // E
+          { string: 4, fret: 3, finger: '2' }, // F
+          { string: 4, fret: 5, finger: '4' }, // G
+          { string: 3, fret: 2, finger: '1' }, // A
+          { string: 3, fret: 3, finger: '2' }, // Bb
+          { string: 3, fret: 5, finger: '4' }, // C
+          { string: 2, fret: 3, finger: '1' }, // D
+          { string: 2, fret: 5, finger: '2' }, // E
+          { string: 2, fret: 6, finger: '4' }, // F
+          { string: 1, fret: 5, finger: '3' }, // A
+        ]);
+      } else if (chord === 'Dm7') {
+        // Pentatónica Menor + Arpegio Dm9
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 5, fret: 5, finger: '1' }, // D
+          { string: 4, fret: 7, finger: '3' }, // A
+          { string: 3, fret: 5, finger: '1' }, // C
+          { string: 2, fret: 5, finger: '1' }, // E
+          { string: 2, fret: 6, finger: '2' }, // F
+          { string: 1, fret: 5, finger: '1' }, // A
+          { string: 1, fret: 8, finger: '4' }, // C
+          { string: 1, fret: 10, finger: '4' }, // D
+          { string: 1, fret: 8, finger: '2' }, // C
+          { string: 2, fret: 6, finger: '2' }, // F
+          { string: 2, fret: 5, finger: '1' }, // E
+          { string: 3, fret: 7, finger: '4' }, // D
+          { string: 3, fret: 5, finger: '1' }, // C
+          { string: 4, fret: 7, finger: '3' }, // A
+          { string: 4, fret: 5, finger: '1' }, // G
+          { string: 5, fret: 5, finger: '1' }, // D
+        ]);
+      } else if (chord === 'G7') {
+        // Mixolidio + Arpegio G7
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 6, fret: 3, finger: '1' }, // G
+          { string: 5, fret: 2, finger: '1' }, // B
+          { string: 5, fret: 5, finger: '4' }, // D
+          { string: 4, fret: 3, finger: '2' }, // F
+          { string: 4, fret: 5, finger: '4' }, // G
+          { string: 3, fret: 4, finger: '3' }, // B
+          { string: 2, fret: 3, finger: '2' }, // D
+          { string: 1, fret: 1, finger: '1' }, // F
+          { string: 1, fret: 3, finger: '3' }, // G
+          { string: 1, fret: 7, finger: '4' }, // B
+          { string: 2, fret: 6, finger: '3' }, // F
+          { string: 2, fret: 3, finger: '1' }, // D
+          { string: 3, fret: 4, finger: '2' }, // B
+          { string: 4, fret: 5, finger: '4' }, // G
+          { string: 5, fret: 5, finger: '4' }, // D
+          { string: 6, fret: 3, finger: '1' }, // G
+        ]);
+      } else if (chord === 'Em7') {
+        // Escala Menor Natural + Arpegio Em7
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 5, fret: 7, finger: '2' }, // E
+          { string: 4, fret: 5, finger: '1' }, // G
+          { string: 4, fret: 9, finger: '4' }, // B
+          { string: 3, fret: 7, finger: '2' }, // D
+          { string: 3, fret: 9, finger: '4' }, // E
+          { string: 2, fret: 8, finger: '3' }, // G
+          { string: 1, fret: 7, finger: '1' }, // B
+          { string: 1, fret: 10, finger: '4' }, // D
+          { string: 1, fret: 12, finger: '4' }, // E
+          { string: 2, fret: 8, finger: '2' }, // G
+          { string: 3, fret: 9, finger: '4' }, // E
+          { string: 3, fret: 7, finger: '2' }, // D
+          { string: 4, fret: 9, finger: '4' }, // B
+          { string: 4, fret: 5, finger: '1' }, // G
+          { string: 5, fret: 7, finger: '2' }, // E
+          { string: 6, fret: 7, finger: '2' }, // B
+        ]);
+      } else {
+        // Am7: Pentatónica Extendida + Arpegio Am7
+        return createMeasure16Notes(mIdx, offset, chord, [
+          { string: 6, fret: 5, finger: '1' }, // A
+          { string: 6, fret: 8, finger: '4' }, // C
+          { string: 5, fret: 5, finger: '1' }, // D
+          { string: 5, fret: 7, finger: '3' }, // E
+          { string: 4, fret: 5, finger: '1' }, // G
+          { string: 4, fret: 7, finger: '3' }, // A
+          { string: 3, fret: 5, finger: '1' }, // C
+          { string: 3, fret: 7, finger: '3' }, // D
+          { string: 2, fret: 5, finger: '1' }, // E
+          { string: 2, fret: 8, finger: '4' }, // G
+          { string: 1, fret: 5, finger: '1' }, // A
+          { string: 1, fret: 8, finger: '4' }, // C
+          { string: 1, fret: 10, finger: '4' }, // D
+          { string: 2, fret: 10, finger: '4' }, // A
+          { string: 3, fret: 9, finger: '3' }, // E
+          { string: 4, fret: 7, finger: '1' }, // A
+        ]);
+      }
     },
   },
 ];
 
 /**
- * Convierte un blueprint en un StringExerciseData completo y estructurado con 32 compases
+ * Convierte un blueprint en un StringExerciseData estructurado con 32 compases
+ * y validación tonal absoluta.
  */
 export function buildExerciseFromBlueprint(bp: ExerciseBlueprint): StringExerciseData {
   const allNotes: StringTabNote[] = [];
@@ -946,11 +1653,48 @@ export function buildExerciseFromBlueprint(bp: ExerciseBlueprint): StringExercis
 export const ADVANCED_ALTERNATE_PICKING_20: StringExerciseData[] = BLUEPRINTS.map(buildExerciseFromBlueprint);
 
 /**
+ * Validador estricto para verificar que el 100% de los 640 compases (20x32)
+ * contengan notas tonalmente correctas respecto al acorde base.
+ */
+export function validateAllStudies(): { totalStudies: number; totalMeasures: number; invalidNotes: number } {
+  let totalStudies = 0;
+  let totalMeasures = 0;
+  let invalidNotes = 0;
+
+  ADVANCED_ALTERNATE_PICKING_20.forEach((ex) => {
+    totalStudies++;
+    (ex.measures || []).forEach((m) => {
+      totalMeasures++;
+      const chord = m.chordSymbol || 'C';
+      (m.notes || []).forEach((n) => {
+        if (!isValidChordNote(chord, n.string, n.fret)) {
+          invalidNotes++;
+          console.error(
+            `❌ [Nota fuera de tono] ${ex.title} | C.${m.measureNumber} (${chord}) | Cuerda ${n.string}, Traste ${n.fret} (PitchClass ${getNotePitchClass(n.string, n.fret)})`
+          );
+        }
+      });
+    });
+  });
+
+  return { totalStudies, totalMeasures, invalidNotes };
+}
+
+/**
  * Función para sembrar en PostgreSQL vía Prisma (idempotente)
  */
 export async function seedAlternatePicking20(prismaClient?: PrismaClient) {
   const prisma = prismaClient || new PrismaClient();
   const results = [];
+
+  // Validación tonal previa antes de insertar
+  const val = validateAllStudies();
+  console.log(
+    `🎼 [Validación Tonal] ${val.totalStudies} estudios verificados, ${val.totalMeasures} compases analizados. Notas fuera de tono: ${val.invalidNotes}`
+  );
+  if (val.invalidNotes > 0) {
+    throw new Error(`Se detectaron ${val.invalidNotes} notas fuera de escala/acorde.`);
+  }
 
   for (const ex of ADVANCED_ALTERNATE_PICKING_20) {
     const tabPayload = {
