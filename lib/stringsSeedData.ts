@@ -1,8 +1,6 @@
 import { StringExerciseData } from '@/types/strings';
-import { ADVANCED_ALTERNATE_PICKING_20 } from '@/prisma/seeds/advancedAlternatePicking20';
 
 export const STRINGS_INITIAL_EXERCISES: StringExerciseData[] = [
-  ...ADVANCED_ALTERNATE_PICKING_20,
   {
     id: "str_bass_slap_funk",
     slug: "bajo-slap-pop-funk",
