@@ -35,7 +35,11 @@ export type StringTechnique =
 
 export interface StringTabNote {
   id?: string;
-  step: number;          // 0 to totalSteps - 1
+  step: number;          // Global step index: 0 to totalSteps - 1
+  stepIndex?: number;     // Local measure step index: 0 to stepsPerMeasure - 1
+  measureIndex?: number;  // Índice del compás (0 a totalMeasures - 1)
+  tick?: number;          // Alias de subdivisión
+  position?: number;      // Alias de posición
   string: number;        // Cuerda: 1 es la más aguda, 4 o 6 es la más grave
   fret: number;          // 0 = cuerda al aire, 1...24 trastes
   finger?: string;       // "1" (índice), "2" (medio), "3" (anular), "4" (meñique), "T" (pulgar)

@@ -313,11 +313,20 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
 
     // Ordenar si la carpeta es Púa Alternada del #01 al #20
     if (selectedFolder === 'Púa Alternada') {
-      return [...list].sort((a, b) => {
-        const numA = parseInt(a.title.match(/AP-(\d+)/)?.[1] || a.slug.match(/ap-(\d+)/)?.[1] || '999', 10);
-        const numB = parseInt(b.title.match(/AP-(\d+)/)?.[1] || b.slug.match(/ap-(\d+)/)?.[1] || '999', 10);
-        return numA - numB;
-      });
+      return [...list].sort((a, b) =>
+        a.title.localeCompare(b.title, undefined, { numeric: true })
+      );
+    }
+
+    if (selectedFolder === 'all') {
+      const apExercises = list.filter(
+        (e) => e.folder === 'Púa Alternada' || e.title.startsWith('AP-') || e.slug.startsWith('ap-')
+      );
+      apExercises.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }));
+      const otherExercises = list.filter(
+        (e) => !(e.folder === 'Púa Alternada' || e.title.startsWith('AP-') || e.slug.startsWith('ap-'))
+      );
+      return [...apExercises, ...otherExercises];
     }
 
     return list;

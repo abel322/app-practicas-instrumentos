@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import { StringInstrument, StringTabNote, BendType, BendAmount, PickDirection, StrumDirection } from '@/types/strings';
 import { getSubdivisionConfig } from '@/lib/music-theory/rhythmSubdivisions';
 
@@ -131,40 +131,80 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
   const measureEndStep = measureStartStep + effectiveStepsPerMeasure;
 
   const notesInCurrentMeasure = useMemo<RenderedNote[]>(() => {
-    if (measures && measures[effectiveActiveMeasure]?.notes) {
-      return measures[effectiveActiveMeasure].notes.map((n: any, idx: number) => ({
-        id: `m-note-${idx}`,
-        stepInMeasure: n.stepIndex ?? 0,
-        string: n.stringIndex !== undefined ? n.stringIndex + 1 : (n.string || 1),
-        fret: n.fret,
-        technique: n.technique,
-        slideDirection: n.slideDirection,
-        bendType: n.bendType,
-        bendAmount: n.bendAmount,
-        finger: n.finger,
-        pickDirection: n.pickDirection,
-        palmMute: n.palmMute,
-        strumDirection: n.strumDirection,
-      }));
+    const rawMeasureNotes = measures && measures[effectiveActiveMeasure]?.notes;
+    if (Array.isArray(rawMeasureNotes) && rawMeasureNotes.length > 0) {
+      return rawMeasureNotes.map((n: any, idx: number) => {
+        // Resolver de forma unificada el índice de paso dentro del compás
+        let stepInMeasure = idx;
+        if (typeof n.stepIndex === 'number') {
+          stepInMeasure = n.stepIndex;
+        } else if (typeof n.step === 'number') {
+          if (n.step >= measureStartStep && n.step < measureEndStep) {
+            stepInMeasure = n.step - measureStartStep;
+          } else {
+            stepInMeasure = n.step % effectiveStepsPerMeasure;
+          }
+        } else if (typeof n.tick === 'number') {
+          stepInMeasure = n.tick;
+        } else if (typeof n.position === 'number') {
+          stepInMeasure = n.position;
+        }
+
+        return {
+          id: n.id || `m-note-${effectiveActiveMeasure}-${idx}`,
+          stepInMeasure,
+          string: n.stringIndex !== undefined ? n.stringIndex + 1 : (n.string || 1),
+          fret: n.fret,
+          technique: n.technique,
+          slideDirection: n.slideDirection,
+          bendType: n.bendType,
+          bendAmount: n.bendAmount,
+          finger: n.finger,
+          pickDirection: n.pickDirection,
+          palmMute: n.palmMute,
+          strumDirection: n.strumDirection,
+        };
+      });
     }
 
     if (tabData && tabData.length > 0) {
       return tabData
-        .filter((note) => note.step >= measureStartStep && note.step < measureEndStep)
-        .map((note, idx) => ({
-          id: note.id || `tab-note-${idx}`,
-          stepInMeasure: note.step - measureStartStep,
-          string: note.string,
-          fret: note.fret,
-          technique: note.technique,
-          slideDirection: note.slideDirection,
-          bendType: note.bendType,
-          bendAmount: note.bendAmount,
-          finger: note.finger,
-          pickDirection: note.pickDirection,
-          palmMute: note.palmMute,
-          strumDirection: note.strumDirection,
-        }));
+        .filter((note) => {
+          const s =
+            typeof note.step === 'number'
+              ? note.step
+              : typeof (note as any).stepIndex === 'number'
+              ? (note as any).stepIndex + measureStartStep
+              : -1;
+          return s >= measureStartStep && s < measureEndStep;
+        })
+        .map((note, idx) => {
+          let stepInMeasure = idx;
+          if (typeof note.step === 'number') {
+            stepInMeasure = note.step - measureStartStep;
+          } else if (typeof (note as any).stepIndex === 'number') {
+            stepInMeasure = (note as any).stepIndex;
+          } else if (typeof (note as any).tick === 'number') {
+            stepInMeasure = (note as any).tick;
+          } else if (typeof (note as any).position === 'number') {
+            stepInMeasure = (note as any).position;
+          }
+
+          return {
+            id: note.id || `tab-note-${effectiveActiveMeasure}-${idx}`,
+            stepInMeasure,
+            string: note.string,
+            fret: note.fret,
+            technique: note.technique,
+            slideDirection: note.slideDirection,
+            bendType: note.bendType,
+            bendAmount: note.bendAmount,
+            finger: note.finger,
+            pickDirection: note.pickDirection,
+            palmMute: note.palmMute,
+            strumDirection: note.strumDirection,
+          };
+        });
     }
 
     return [];
@@ -254,6 +294,38 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
     MEASURE_WIDTH,
   ]);
 
+  const internalScrollRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = (scrollContainerRef || internalScrollRef) as React.RefObject<HTMLDivElement | null>;
+
+  // Ancho mínimo por compás garantizado (38px a 44px por paso para evitar que las 16 notas se amontonen en móvil)
+  const minMeasurePx = useMemo(() => {
+    return Math.max(640, effectiveStepsPerMeasure * 40);
+  }, [effectiveStepsPerMeasure]);
+
+  // Auto-scroll para seguir el cursor de reproducción centrado en pantalla
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    if (el.scrollWidth <= el.clientWidth + 10) return;
+
+    const cursorRatio = localRunwayX / SVG_WIDTH;
+    const targetScrollLeft = cursorRatio * el.scrollWidth - el.clientWidth / 2;
+
+    el.scrollTo({
+      left: Math.max(0, targetScrollLeft),
+      behavior: isPlaying ? 'smooth' : 'auto',
+    });
+  }, [effectiveStepInMeasure, localRunwayX, SVG_WIDTH, isPlaying, containerRef]);
+
+  // Al cambiar de compás (Page Flip), reiniciar el scroll horizontal al inicio
+  useEffect(() => {
+    const el = containerRef.current;
+    if (el) {
+      el.scrollTo({ left: 0, behavior: 'auto' });
+    }
+  }, [effectiveActiveMeasure, containerRef]);
+
   return (
     <div className="w-full select-none flex flex-col items-center h-full">
       {/* Contenedor principal: Columna Lateral Fija TAB + Área de Compás Estático (Zero-Jerk, sin scroll) */}
@@ -289,14 +361,14 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
         </div>
 
         {/* ============================================================== */}
-        {/* CONTENEDOR DEL COMPÁS ESTÁTICO (ZERO-JERK, SIN SCROLL)         */}
+        {/* CONTENEDOR DEL COMPÁS CON ANCHO AMPLIO Y SCROLL HORIZONTAL     */}
         {/* ============================================================== */}
         <div
-          ref={scrollContainerRef}
-          className="flex-1 relative p-2 sm:p-4 flex items-center justify-center overflow-hidden"
+          ref={containerRef}
+          className="flex-1 relative p-2 sm:p-4 flex flex-col justify-center overflow-x-auto overflow-y-hidden custom-scrollbar"
         >
-          {/* Badge del Compás Actual, Acorde y Subdivisión */}
-          <div className="absolute top-2 left-3 z-30 px-2.5 py-0.5 rounded-md bg-cyan-950/85 border border-cyan-800/60 text-cyan-300 font-mono text-[11px] font-bold shadow-md select-none pointer-events-none flex items-center gap-1.5">
+          {/* Badge del Compás Actual, Acorde y Subdivisión (sticky para permanecer visible) */}
+          <div className="sticky left-2 top-0 z-30 self-start mb-1 px-2.5 py-0.5 rounded-md bg-cyan-950/85 border border-cyan-800/60 text-cyan-300 font-mono text-[11px] font-bold shadow-md select-none pointer-events-none flex items-center gap-1.5 shrink-0">
             <span>c.{effectiveActiveMeasure + 1} de {effectiveTotalMeasures}</span>
             {currentMeasureChord && (
               <>
@@ -313,12 +385,14 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
           {/* Capa de notas del compás activo con key para refresco limpio instantáneo */}
           <div
             key={`measure-flip-${effectiveActiveMeasure}`}
-            className="w-full h-full relative flex items-center justify-center transition-opacity duration-150 ease-out animate-fadeIn"
+            className="w-full relative flex items-center justify-start transition-opacity duration-150 ease-out animate-fadeIn"
+            style={{ minWidth: `${minMeasurePx}px` }}
           >
-            {/* SVG del compás ajustado al 100% del ancho (inmóvil) */}
+            {/* SVG del compás ajustado al ancho mínimo para máxima legibilidad */}
             <svg
               viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-              className="w-full h-auto drop-shadow-md select-none"
+              className="w-full h-auto drop-shadow-md select-none shrink-0"
+              style={{ minWidth: `${minMeasurePx}px` }}
               preserveAspectRatio="xMidYMid meet"
             >
               <defs>

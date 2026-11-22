@@ -229,17 +229,40 @@ export async function getStringExercises(instrument?: StringInstrument | string)
       baseSeeds = STRINGS_INITIAL_EXERCISES.filter((e) => (isB ? e.instrument === 'bass_4' : e.instrument === 'guitar_6'));
     }
     const missingSeeds = baseSeeds.filter((s) => !dbSlugs.has(s.slug));
-    return [...dbList, ...missingSeeds];
+    const combined = [...dbList, ...missingSeeds];
+
+    // Ordenar de forma progresiva ascendente los ejercicios de Púa Alternada (AP-01 a AP-20)
+    const apList = combined.filter(
+      (e) => e.folder === 'Púa Alternada' || e.title.startsWith('AP-') || e.slug.startsWith('ap-')
+    );
+    apList.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }));
+
+    const otherList = combined.filter(
+      (e) => !(e.folder === 'Púa Alternada' || e.title.startsWith('AP-') || e.slug.startsWith('ap-'))
+    );
+
+    return [...apList, ...otherList];
   } catch (error) {
     console.warn('⚠️ [Prisma Strings] Usando colección predefinida (fallback a stringsSeedData):', (error as any)?.message || error);
   }
 
+  let fallbackList = STRINGS_INITIAL_EXERCISES;
   if (instrument) {
     const clean = instrument.toLowerCase();
     const isB = clean.includes('bass') || clean.includes('bajo');
-    return STRINGS_INITIAL_EXERCISES.filter((e) => (isB ? e.instrument === 'bass_4' : e.instrument === 'guitar_6'));
+    fallbackList = STRINGS_INITIAL_EXERCISES.filter((e) => (isB ? e.instrument === 'bass_4' : e.instrument === 'guitar_6'));
   }
-  return STRINGS_INITIAL_EXERCISES;
+
+  const apFallback = fallbackList.filter(
+    (e) => e.folder === 'Púa Alternada' || e.title.startsWith('AP-') || e.slug.startsWith('ap-')
+  );
+  apFallback.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }));
+
+  const otherFallback = fallbackList.filter(
+    (e) => !(e.folder === 'Púa Alternada' || e.title.startsWith('AP-') || e.slug.startsWith('ap-'))
+  );
+
+  return [...apFallback, ...otherFallback];
 }
 
 /**

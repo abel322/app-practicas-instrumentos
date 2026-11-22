@@ -32,6 +32,8 @@ function createMeasure16Notes(
     const pickDirection = def.pick || (isEven ? 'down' : 'up');
     return {
       step: globalStepOffset + stepInMeasure,
+      stepIndex: stepInMeasure,
+      measureIndex,
       string: def.string,
       fret: def.fret,
       finger: def.finger,
@@ -271,6 +273,8 @@ export const BLUEPRINTS: ExerciseBlueprint[] = [
       ];
       return notes.map((def, stepInMeasure) => ({
         step: offset + stepInMeasure,
+        stepIndex: stepInMeasure,
+        measureIndex: mIdx,
         string: def.string,
         fret: def.fret,
         finger: def.finger,
@@ -903,7 +907,12 @@ export function buildExerciseFromBlueprint(bp: ExerciseBlueprint): StringExercis
         subdivision: '1/16',
         stepsPerMeasure: 16,
         chordSymbol: block.chord,
-        notes: mNotes,
+        notes: mNotes.map((n, sIdx) => ({
+          ...n,
+          step: n.step ?? (globalStepOffset + sIdx),
+          stepIndex: typeof n.stepIndex === 'number' ? n.stepIndex : sIdx,
+          measureIndex: currentMeasureIndex,
+        })),
       });
 
       currentMeasureIndex++;

@@ -189,13 +189,38 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
     for (let i = 0; i < exercise.totalSteps; i++) {
       map.set(i, []);
     }
-    exercise.tabData.forEach((note) => {
-      if (note.step >= 0 && note.step < exercise.totalSteps) {
-        map.get(note.step)?.push(note);
-      }
-    });
+
+    if (Array.isArray(exercise.tabData) && exercise.tabData.length > 0) {
+      exercise.tabData.forEach((note, idx) => {
+        const s =
+          typeof note.step === 'number'
+            ? note.step
+            : typeof (note as any).stepIndex === 'number'
+            ? (note as any).stepIndex
+            : idx;
+        if (s >= 0 && s < exercise.totalSteps) {
+          map.get(s)?.push(note);
+        }
+      });
+    } else if (Array.isArray(exercise.measures)) {
+      exercise.measures.forEach((m, mIdx) => {
+        const mStart = mIdx * stepsPerMeasure;
+        (m.notes || []).forEach((n: any, sIdx: number) => {
+          const s =
+            typeof n.step === 'number'
+              ? n.step
+              : typeof n.stepIndex === 'number'
+              ? mStart + n.stepIndex
+              : mStart + sIdx;
+          if (s >= 0 && s < exercise.totalSteps) {
+            map.get(s)?.push(n);
+          }
+        });
+      });
+    }
+
     notesByStep.current = map;
-  }, [exercise]);
+  }, [exercise, stepsPerMeasure]);
 
   // Planificador (Scheduler) de notas de cuerdas con agendado exacto en Web Audio API
   const scheduleNote = useCallback(
