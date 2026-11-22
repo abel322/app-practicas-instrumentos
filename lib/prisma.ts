@@ -51,13 +51,14 @@ export function extractDrumPayload(rawHitsData: any) {
 }
 
 export function extractStringPayload(rawTabData: any) {
-  if (!rawTabData) return { tabNotes: [], measures: [], patternBank: [], pickingStyle: undefined };
+  if (!rawTabData) return { tabNotes: [], measures: [], patternBank: [], pickingStyle: undefined, folder: undefined };
   if (Array.isArray(rawTabData)) {
     return {
       tabNotes: rawTabData,
       measures: [],
       patternBank: [],
       pickingStyle: undefined,
+      folder: undefined,
     };
   }
   return {
@@ -71,6 +72,7 @@ export function extractStringPayload(rawTabData: any) {
     measures: Array.isArray(rawTabData.measures) ? rawTabData.measures : [],
     patternBank: Array.isArray(rawTabData.patternBank) ? rawTabData.patternBank : [],
     pickingStyle: rawTabData.pickingStyle || undefined,
+    folder: rawTabData.folder || undefined,
   };
 }
 
@@ -214,6 +216,7 @@ export async function getStringExercises(instrument?: StringInstrument | string)
         measures: payload.measures.length > 0 ? payload.measures : undefined,
         patternBank: payload.patternBank.length > 0 ? payload.patternBank : undefined,
         pickingStyle: payload.pickingStyle,
+        folder: (ex as any).folder || payload.folder || undefined,
         createdAt: ex.createdAt,
       };
     });
@@ -273,6 +276,7 @@ export async function getStringExerciseBySlug(slug: string): Promise<StringExerc
         measures: payload.measures.length > 0 ? payload.measures : undefined,
         patternBank: payload.patternBank.length > 0 ? payload.patternBank : undefined,
         pickingStyle: payload.pickingStyle,
+        folder: (dbEx as any).folder || payload.folder || undefined,
         createdAt: dbEx.createdAt,
       };
     }

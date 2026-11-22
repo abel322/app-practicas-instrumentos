@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { StringExerciseData, StringInstrument } from '@/types/strings';
 import { StringExerciseCard } from './StringExerciseCard';
-import { Search, Music } from 'lucide-react';
+import { Search, Music, FolderPlus, Folder, FolderCheck, Plus, X, Check } from 'lucide-react';
 import { ConfirmDeleteModal } from '@/components/ui/ConfirmDeleteModal';
 import { toast } from '@/components/ui/ToastNotification';
 import { deleteExerciseAction } from '@/app/actions/save-exercise';
@@ -32,9 +32,27 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
   const router = useRouter();
   const [exercises, setExercises] = useState<StringExerciseData[]>(initialExercises);
   const [selectedInstrument, setSelectedInstrument] = useState<'all' | StringInstrument>('all');
+  const [selectedFolder, setSelectedFolder] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('Todas');
+
+  // Carpetas personalizadas creadas por el usuario
+  const [customFolders, setCustomFolders] = useState<string[]>([]);
+  const [isNewFolderModalOpen, setIsNewFolderModalOpen] = useState<boolean>(false);
+  const [newFolderName, setNewFolderName] = useState<string>('');
+  const [selectedExerciseSlugsForFolder, setSelectedExerciseSlugsForFolder] = useState<string[]>([]);
+  const [isSavingFolder, setIsSavingFolder] = useState<boolean>(false);
+
+  // Cargar carpetas personalizadas de localStorage al iniciar
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('soundlab_strings_custom_folders');
+      if (stored) {
+        setCustomFolders(JSON.parse(stored));
+      }
+    } catch {}
+  }, []);
 
   // Modal de confirmación de eliminación
   const [exerciseToDelete, setExerciseToDelete] = useState<StringExerciseData | null>(null);
@@ -98,6 +116,7 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
               : Array.isArray(customEx.data)
               ? customEx.data
               : [],
+            folder: customEx.folder || (customEx as any).collection || undefined,
             description: customEx.description || '',
           };
 
@@ -161,9 +180,93 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
     }
   };
 
+  // Conteo de ejercicios por carpeta
+  const folderCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: 0, 'Púa Alternada': 0 };
+    exercises.forEach((ex) => {
+      counts.all++;
+      const isAP =
+        ex.folder === 'Púa Alternada' ||
+        ex.title.startsWith('AP-') ||
+        ex.slug.includes('ap-') ||
+        ex.slug.includes('alternate-picking');
+
+      if (isAP) {
+        counts['Púa Alternada'] = (counts['Púa Alternada'] || 0) + 1;
+      }
+      if (ex.folder && ex.folder !== 'Púa Alternada') {
+        counts[ex.folder] = (counts[ex.folder] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [exercises]);
+
+  // Lista de todas las carpetas disponibles (además de Todos y Púa Alternada)
+  const allAvailableFolders = useMemo(() => {
+    const set = new Set<string>();
+    exercises.forEach((ex) => {
+      if (ex.folder && ex.folder !== 'Púa Alternada') {
+        set.add(ex.folder);
+      }
+    });
+    customFolders.forEach((f) => {
+      if (f !== 'Púa Alternada') set.add(f);
+    });
+    return Array.from(set);
+  }, [exercises, customFolders]);
+
+  // Manejar creación de carpeta personalizada
+  const handleCreateFolder = async () => {
+    const trimmed = newFolderName.trim();
+    if (!trimmed) {
+      toast.error('El nombre de la carpeta no puede estar vacío.');
+      return;
+    }
+    setIsSavingFolder(true);
+    try {
+      const updatedFolders = Array.from(new Set([...customFolders, trimmed]));
+      setCustomFolders(updatedFolders);
+      try {
+        localStorage.setItem('soundlab_strings_custom_folders', JSON.stringify(updatedFolders));
+      } catch {}
+
+      if (selectedExerciseSlugsForFolder.length > 0) {
+        for (const slug of selectedExerciseSlugsForFolder) {
+          const ex = exercises.find((e) => e.slug === slug);
+          if (ex) {
+            await fetch(`/api/exercises/${slug}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...ex,
+                folder: trimmed,
+              }),
+            }).catch(() => {});
+          }
+        }
+
+        setExercises((prev) =>
+          prev.map((e) =>
+            selectedExerciseSlugsForFolder.includes(e.slug) ? { ...e, folder: trimmed } : e
+          )
+        );
+      }
+
+      setSelectedFolder(trimmed);
+      setNewFolderName('');
+      setSelectedExerciseSlugsForFolder([]);
+      setIsNewFolderModalOpen(false);
+      toast.success(`Carpeta "${trimmed}" creada.`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al guardar carpeta.');
+    } finally {
+      setIsSavingFolder(false);
+    }
+  };
+
   // Filtrado de ejercicios
   const filteredExercises = useMemo(() => {
-    return exercises.filter((ex) => {
+    const list = exercises.filter((ex) => {
       const rawInst = (ex.instrument || (ex as any).instrumentType || '').toLowerCase();
       // Excluir estrictamente batería y piano
       if (rawInst === 'drums' || rawInst.includes('bater') || rawInst === 'piano') {
@@ -180,6 +283,18 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
         matchesInstrument = isBass;
       }
 
+      // Filtro de carpeta
+      let matchesFolder = true;
+      if (selectedFolder === 'Púa Alternada') {
+        matchesFolder =
+          ex.folder === 'Púa Alternada' ||
+          ex.title.startsWith('AP-') ||
+          ex.slug.includes('ap-') ||
+          ex.slug.includes('alternate-picking');
+      } else if (selectedFolder !== 'all') {
+        matchesFolder = ex.folder === selectedFolder;
+      }
+
       const matchesCategory =
         selectedCategory === 'Todas' || ex.category === selectedCategory;
 
@@ -190,11 +305,23 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
         searchQuery.trim() === '' ||
         ex.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         ex.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (ex.folder && ex.folder.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (ex.description && ex.description.toLowerCase().includes(searchQuery.toLowerCase()));
 
-      return matchesInstrument && matchesCategory && matchesDifficulty && matchesSearch;
+      return matchesInstrument && matchesFolder && matchesCategory && matchesDifficulty && matchesSearch;
     });
-  }, [exercises, selectedInstrument, selectedCategory, selectedDifficulty, searchQuery]);
+
+    // Ordenar si la carpeta es Púa Alternada del #01 al #20
+    if (selectedFolder === 'Púa Alternada') {
+      return [...list].sort((a, b) => {
+        const numA = parseInt(a.title.match(/AP-(\d+)/)?.[1] || a.slug.match(/ap-(\d+)/)?.[1] || '999', 10);
+        const numB = parseInt(b.title.match(/AP-(\d+)/)?.[1] || b.slug.match(/ap-(\d+)/)?.[1] || '999', 10);
+        return numA - numB;
+      });
+    }
+
+    return list;
+  }, [exercises, selectedInstrument, selectedFolder, selectedCategory, selectedDifficulty, searchQuery]);
 
   return (
     <div className="w-full flex flex-col gap-8">
@@ -249,6 +376,72 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
             <span className="relative z-10">Guitarra (6 Cuerdas)</span>
           </button>
         </div>
+      </div>
+
+      {/* 1.5. Barra Superior de Carpetas / Colecciones de Estudio */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-2.5 rounded-2xl bg-[#dce2ec]/80 dark:bg-slate-900/80 border border-slate-300/80 dark:border-white/10 shadow-sm">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
+          {/* Carpeta: Todos */}
+          <button
+            type="button"
+            onClick={() => setSelectedFolder('all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border flex items-center gap-1.5 cursor-pointer ${
+              selectedFolder === 'all'
+                ? 'bg-[#0891b2] text-white border-[#0891b2] shadow-sm dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/50'
+                : 'bg-slate-200/80 text-slate-700 border-slate-300/80 hover:bg-slate-300 dark:bg-zinc-900/60 dark:text-zinc-400 dark:border-white/5 dark:hover:bg-zinc-800'
+            }`}
+          >
+            <span>📚 Todos</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/15 dark:bg-white/10 font-mono">
+              {folderCounts.all || exercises.length}
+            </span>
+          </button>
+
+          {/* Carpeta Destacada: 📂 Púa Alternada (20) */}
+          <button
+            type="button"
+            onClick={() => setSelectedFolder('Púa Alternada')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition-all border flex items-center gap-1.5 cursor-pointer ${
+              selectedFolder === 'Púa Alternada'
+                ? 'bg-gradient-to-r from-amber-500 to-rose-500 text-white border-amber-500 shadow-md scale-105'
+                : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+            }`}
+          >
+            <span>📂 Púa Alternada</span>
+            <span className="text-[10px] font-black px-1.5 py-0.2 rounded-full bg-black/20 text-white font-mono">
+              {folderCounts['Púa Alternada'] || 20}
+            </span>
+          </button>
+
+          {/* Otras Carpetas creadas */}
+          {allAvailableFolders.map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setSelectedFolder(f)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border flex items-center gap-1.5 cursor-pointer ${
+                selectedFolder === f
+                  ? 'bg-[#0891b2] text-white border-[#0891b2] shadow-sm dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/50'
+                  : 'bg-slate-200/80 text-slate-700 border-slate-300/80 hover:bg-slate-300 dark:bg-zinc-900/60 dark:text-zinc-400 dark:border-white/5 dark:hover:bg-zinc-800'
+              }`}
+            >
+              <span>📂 {f}</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/15 dark:bg-white/10 font-mono">
+                {folderCounts[f] || 0}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Botón Rápido: + Carpeta */}
+        <button
+          type="button"
+          onClick={() => setIsNewFolderModalOpen(true)}
+          className="px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition-all bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500 shadow-sm flex items-center justify-center gap-1 shrink-0 active:scale-95 cursor-pointer"
+        >
+          <FolderPlus className="w-3.5 h-3.5" />
+          <span>+ Carpeta</span>
+        </button>
       </div>
 
       {/* 2. Barra de Filtros, Categorías y Búsqueda */}
@@ -360,6 +553,95 @@ export const StringsCatalogView: React.FC<StringsCatalogViewProps> = ({ initialE
         description="Esta acción eliminará el ejercicio de cuerdas de la biblioteca y de la base de datos permanentemente."
         isDeleting={isDeleting}
       />
+
+      {/* Modal para Crear Nueva Carpeta y Asignar Ejercicios */}
+      <AnimatePresence>
+        {isNewFolderModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl flex flex-col gap-4 text-slate-100"
+            >
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <FolderPlus className="w-5 h-5 text-amber-400" />
+                  <h3 className="text-base font-black text-white">Nueva Carpeta de Estudio</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsNewFolderModalOpen(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1.5">
+                  Nombre de la Carpeta:
+                </label>
+                <input
+                  type="text"
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  placeholder="Ej. Sweep Picking, Rutina Diaria, Licks..."
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1.5">
+                  Asignar ejercicios a esta carpeta (opcional):
+                </label>
+                <div className="max-h-48 overflow-y-auto no-scrollbar border border-slate-800 rounded-xl p-2 bg-slate-950 flex flex-col gap-1">
+                  {exercises.map((ex) => {
+                    const isChecked = selectedExerciseSlugsForFolder.includes(ex.slug);
+                    return (
+                      <button
+                        key={ex.slug}
+                        type="button"
+                        onClick={() => {
+                          setSelectedExerciseSlugsForFolder((prev) =>
+                            isChecked ? prev.filter((s) => s !== ex.slug) : [...prev, ex.slug]
+                          );
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors ${
+                          isChecked
+                            ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-500/40 font-bold'
+                            : 'hover:bg-slate-800/60 text-slate-300 border border-transparent'
+                        }`}
+                      >
+                        <span className="truncate pr-2">{ex.title}</span>
+                        {isChecked && <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsNewFolderModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingFolder || !newFolderName.trim()}
+                  onClick={handleCreateFolder}
+                  className="px-4 py-2 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                >
+                  {isSavingFolder ? 'Guardando...' : 'Crear Carpeta'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

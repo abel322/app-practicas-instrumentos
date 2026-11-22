@@ -58,6 +58,19 @@ export type StringCategory =
   | 'Licks & Riffs'
   | 'Fingerpicking';
 
+export interface StringMeasureData {
+  measureIndex: number;
+  measureNumber?: number;
+  patternCode?: string;
+  patternName?: string;
+  patternColor?: string;
+  timeSignature?: string;
+  subdivision?: string;
+  stepsPerMeasure?: number;
+  chordSymbol?: string;
+  notes?: StringTabNote[];
+}
+
 export interface StringExerciseData {
   id: string;
   slug: string;
@@ -72,9 +85,10 @@ export interface StringExerciseData {
   subdivision?: string;
   stepsPerMeasure?: number;
   tabData: StringTabNote[];
-  measures?: any[];
+  measures?: StringMeasureData[];
   patternBank?: any[];
   pickingStyle?: PickingStyle | string;
+  folder?: string; // Carpeta / Colección (ej: "Púa Alternada")
   description?: string;
   createdAt?: string | Date;
 }

@@ -38,6 +38,15 @@ async function main() {
   console.log('🎸 Sincronizando ejercicios de cuerdas (Strings Lab: Bajo & Guitarra)...');
 
   for (const strEx of STRINGS_INITIAL_EXERCISES) {
+    const tabPayload = {
+      tabNotes: strEx.tabData,
+      notes: strEx.tabData,
+      data: strEx.tabData,
+      measures: strEx.measures,
+      folder: strEx.folder,
+      pickingStyle: strEx.pickingStyle,
+    };
+
     const upserted = await prisma.stringExercise.upsert({
       where: { slug: strEx.slug },
       update: {
@@ -49,7 +58,8 @@ async function main() {
         bpmDefault: strEx.bpmDefault,
         timeSignature: strEx.timeSignature,
         totalSteps: strEx.totalSteps,
-        tabData: strEx.tabData as any,
+        tabData: tabPayload as any,
+        folder: strEx.folder || null,
       },
       create: {
         id: strEx.id,
@@ -62,7 +72,8 @@ async function main() {
         bpmDefault: strEx.bpmDefault,
         timeSignature: strEx.timeSignature,
         totalSteps: strEx.totalSteps,
-        tabData: strEx.tabData as any,
+        tabData: tabPayload as any,
+        folder: strEx.folder || null,
       },
     });
 

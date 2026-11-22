@@ -170,6 +170,17 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
     return [];
   }, [measures, tabData, effectiveActiveMeasure, effectiveStepsPerMeasure, measureStartStep, measureEndStep]);
 
+  // Acorde guía del compás activo (estilo Bass Aerobics / Real Book)
+  const currentMeasureChord = useMemo(() => {
+    if (measures && measures[effectiveActiveMeasure]?.chordSymbol) {
+      return measures[effectiveActiveMeasure].chordSymbol;
+    }
+    if (measures && (measures[effectiveActiveMeasure] as any)?.chord) {
+      return (measures[effectiveActiveMeasure] as any).chord;
+    }
+    return null;
+  }, [measures, effectiveActiveMeasure]);
+
   // Agrupar notas de este compás por paso relativo (0 a effectiveStepsPerMeasure - 1)
   const notesByStep = useMemo(() => {
     const map = new Map<number, RenderedNote[]>();
@@ -284,9 +295,17 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
           ref={scrollContainerRef}
           className="flex-1 relative p-2 sm:p-4 flex items-center justify-center overflow-hidden"
         >
-          {/* Badge del Compás Actual y Subdivisión */}
+          {/* Badge del Compás Actual, Acorde y Subdivisión */}
           <div className="absolute top-2 left-3 z-30 px-2.5 py-0.5 rounded-md bg-cyan-950/85 border border-cyan-800/60 text-cyan-300 font-mono text-[11px] font-bold shadow-md select-none pointer-events-none flex items-center gap-1.5">
             <span>c.{effectiveActiveMeasure + 1} de {effectiveTotalMeasures}</span>
+            {currentMeasureChord && (
+              <>
+                <span className="text-cyan-500">•</span>
+                <span className="px-1.5 py-0.2 rounded bg-amber-500/25 border border-amber-400/50 text-amber-300 font-black text-xs">
+                  {currentMeasureChord}
+                </span>
+              </>
+            )}
             <span className="text-cyan-500">•</span>
             <span className="text-amber-300 font-extrabold">{subConfig.id}</span>
           </div>
@@ -347,6 +366,35 @@ export const TablatureRunway: React.FC<TablatureRunwayProps> = ({
                 stroke="rgba(255, 255, 255, 0.85)"
                 strokeWidth={3}
               />
+
+              {/* ============================================================== */}
+              {/* ACORDE GUÍA POR COMPÁS (Real Book / Bass Aerobics Style)       */}
+              {/* ============================================================== */}
+              {currentMeasureChord && (
+                <g className="select-none pointer-events-none" transform={`translate(${leftPadding + 6}, ${topStaffY - 30})`}>
+                  <rect
+                    x={0}
+                    y={0}
+                    width={Math.max(48, currentMeasureChord.length * 10 + 22)}
+                    height={22}
+                    rx={6}
+                    fill="#090d16"
+                    stroke="#f59e0b"
+                    strokeWidth={1.5}
+                  />
+                  <text
+                    x={Math.max(48, currentMeasureChord.length * 10 + 22) / 2}
+                    y={15.5}
+                    textAnchor="middle"
+                    fontSize={13}
+                    fontWeight="900"
+                    fontFamily="monospace"
+                    fill="#fbbf24"
+                  >
+                    {currentMeasureChord}
+                  </text>
+                </g>
+              )}
 
               {/* ============================================================== */}
               {/* SUBDIVISIONES Y TIEMPOS (Adaptables a 1/8, 1/16, 1/4, 1/8T)    */}

@@ -316,6 +316,8 @@ export const ExerciseBuilder: React.FC = () => {
   const [bpm, setBpm] = useState(95);
   const [timeSignature, setTimeSignature] = useState<string>('4/4');
   const [subdivision, setSubdivision] = useState<SubdivisionType>('1/16');
+  const [folder, setFolder] = useState<string>('');
+  const [measureChords, setMeasureChords] = useState<Record<number, string>>({});
 
   // Destino: Biblioteca General vs Asignar a Ruta Técnica
   const [destination, setDestination] = useState<'general' | 'mastery'>('general');
@@ -434,6 +436,7 @@ export const ExerciseBuilder: React.FC = () => {
             if (exerciseData.id) setEditingExerciseId(exerciseData.id);
             if (exerciseData.slug) setEditingSlug(exerciseData.slug);
             if (exerciseData.title) setTitle(exerciseData.title);
+            if (exerciseData.folder) setFolder(exerciseData.folder);
             if (exerciseData.category) setCategory(exerciseData.category);
             if (exerciseData.difficulty) setDifficulty(exerciseData.difficulty);
             if (exerciseData.bpmDefault || exerciseData.bpm) {
@@ -619,6 +622,16 @@ export const ExerciseBuilder: React.FC = () => {
               });
               setMeasureAssignments(nextAssign);
               setTotalMeasures(Math.max(1, exerciseData.measures.length));
+
+              const loadedChords: Record<number, string> = {};
+              exerciseData.measures.forEach((m: any, idx: number) => {
+                if (m.chordSymbol) {
+                  loadedChords[m.measureIndex ?? idx] = m.chordSymbol;
+                }
+              });
+              if (Object.keys(loadedChords).length > 0) {
+                setMeasureChords(loadedChords);
+              }
             }
 
             if (restoredBank.length > 0) {
@@ -980,6 +993,7 @@ export const ExerciseBuilder: React.FC = () => {
         stepsPerMeasure: cfg.stepsPerMeasure,
         startStep: cfg.startStep,
         endStep: cfg.endStep,
+        chordSymbol: measureChords[cfg.measureIndex] || (cfg as any).chordSymbol || undefined,
         notes: notes
           .filter((n) => n.step >= cfg.startStep && n.step < cfg.endStep)
           .map((n) => {
@@ -999,7 +1013,7 @@ export const ExerciseBuilder: React.FC = () => {
           }),
       };
     });
-  }, [measureConfigList, notes]);
+  }, [measureConfigList, notes, measureChords]);
 
   // Mantener sincronizadas las notas del patrón activo en el banco cuando se edita en la cuadrícula
   useEffect(() => {
@@ -1205,11 +1219,23 @@ export const ExerciseBuilder: React.FC = () => {
             }
 
             if (parsed.title !== undefined) setTitle(parsed.title);
+            if (parsed.folder !== undefined) setFolder(parsed.folder);
             if (parsed.tempo || parsed.bpm) setBpm(Number(parsed.tempo || parsed.bpm));
             if (parsed.subdivision) setSubdivision(parsed.subdivision as SubdivisionType);
             if (parsed.category) setCategory(parsed.category);
             if (parsed.difficulty) setDifficulty(parsed.difficulty);
             if (parsed.timeSignature) setTimeSignature(parsed.timeSignature);
+            if (parsed.measureChords) {
+              setMeasureChords(parsed.measureChords);
+            } else if (Array.isArray(parsed.measures)) {
+              const loadedChords: Record<number, string> = {};
+              parsed.measures.forEach((m: any, idx: number) => {
+                if (m.chordSymbol) loadedChords[m.measureIndex ?? idx] = m.chordSymbol;
+              });
+              if (Object.keys(loadedChords).length > 0) {
+                setMeasureChords(loadedChords);
+              }
+            }
           }
         }
       }
@@ -1232,6 +1258,7 @@ export const ExerciseBuilder: React.FC = () => {
       if (hasNotes || title.trim() !== '') {
         const draftPayload = {
           title,
+          folder,
           tempo: bpm,
           bpm,
           subdivision,
@@ -1242,6 +1269,7 @@ export const ExerciseBuilder: React.FC = () => {
           measures,
           patternBank,
           measureAssignments,
+          measureChords,
           notes,
           pickingStyle: selectedPickingStyle,
           updatedAt: new Date().toISOString(),
@@ -2628,6 +2656,13 @@ export const ExerciseBuilder: React.FC = () => {
       [newMeasureIdx]: { ...sourceAssign },
     }));
 
+    if (measureChords[currentMeasure]) {
+      setMeasureChords((prev) => ({
+        ...prev,
+        [newMeasureIdx]: prev[currentMeasure],
+      }));
+    }
+
     totalMeasuresRef.current = newMeasureIdx + 1;
     currentMeasureRef.current = newMeasureIdx;
     setTotalMeasures((prev) => prev + 1);
@@ -2680,6 +2715,18 @@ export const ExerciseBuilder: React.FC = () => {
     setMeasureAssignments(nextAssignments);
     setNotes(updatedNotes);
     setTotalMeasures(nextTotalMeasures);
+    setMeasureChords((prev) => {
+      const next: Record<number, string> = {};
+      Object.entries(prev).forEach(([idxStr, chord]) => {
+        const idx = Number(idxStr);
+        if (idx < measureIdxToDelete) {
+          next[idx] = chord;
+        } else if (idx > measureIdxToDelete) {
+          next[idx - 1] = chord;
+        }
+      });
+      return next;
+    });
     setCurrentMeasure((prev) => Math.max(0, Math.min(prev, totalMeasures - 2)));
   };
 
@@ -4291,6 +4338,7 @@ export const ExerciseBuilder: React.FC = () => {
 
     // 2. Construir copia profunda de measures con patternCode, patternName, patternColor, timeSignature, subdivision, stepsPerMeasure y notes
     const savedMeasures = measureConfigList.map((cfg) => {
+      const mChord = measureChords[cfg.measureIndex] || (cfg as any).chordSymbol || undefined;
       const mNotes = formattedData
         .filter((n) => n.step >= cfg.startStep && n.step < cfg.endStep)
         .map((n) => ({
@@ -4313,6 +4361,7 @@ export const ExerciseBuilder: React.FC = () => {
         timeSignature: cfg.timeSignature || timeSignature || '4/4',
         subdivision: cfg.subdivision,
         stepsPerMeasure: cfg.stepsPerMeasure,
+        chordSymbol: mChord,
         notes: mNotes,
       };
     });
@@ -4366,6 +4415,7 @@ export const ExerciseBuilder: React.FC = () => {
         saveExerciseAction({
           instrumentType: instrument,
           title,
+          folder: folder.trim() || undefined,
           category,
           difficulty,
           bpm,
@@ -4397,6 +4447,7 @@ export const ExerciseBuilder: React.FC = () => {
         id: editingExerciseId || undefined,
         slug: editingSlug || undefined,
         title: title.trim(),
+        folder: folder.trim() || undefined,
         instrument,
         instrumentType: instrument,
         category,
@@ -4484,6 +4535,7 @@ export const ExerciseBuilder: React.FC = () => {
         slug: resData.slug || editingSlug,
         instrumentType: instrument,
         title,
+        folder: folder.trim() || undefined,
         category,
         difficulty,
         bpmDefault: bpm,
@@ -4820,6 +4872,29 @@ export const ExerciseBuilder: React.FC = () => {
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Carpeta / Colección */}
+        <div>
+          <label className="text-[10px] text-slate-500 dark:text-zinc-400 uppercase font-semibold block mb-1">
+            📂 Carpeta
+          </label>
+          <input
+            type="text"
+            list="builder-folder-suggestions"
+            value={folder}
+            onChange={(e) => setFolder(e.target.value)}
+            placeholder="Ej: Púa Alternada, Slap, etc."
+            className="w-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-zinc-500 focus:border-cyan-500 focus:outline-none"
+          />
+          <datalist id="builder-folder-suggestions">
+            <option value="Púa Alternada" />
+            <option value="Sweep Picking" />
+            <option value="Ligados & Legato" />
+            <option value="Slap & Pop" />
+            <option value="Tapping" />
+            <option value="Mis Ejercicios" />
+          </datalist>
         </div>
 
         {/* Previsualización de Audio Rápida */}
@@ -5292,6 +5367,11 @@ export const ExerciseBuilder: React.FC = () => {
                 <span className="text-slate-400 font-mono">
                   • Vista en Compás C.{currentMeasure + 1} de {measures.length}
                 </span>
+                {measureChords[currentMeasure] && (
+                  <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono font-bold text-[11px]">
+                    Acorde: {measureChords[currentMeasure]}
+                  </span>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
@@ -5342,6 +5422,11 @@ export const ExerciseBuilder: React.FC = () => {
                       }`}
                   >
                     <span>Compás {idx + 1}</span>
+                    {measureChords[idx] && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-300 border border-amber-500/40 font-mono font-bold">
+                        {measureChords[idx]}
+                      </span>
+                    )}
                     <span
                       className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${isSelected
                         ? 'bg-slate-950/20 text-slate-950 font-bold'
@@ -5386,6 +5471,43 @@ export const ExerciseBuilder: React.FC = () => {
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 )}
+
+                {/* Acorde Guía del Compás Activo */}
+                <div className="flex items-center gap-1.5 bg-slate-950/70 border border-slate-700/80 rounded-xl px-2.5 py-1">
+                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wide">
+                    🎸 Acorde C.{currentMeasure + 1}:
+                  </span>
+                  <input
+                    type="text"
+                    value={measureChords[currentMeasure] || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setMeasureChords((prev) => ({
+                        ...prev,
+                        [currentMeasure]: val,
+                      }));
+                    }}
+                    placeholder="Ej: Am, Dm7, G7"
+                    className="w-24 bg-slate-900 border border-slate-700 rounded-lg px-2 py-0.5 text-xs font-mono font-bold text-amber-300 focus:outline-none focus:border-amber-400"
+                    title={`Acorde guía para el compás ${currentMeasure + 1} (se muestra sobre la tablatura y lo reproduce la Base Armónica)`}
+                  />
+                  {measureChords[currentMeasure] && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMeasureChords((prev) => {
+                          const next = { ...prev };
+                          delete next[currentMeasure];
+                          return next;
+                        });
+                      }}
+                      className="text-slate-400 hover:text-rose-400 text-xs px-1 font-bold"
+                      title="Borrar acorde del compás"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
               </div>
 
               <span className="text-[11px] font-mono text-slate-400">

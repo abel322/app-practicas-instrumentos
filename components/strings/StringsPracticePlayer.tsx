@@ -6,6 +6,7 @@ import { StringExerciseData, StringTabNote } from '@/types/strings';
 import { getStringsAudioEngine } from '@/lib/stringsAudioEngine';
 import { bassPreviewSynth, getBassMidiFromString, BassTechnique } from '@/lib/audio/bassPreviewSynth';
 import { guitarPreviewSynth, getGuitarMidiFromString, GuitarTechnique } from '@/lib/audio/guitarPreviewSynth';
+import { getHarmonicBackingSynth } from '@/lib/audio/harmonicBackingSynth';
 import { getSubdivisionConfig } from '@/lib/music-theory/rhythmSubdivisions';
 import { TablatureRunway } from './TablatureRunway';
 import { StringsLegend } from './StringsLegend';
@@ -76,6 +77,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [bpm, setBpm] = useState<number>(currentExercise.bpmDefault || 90);
   const [metronomeEnabled, setMetronomeEnabled] = useState<boolean>(true);
+  const [harmonicBackingEnabled, setHarmonicBackingEnabled] = useState<boolean>(true);
   const [activeStep, setActiveStep] = useState<number>(0);
   const [progress, setProgress] = useState<number>(0);
 
@@ -86,6 +88,14 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
 
   const isPlayingRef = useRef<boolean>(false);
   const bpmRef = useRef<number>(currentExercise.bpmDefault || 90);
+  const harmonicBackingEnabledRef = useRef<boolean>(true);
+
+  useEffect(() => {
+    harmonicBackingEnabledRef.current = harmonicBackingEnabled;
+    if (!harmonicBackingEnabled) {
+      getHarmonicBackingSynth().stopAllVoices();
+    }
+  }, [harmonicBackingEnabled]);
   const nextNoteTimeRef = useRef<number>(0);
   const currentStepRef = useRef<number>(0);
   const anchorStepRef = useRef<number>(0);
@@ -278,8 +288,21 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
         const isDownbeat = stepNumber % stepsPerMeasure === 0;
         engine.playMetronome(time, isDownbeat);
       }
+
+      // 3. Base Armónica (Acompañamiento suave al inicio de cada compás según su acorde guía)
+      if (harmonicBackingEnabledRef.current && stepNumber % stepsPerMeasure === 0) {
+        const currentMIdx = Math.floor(stepNumber / stepsPerMeasure);
+        const chord =
+          exercise.measures?.[currentMIdx]?.chordSymbol ||
+          (exercise.measures?.[currentMIdx] as any)?.chord;
+
+        if (chord) {
+          const measureDuration = getSecondsPerStep(bpmRef.current) * stepsPerMeasure;
+          getHarmonicBackingSynth().playChord(chord, measureDuration, time, 0.14);
+        }
+      }
     },
-    [exercise.instrument, getSecondsPerStep, stepsPerBeat, stepsPerMeasure]
+    [exercise.instrument, exercise.measures, getSecondsPerStep, stepsPerBeat, stepsPerMeasure]
   );
 
   // Lookahead loop con ventana de agendado de 80ms y anclaje continuo de fase
@@ -351,10 +374,12 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
       isPlayingRef.current = false;
       if (timerIdRef.current) clearTimeout(timerIdRef.current);
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+      getHarmonicBackingSynth().stopAllVoices();
     } else {
       setIsPlaying(true);
       isPlayingRef.current = true;
       const ctx = engine.getAudioContext();
+      getHarmonicBackingSynth().init(ctx);
       const startTime = (ctx ? ctx.currentTime : 0) + 0.03;
       nextNoteTimeRef.current = startTime;
       currentStepRef.current = 0;
@@ -372,6 +397,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
     isPlayingRef.current = false;
     if (timerIdRef.current) clearTimeout(timerIdRef.current);
     if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+    getHarmonicBackingSynth().stopAllVoices();
 
     currentStepRef.current = 0;
     anchorStepRef.current = 0;
@@ -507,6 +533,9 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
       } else if (e.code === 'KeyM') {
         e.preventDefault();
         handleToggleMetronome();
+      } else if (e.code === 'KeyB') {
+        e.preventDefault();
+        setHarmonicBackingEnabled((prev) => !prev);
       } else if (e.code === 'ArrowUp') {
         e.preventDefault();
         setBpm((prev) => Math.min(200, prev + 5));
@@ -526,6 +555,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
       isPlayingRef.current = false;
       if (timerIdRef.current) clearTimeout(timerIdRef.current);
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+      getHarmonicBackingSynth().stopAllVoices();
     };
   }, []);
 
@@ -660,9 +690,26 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
             ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
             : 'bg-slate-950 text-slate-500 border-slate-800'
             }`}
-          title="Alternar Metrónomo"
+          title="Alternar Metrónomo (Tecla M)"
         >
           🔔 <span className="hidden sm:inline">Metrónomo </span>{metronomeEnabled ? 'ON' : 'OFF'}
+        </button>
+
+        {/* 🎹 Base Armónica */}
+        <button
+          type="button"
+          onClick={() => setHarmonicBackingEnabled((prev) => !prev)}
+          className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all active:scale-95 shrink-0 flex items-center gap-1.5 ${harmonicBackingEnabled
+            ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-[0_0_12px_rgba(245,158,11,0.25)]'
+            : 'bg-slate-950 text-slate-500 border-slate-800'
+            }`}
+          title="Acompañamiento armónico suave (Pad/Piano) en cada compás según su acorde guía (Tecla B)"
+        >
+          <span>🎹</span>
+          <span className="hidden sm:inline">Base Armónica</span>
+          <span className={`px-1.5 py-0.2 rounded text-[10px] font-black ${harmonicBackingEnabled ? 'bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-400'}`}>
+            {harmonicBackingEnabled ? 'ON' : 'OFF'}
+          </span>
         </button>
       </footer>
 
@@ -674,7 +721,7 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
           </div>
 
           <div className="mt-1 flex flex-col sm:flex-row items-center justify-between text-xs text-zinc-500 gap-4 px-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Keyboard className="w-3.5 h-3.5 text-zinc-400" />
               <span>Atajos:</span>
               <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 font-mono text-[10px]">Espacio</kbd>
@@ -683,6 +730,8 @@ export const StringsPracticePlayer: React.FC<StringsPracticePlayerProps> = ({ ex
               <span>Stop / Salir</span>
               <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 font-mono text-[10px]">M</kbd>
               <span>Metrónomo</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 font-mono text-[10px]">B</kbd>
+              <span>Base Armónica</span>
               <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 font-mono text-[10px]">↑/↓</kbd>
               <span>BPM</span>
             </div>

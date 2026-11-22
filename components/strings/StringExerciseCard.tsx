@@ -81,7 +81,7 @@ export const StringExerciseCard: React.FC<StringExerciseCardProps> = ({
       <div>
         {/* Cabecera: Instrumento, Dificultad y Acciones CRUD */}
         <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span
               className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
                 isPiano
@@ -93,8 +93,14 @@ export const StringExerciseCard: React.FC<StringExerciseCardProps> = ({
             >
               {isPiano ? 'Piano' : isBass ? 'Bajo (4 Cuerdas)' : 'Guitarra (6 Cuerdas)'}
             </span>
+            {exercise.folder && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-500/15 border-amber-500/30 text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                <span>📂</span>
+                <span>{exercise.folder}</span>
+              </span>
+            )}
             {exercise.pickingStyle && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-300">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-cyan-500/10 border-cyan-500/30 text-cyan-700 dark:text-cyan-300">
                 {exercise.pickingStyle.toUpperCase().replace(/_/g, ' ')}
               </span>
             )}
@@ -140,6 +146,17 @@ export const StringExerciseCard: React.FC<StringExerciseCardProps> = ({
         <h3 className="text-lg font-extrabold text-slate-900 dark:text-white group-hover:text-[#0891b2] dark:group-hover:text-cyan-300 transition-colors mb-2">
           {exercise.title}
         </h3>
+
+        {/* Badge Progresivo Guitar Aerobics para Estudios de Púa Alternada */}
+        {(exercise.measures?.length === 32 || exercise.title.startsWith('AP-')) && (
+          <div className="mb-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/25 text-rose-700 dark:text-rose-300 font-mono text-[11px] font-black">
+            <span>⚡ Avanzado</span>
+            <span>•</span>
+            <span>32 Compases</span>
+            <span>•</span>
+            <span>{exercise.bpmDefault} BPM</span>
+          </div>
+        )}
 
         {/* Descripción */}
         {exercise.description && (

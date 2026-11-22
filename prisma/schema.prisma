@@ -20,6 +20,7 @@ model DrumExercise {
   stepsPerMeasure Int?   @default(16)
   totalSteps    Int      @default(16) // Subdivisión base (ej. 16 semicorcheas por compás)
   hitsData      Json     // Array estructurado con notas, duraciones, articulaciones y sticking
+  folder        String?  // Carpeta / Colección de estudio (ej: "Púa Alternada", "Rudimentos")
   createdAt     DateTime @default(now())
 }
 
@@ -37,6 +38,7 @@ model StringExercise {
   stepsPerMeasure Int?   @default(16)
   totalSteps    Int      @default(16) // Subdivisión de compás
   tabData       Json     // Array con notas de tablatura (cuerda, traste, técnica, duración)
+  folder        String?  // Carpeta / Colección de estudio (ej: "Púa Alternada", "Sweep Picking")
   createdAt     DateTime @default(now())
 }
 

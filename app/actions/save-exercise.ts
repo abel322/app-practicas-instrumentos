@@ -24,6 +24,7 @@ export interface SaveExercisePayload {
   stepsPerMeasure: number;
   subdivision?: string;
   pickingStyle?: string;
+  folder?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: any[];
   measures?: any[];
@@ -61,6 +62,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
         data: Array.isArray(formData.data) ? formData.data : [],
         measures: Array.isArray(formData.measures) ? formData.measures : [],
         patternBank: Array.isArray(formData.patternBank) ? formData.patternBank : [],
+        folder: formData.folder?.trim() || undefined,
       };
 
       if (formData.id || formData.slug) {
@@ -90,6 +92,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
               stepsPerMeasure: formData.stepsPerMeasure || (formData.timeSignature === '6/8' ? 12 : 16),
               totalSteps: totalSteps,
               hitsData: hitsPayload,
+              folder: formData.folder?.trim() || null,
             },
           });
 
@@ -128,6 +131,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
           stepsPerMeasure: formData.stepsPerMeasure || (formData.timeSignature === '6/8' ? 12 : 16),
           totalSteps: totalSteps,
           hitsData: hitsPayload,
+          folder: formData.folder?.trim() || null,
         },
       });
 
@@ -167,6 +171,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
         measures: Array.isArray(formData.measures) ? formData.measures : [],
         patternBank: Array.isArray(formData.patternBank) ? formData.patternBank : [],
         pickingStyle: formData.pickingStyle || undefined,
+        folder: formData.folder?.trim() || undefined,
       };
 
       if (formData.id || formData.slug) {
@@ -197,6 +202,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
               stepsPerMeasure: formData.stepsPerMeasure || (formData.timeSignature === '6/8' ? 12 : 16),
               totalSteps: totalSteps,
               tabData: tabPayload,
+              folder: formData.folder?.trim() || null,
             },
           });
 
@@ -245,6 +251,7 @@ export async function saveExerciseAction(formData: SaveExercisePayload) {
           stepsPerMeasure: formData.stepsPerMeasure || (formData.timeSignature === '6/8' ? 12 : 16),
           totalSteps: totalSteps,
           tabData: tabPayload,
+          folder: formData.folder?.trim() || null,
         },
       });
 

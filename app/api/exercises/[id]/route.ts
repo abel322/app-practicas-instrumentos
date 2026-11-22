@@ -110,6 +110,7 @@ export async function GET(request: Request, { params }: RouteParams) {
             measures: payload.measures.length > 0 ? payload.measures : undefined,
             patternBank: payload.patternBank.length > 0 ? payload.patternBank : undefined,
             pickingStyle: payload.pickingStyle || (stringEx.tabData as any)?.pickingStyle,
+            folder: (stringEx as any).folder || payload.folder || undefined,
             createdAt: stringEx.createdAt,
           };
         }
@@ -230,6 +231,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
       data: Array.isArray(rawData) ? rawData : [],
       measures: Array.isArray(body.measures) ? body.measures : Array.isArray(body.sequence) ? body.sequence : undefined,
       patternBank: Array.isArray(body.patternBank) ? body.patternBank : undefined,
+      folder: body.folder?.trim() || undefined,
     });
 
     if (!result.success) {

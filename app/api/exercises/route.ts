@@ -118,6 +118,7 @@ export async function POST(request: Request) {
       data: Array.isArray(rawData) ? rawData : [],
       measures: Array.isArray(body.measures) ? body.measures : Array.isArray(body.sequence) ? body.sequence : undefined,
       patternBank: Array.isArray(body.patternBank) ? body.patternBank : undefined,
+      folder: body.folder?.trim() || undefined,
     });
 
     if (!result.success) {
